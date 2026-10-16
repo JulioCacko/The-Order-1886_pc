@@ -10,9 +10,9 @@ body:
   - type: input
     id: version
     attributes:
-      label: Port version
-      description: Shown in the launcher title bar (e.g. v2.1.7)
-      placeholder: v2.1.7
+      label: Runtime build SHA256 and launcher revision
+      description: Copy runtime_sha256 from bin/runtime-build.json or out/runtime-build.json, plus the source commit or package build ID.
+      placeholder: "Runtime SHA256; source commit or package build ID"
     validations:
       required: true
 
@@ -54,8 +54,8 @@ body:
   - type: textarea
     id: log
     attributes:
-      label: user/last_run.log
-      description: Attach the file from the port's folder (drag and drop it here). Required for crashes, black screens, graphics glitches and performance issues.
+      label: Runtime record and session log
+      description: Attach the matching last-run.json and boot/session log from user/order1886/logs. Remove private paths; do not attach game binaries or saves.
     validations:
       required: false
 

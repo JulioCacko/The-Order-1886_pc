@@ -47,7 +47,7 @@ jobs:
             vulkan-headers:p vulkan-loader:p vulkan-memory-allocator:p glslang:p
             sdl3:p fmt:p boost:p robin-map:p xxhash:p ffmpeg:p zydis:p
             spirv-tools:p spirv-headers:p spirv-cross:p
-      - name: Build the Order native runtime and run five CPU checks
+      - name: Build the Order native runtime and run CPU checks
         run: |
           set -euo pipefail
           export MSYS2_ROOT="$(cygpath -u "$(cygpath -w /)")"

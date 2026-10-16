@@ -1,5 +1,7 @@
 # The Order: 1886 runtime status
 
+For the consolidated current launcher, package, acceptance-gate and verification report, see **[docs/STATUS.md](STATUS.md)**. The latest launcher delivery keeps the same `b6db10c4...` native runtime and adds the approved launch-bar UI; the older package identities below remain historical evidence.
+
 Current development: the agreed [4K/60 acceptance and timing profile](order1886-4k60-verification.md) preserve the original scene detail and use FSR1 for 4K output. The 60 FPS recipe is hash-guarded and opt-in; returning to 30 restores the derived native image. Original game files are preserved.
 
 The latest built source runtime is `b6db10c4284d041275820b34f04c3b2748427a37e942e57e86a3d1ba760d0557`, with shader binary/meta/key versions 13/10/8. The CPU suite passes 166 tests (11 skipped), and all eight native checks pass; see `out/order1886-evidence/post-freeze-cpu-tests.log` and `post-freeze-native-checks.log`.
@@ -73,7 +75,7 @@ Original game files and reference installations were preserved. Metadata remains
 
 No arbitrary format/tiling remapping, Phi default, blanket return-zero guest stub, global nearest-filter override or higher-frame-rate patch was added. Direct-memory access remains disabled and unproven.
 
-## Current game evidence and blockers
+## Historical 917a game evidence and blockers
 
 Final runs use SHA `917a09ca...`, original CUSA00076 files, native resolution, 30 FPS presentation cap, 60 Hz vblank and VSync. Shader `0x804aeead` has unresolved Phi/ReadConst SRT offset ancestry. Some other suspect descriptor copies are successfully emitted direct SGPR copies, so dynamic failures do not explain every descriptor.
 

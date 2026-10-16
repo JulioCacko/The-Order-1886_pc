@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "verified_utc": "2026-10-16",
+  "scope": "Local launcher, CPU/bootstrap/preparation and package integrity; not gameplay acceptance.",
+  "python_suite": {
+    "tests_run": 167,
+    "skipped": 11,
+    "result": "OK",
+    "log": "out/order1886-evidence/repository-evolution-python-tests.log"
+  },
+  "launcher_suite": {
+    "tests_run": 11,
+    "result": "OK",
+    "gui_smoke": "passed"
+  },
+  "native_checks": {
+    "count": 8,
+    "result": "previous retained run passed",
+    "log": "out/order1886-evidence/post-freeze-native-checks.log",
+    "rerun_this_delivery": false
+  },
+  "package": {
+    "build_id": "20261016T201135Z-b6db10c4284d",
+    "archive_bytes": 103917546,
+    "archive_sha256": "0f58845e04f2e765813ec21ccd17c59bc89018a53e0f1cb811e689c2a3769021",
+    "launcher_sha256": "131e896dd564a797831856f07bddb894411fdd99beaaac55055ca26207137af6",
+    "runtime_sha256": "b6db10c4284d041275820b34f04c3b2748427a37e942e57e86a3d1ba760d0557",
+    "manifest_files_verified": 1308,
+    "zip_crc": "passed",
+    "installed_archive_manifest_equality": true,
+    "launcher_source_sha256": "107c201808836952bd0f9d1e9458e74fed7a1799622b7ba53edfea3b8fbb8b6a",
+    "source_matches": true
+  },
+  "portable_smoke": {
+    "passed": true,
+    "checks": {
+      "manifest": true,
+      "preparation_closure": true,
+      "artwork": true,
+      "runtime_identity": true,
+      "native_help": true,
+      "native_info": true,
+      "gui": true,
+      "missing_game": true,
+      "missing_game_without_stdio": true,
+      "prepare": true,
+      "prepared_format": true,
+      "experimental_60_prepare": true
+    },
+    "relocated_directory_with_spaces": true,
+    "restricted_path": true,
+    "gpu_or_game_execution": false
+  },
+  "compatibility": {
+    "gameplay": "unverified",
+    "checkpoint_save_load": "unverified",
+    "stability_30_minutes": "unverified",
+    "output_4k_60_fps": "unverified"
+  },
+  "visual_review": {
+    "disposition": "fix",
+    "native_adaptations_recorded": true,
+    "hero_web_gate": "open; native DPI/viewport comparison limitations",
+    "independent_reviewer": "substituted fresh agent"
+  },
+  "launcher_source_commit": "30158a960edabcf5dfcc74450926fed16e7c66f3",
+  "repository_metadata": {
+    "repository": "JulioCacko/The-Order-1886_pc",
+    "description_updated": true,
+    "homepage": "https://github.com/JulioCacko/The-Order-1886_pc#readme",
+    "topics": [
+      "the-order-1886",
+      "ps4",
+      "emulation",
+      "windows",
+      "vulkan",
+      "game-compatibility",
+      "cpp",
+      "python",
+      "shadps4"
+    ],
+    "verified": true
+  }
+}

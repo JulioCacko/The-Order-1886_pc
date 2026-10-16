@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Most launch failures come from an incomplete or misplaced game dump (missing `param.sfo`,
-        wrong update version, wrong folder selected). Check the README's setup section before
-        filing, it covers the folder layout the launcher expects.
+        This is experimental compatibility software; a startup failure can be a runtime defect.
+        Check the README and current status report, confirm the CUSA00076 folder layout,
+        and include the exact failure evidence rather than assuming the dump is at fault.
 
   - type: input
     id: version
@@ -45,6 +45,6 @@ body:
     id: log
     attributes:
       label: Runtime record and log under user/order1886/logs
-      description: Attach the file from the port's folder.
+      description: Attach the matching last-run.json and boot/session log. Remove private paths; do not upload game binaries or saves.
     validations:
       required: true
