@@ -121,6 +121,46 @@ class LauncherTests(unittest.TestCase):
             self.assertIn("stopped before backend startup", (base / "session.log").read_text())
             self.assertIn(("done", (130, "play", True)), list(events.queue))
 
+    @unittest.skipUnless(os.name == 'nt', 'Native Windows launch controls')
+    def test_quick_controls_persist_and_preserve_advanced_settings(self):
+        import tkinter as tk
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            launcher.save_settings(state / 'settings.json', {
+                'game_dir': str(state / 'missing-game'), 'runtime': 'custom-runtime.exe',
+                'vsync': False, 'show_fps': False})
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                app = launcher.Launcher(root, state)
+                app.home_fields['display_mode'].set('Windowed')
+                app.home_fields['presentation_filter'].set('Linear')
+                app.home_fields['frame_rate'].set('60 FPS (experimental)')
+                self.assertTrue(app.commit_home())
+                saved = launcher.read_settings(state / 'settings.json')
+                self.assertEqual(saved['display_mode'], 'windowed')
+                self.assertEqual(saved['presentation_filter'], 'linear')
+                self.assertEqual(saved['frame_rate'], 60)
+                self.assertEqual(saved['runtime'], 'custom-runtime.exe')
+                self.assertIs(saved['vsync'], False)
+                self.assertIs(saved['show_fps'], False)
+                self.assertIn('Chapters 6 and 9', app.warning.cget('text'))
+                with patch.object(app, 'play_or_stop') as play:
+                    app.activate(SimpleNamespace(widget=app.game_entry))
+                    app.activate(SimpleNamespace(widget=app.quick_controls[0]))
+                    play.assert_not_called()
+                    app.activate(SimpleNamespace(widget=root))
+                    play.assert_called_once()
+                before = (state / 'settings.json').read_bytes()
+                app.home_fields['game_dir'].set(str(state))
+                with patch('tkinter.messagebox.showerror') as error:
+                    self.assertFalse(app.commit_home())
+                    error.assert_called_once()
+                self.assertEqual((state / 'settings.json').read_bytes(), before)
+                self.assertEqual(app.home_fields['game_dir'].get(), saved['game_dir'])
+            finally:
+                root.destroy()
+
     def test_spawn_failure_is_saved_and_returns_to_idle(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)

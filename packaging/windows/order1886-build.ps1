@@ -92,6 +92,9 @@ try {
     $artwork = Join-Path $stage 'artwork'
     & $buildPython (Join-Path $PSScriptRoot 'order1886_icon.py') $artwork
     if ($LASTEXITCODE) { throw 'Original launcher icon generation failed.' }
+    Copy-Item -LiteralPath "$projectRoot/launcher/order1886/launcher-art.png" -Destination $artwork
+    Copy-Item -LiteralPath "$projectRoot/launcher/order1886/launcher-art.txt" -Destination $artwork
+    Copy-Item -LiteralPath "$projectRoot/launcher/order1886/play-brass.png" -Destination $artwork
     $scriptData = Join-Path $stage 'scripts'
     New-Item -ItemType Directory -Force -Path $scriptData | Out-Null
     # This is the complete source/data closure of the Order preparation path.

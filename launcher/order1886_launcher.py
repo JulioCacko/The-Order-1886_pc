@@ -24,6 +24,9 @@ ASSETS = BUNDLE / "launcher" / "order1886"
 sys.path.insert(0, str(BUNDLE))
 STATE = ROOT / "user" / "order1886"
 GOLD, PAPER, MUTED, BLACK = "#d4bd75", "#e9e5d8", "#a8a497", "#0b0b0a"
+DISPLAY = {"Windowed": "windowed", "Borderless": "borderless", "Fullscreen": "fullscreen"}
+UPSCALING = {"FSR 1": "fsr1", "Linear": "linear"}
+FRAME_RATE = {"30 FPS": 30, "60 FPS (experimental)": 60}
 
 
 def read_settings(path: Path) -> dict:
@@ -185,8 +188,6 @@ class Launcher:
         self.log_text = None
         self.log_buffer = []
         self.settings_frame = None
-        self.menu_index = 0
-        self.menu_items = []
         self.background_photo = None
         self.resize_timer = None
         saved = read_settings(state / "settings.json")
@@ -207,33 +208,177 @@ class Launcher:
             self.values["frame_rate"] = 30
         root.title("The Order: 1886")
         root.configure(bg=BLACK)
-        root.geometry("1160x700")
+        root.geometry("1160x760")
         root.minsize(940, 620)
         try:
             root.iconbitmap(str(ASSETS / "order1886.ico"))
         except tk.TclError:
             pass
         root.protocol("WM_DELETE_WINDOW", self.close)
-        self.canvas = tk.Canvas(root, bg=BLACK, highlightthickness=0)
-        self.canvas.pack(fill="both", expand=True)
+        root.rowconfigure(0, weight=1)
+        root.columnconfigure(0, weight=1)
+        self.canvas = tk.Canvas(root, bg=BLACK, highlightthickness=0, takefocus=True)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.build_home()
         self.backdrop = None
         self.icon_photo = None
         self.load_artwork()
         self.canvas.bind("<Configure>", self.resize)
-        root.bind("<Up>", lambda e: self.move(-1))
-        root.bind("<Down>", lambda e: self.move(1))
         root.bind("<Return>", self.activate)
         root.bind("<Escape>", self.back)
         self.status = "Experimental compatibility build"
         self.detail = "Gameplay and performance are not yet verified."
         self.refresh_status()
+        self.draw()
         root.after(100, self.poll)
 
+    def build_home(self):
+        from tkinter import ttk
+        tk = self.tk
+        style = ttk.Style(self.root)
+        style.theme_use("clam")
+        style.configure("Order.TCombobox", fieldbackground="#171817", background="#20201c",
+                        foreground=PAPER, arrowcolor=PAPER, bordercolor="#64635b",
+                        lightcolor="#64635b", darkcolor="#64635b", padding=(12, 9),
+                        font=("Segoe UI", 11))
+        style.map("Order.TCombobox", fieldbackground=[("readonly", "#171817")],
+                  foreground=[("disabled", MUTED), ("readonly", PAPER)],
+                  bordercolor=[("focus", GOLD)])
+        self.root.option_add("*TCombobox*Listbox.background", "#20201c")
+        self.root.option_add("*TCombobox*Listbox.foreground", PAPER)
+        self.root.option_add("*TCombobox*Listbox.selectBackground", GOLD)
+        self.root.option_add("*TCombobox*Listbox.selectForeground", BLACK)
+        self.root.option_add("*TCombobox*Listbox.font", ("Segoe UI", 11))
+        self.navigation = tk.Frame(self.canvas, bg=BLACK)
+        self.navigation.place(relx=.965, y=30, anchor="ne")
+        self.nav_buttons = []
+        for index, (label, command) in enumerate((("Settings", self.settings),
+                ("Verify files", lambda: self.run("verify")), ("View logs", self.show_logs))):
+            if index:
+                tk.Frame(self.navigation, width=1, height=18, bg="#514932").pack(side="left", padx=8)
+            button = self.button(self.navigation, label, command)
+            button.configure(bg=BLACK, highlightbackground=BLACK, padx=10, pady=6)
+            button.pack(side="left")
+            self.nav_buttons.append(button)
+        self.console = tk.Frame(self.root, bg="#141513", padx=42, pady=20)
+        self.console.grid(row=1, column=0, sticky="ew")
+        self.console.columnconfigure(0, weight=1)
+        folder = tk.Frame(self.console, bg="#141513")
+        folder.grid(row=0, column=0, sticky="ew")
+        folder.columnconfigure(1, weight=1)
+        tk.Label(folder, text="Game folder", bg="#141513", fg=PAPER,
+                 font=("Segoe UI", 11)).grid(row=0, column=0, padx=(0, 22))
+        self.home_fields = {"game_dir": tk.StringVar()}
+        self.game_entry = tk.Entry(folder, textvariable=self.home_fields["game_dir"],
+            bg="#171817", fg=PAPER, insertbackground=GOLD, selectbackground=GOLD,
+            selectforeground=BLACK, relief="flat", highlightthickness=1,
+            highlightbackground="#64635b", highlightcolor=GOLD, font=("Segoe UI", 11))
+        self.game_entry.grid(row=0, column=1, sticky="ew", ipady=9)
+        self.game_entry.bind("<Return>", lambda e: (self.commit_home(), "break")[1])
+        self.change_button = self.button(folder, "Change", self.change_folder)
+        self.change_button.grid(row=0, column=2, padx=(10, 18))
+        self.readiness = tk.Label(folder, bg="#141513", fg=MUTED,
+                                  font=("Segoe UI", 10), anchor="w", width=25)
+        self.readiness_icon = tk.Canvas(folder, width=22, height=22, bg="#141513", highlightthickness=0)
+        self.readiness_icon.grid(row=0, column=3, padx=(0, 8))
+        self.readiness.grid(row=0, column=4, sticky="w")
+        tk.Frame(self.console, bg="#34352f", height=1).grid(row=1, column=0, sticky="ew", pady=17)
+        controls = tk.Frame(self.console, bg="#141513")
+        controls.grid(row=2, column=0, sticky="ew")
+        self.quick_controls = []
+        for index, (key, label, choices) in enumerate((("display_mode", "Display", DISPLAY),
+                ("presentation_filter", "Upscaling", UPSCALING), ("frame_rate", "Frame rate", FRAME_RATE))):
+            controls.columnconfigure(index, weight=1, uniform="essential")
+            group = tk.Frame(controls, bg="#141513")
+            group.grid(row=0, column=index, sticky="nsew", padx=(0, 24))
+            tk.Label(group, text=label, fg=PAPER, bg="#141513",
+                     font=("Segoe UI", 10), anchor="w").pack(fill="x", pady=(0, 6))
+            variable = self.home_fields[key] = tk.StringVar()
+            combo = ttk.Combobox(group, textvariable=variable, values=list(choices),
+                                 state="readonly", style="Order.TCombobox", width=1,
+                                 font=("Segoe UI", 11))
+            combo.pack(fill="x")
+            combo.bind("<<ComboboxSelected>>", lambda e: self.commit_home())
+            self.quick_controls.append(combo)
+        controls.columnconfigure(3, weight=1, uniform="essential")
+        self.play_button = self.button(controls, "Play", self.play_or_stop)
+        self.play_button.configure(bg=GOLD, fg=BLACK, activebackground="#e5cf8c",
+                                   activeforeground=BLACK, font=("Segoe UI", 22),
+                                   highlightbackground=GOLD, pady=8)
+        self.play_button.grid(row=0, column=3, sticky="nsew")
+        self.play_texture = None
+        try:
+            with self.Image.open(ASSETS / "play-brass.png") as texture:
+                self.play_texture = texture.convert("RGB")
+        except OSError:
+            pass
+        self.play_surface_size = None
+        notice = tk.Frame(controls, bg="#141513")
+        notice.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(16, 0))
+        warning_icon = tk.Canvas(notice, width=24, height=22, bg="#141513", highlightthickness=0)
+        warning_icon.pack(side="left", anchor="n", padx=(0, 9))
+        warning_icon.create_polygon(11, 1, 21, 20, 1, 20, fill=GOLD, outline=GOLD)
+        warning_icon.create_line(11, 6, 11, 12, fill=BLACK, width=2)
+        warning_icon.create_oval(10, 15, 12, 17, fill=BLACK, outline=BLACK)
+        self.warning = tk.Label(notice, text="Experimental runtime. Gameplay is not yet verified.",
+            fg=GOLD, bg="#141513", font=("Segoe UI", 10), anchor="w", justify="left")
+        self.warning.pack(side="left", fill="x", expand=True)
+        self.play_hint = tk.Label(controls, text="Enter to play", fg=MUTED, bg="#141513",
+                                 font=("Segoe UI", 9))
+        self.play_hint.grid(row=1, column=3, pady=(10, 0))
+        self.sync_home()
+
+    def sync_home(self):
+        self.home_fields["game_dir"].set(self.values["game_dir"])
+        for key, choices in (("display_mode", DISPLAY), ("presentation_filter", UPSCALING),
+                             ("frame_rate", FRAME_RATE)):
+            self.home_fields[key].set(next(label for label, value in choices.items()
+                                          if value == self.values[key]))
+
+    def commit_home(self):
+        from tkinter import messagebox
+        values = dict(self.values, game_dir=self.home_fields["game_dir"].get().strip())
+        if not values["game_dir"]:
+            messagebox.showerror("Choose a game folder", "Select the extracted CUSA00076 folder before continuing.", parent=self.root)
+            return False
+        for key, choices in (("display_mode", DISPLAY), ("presentation_filter", UPSCALING),
+                             ("frame_rate", FRAME_RATE)):
+            values[key] = choices[self.home_fields[key].get()]
+        try:
+            save_settings(self.state / "settings.json", values)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Settings could not be saved", str(exc), parent=self.root)
+            self.sync_home()
+            return False
+        changed_folder = values["game_dir"] != self.values["game_dir"]
+        self.values = values
+        if changed_folder:
+            self.load_artwork()
+        if not self.busy:
+            self.refresh_status()
+        self.draw()
+        return True
+
+    def change_folder(self):
+        from tkinter import filedialog
+        value = filedialog.askdirectory(parent=self.root, title="Choose extracted CUSA00076 folder",
+                                        initialdir=self.values["game_dir"])
+        if value:
+            self.home_fields["game_dir"].set(value)
+            self.commit_home()
+
+    def play_or_stop(self):
+        if self.busy:
+            self.stop()
+        else:
+            self.run("play")
+
     def load_artwork(self):
-        """Read the player's own artwork at runtime; portable builds omit game art."""
+        """Use the generated launcher plate; original game files remain read-only."""
         artwork = Path(self.values["game_dir"]) / "sce_sys"
         self.backdrop = None
-        for path in (artwork / "pic0.png", ASSETS / "background.png"):
+        self.artwork_size = None
+        for path in (ASSETS / "launcher-art.png", artwork / "pic0.png", ASSETS / "background.png"):
             try:
                 with self.Image.open(path) as image:
                     self.backdrop = image.convert("RGB")
@@ -273,75 +418,85 @@ class Launcher:
         self.resize_timer = None
         c = self.canvas
         c.delete("all")
-        w, h = max(c.winfo_width(), 940), max(c.winfo_height(), 620)
-        panel = 430
+        w, h = max(c.winfo_width(), 940), max(c.winfo_height(), 260)
         if self.backdrop:
             from PIL import ImageOps
-            display = ImageOps.fit(self.backdrop, (w - panel, h),
-                                   method=self.Image.Resampling.LANCZOS, centering=(.55, .5))
-            self.background_photo = self.ImageTk.PhotoImage(display)
-            c.create_image(panel, 0, image=self.background_photo, anchor="nw")
-        c.create_rectangle(0, 0, panel, h, fill=BLACK, outline="")
-        c.create_rectangle(panel, h - 72, w, h, fill=BLACK, outline="")
-        c.create_text(52, 63, text="T H E   O R D E R", font=("Georgia", 23),
-                      fill=GOLD, anchor="nw")
-        c.create_text(54, 106, text="1 8 8 6", font=("Georgia", 16), fill=GOLD, anchor="nw")
-        c.create_line(54, 149, 374, 149, fill="#4c432c")
-        c.create_text(54, 169, text="PC LAUNCHER", font=("Georgia", 10), fill=MUTED, anchor="nw")
-        actions = [("STOP SESSION" if self.busy else "PLAY", self.stop if self.busy else lambda: self.run("play")), ("SETTINGS", self.settings),
-                   ("VERIFY FILES", lambda: self.run("verify")),
-                   ("VIEW LOGS", self.show_logs), ("EXIT", self.close)]
-        self.menu_items = []
-        for index, (label, action) in enumerate(actions):
-            y = 255 + index * 49
-            tag = f"menu{index}"
-            c.create_rectangle(46, y - 9, 383, y + 32, fill=BLACK, outline="", tags=(tag,))
-            item = c.create_text(55, y, text=label, fill=GOLD if index == self.menu_index else PAPER,
-                                 font=("Georgia", 17 if index == self.menu_index else 15),
-                                 anchor="nw", tags=(tag,))
-            c.tag_bind(tag, "<Enter>", lambda e, i=index: self.select(i))
-            c.tag_bind(tag, "<Button-1>", lambda e, i=index: self.click(i))
-            self.menu_items.append((item, action))
-        c.create_text(54, h - 121, text=self.status, fill=GOLD, font=("Segoe UI", 10),
-                      anchor="nw", width=325, tags="status")
-        detail = self.detail if len(self.detail) <= 110 else self.detail[:107] + "…"
-        c.create_text(54, h - 94, text=detail, fill=MUTED, font=("Segoe UI", 9),
-                      anchor="nw", width=330, tags="detail")
-        c.create_text(54, h - 29, text="↑ ↓  Navigate       Enter  Select       Esc  Back",
-                      fill=MUTED, font=("Segoe UI", 9), anchor="w")
-        c.create_text(w - 28, h - 33, text="THE ORDER: 1886", fill=MUTED,
-                      font=("Georgia", 10), anchor="e")
-        self.select(self.menu_index)
-
-    def select(self, index):
-        if self.settings_frame:
-            return
-        self.menu_index = index
-        for i, (item, _) in enumerate(self.menu_items):
-            self.canvas.itemconfigure(item, fill=GOLD if i == index else PAPER,
-                                      font=("Georgia", 17 if i == index else 15))
-        self.canvas.delete("selection")
-        y = 255 + index * 49
-        self.canvas.create_line(54, y - 5, 153, y - 5, fill=GOLD, tags="selection")
-        self.canvas.create_line(54, y + 28, 153, y + 28, fill=GOLD, tags="selection")
-
-    def move(self, direction):
-        if not self.settings_frame:
-            self.select((self.menu_index + direction) % 5)
+            if getattr(self, "artwork_size", None) != (w, h):
+                display = ImageOps.fit(self.backdrop, (w, h),
+                                       method=self.Image.Resampling.LANCZOS, centering=(.5, .5))
+                self.background_photo = self.ImageTk.PhotoImage(display)
+                self.artwork_size = (w, h)
+            c.create_image(0, 0, image=self.background_photo, anchor="nw")
+        from tkinter import font as tkfont
+        size = min(67, max(36, int(w * .0436)))
+        for text, y, pixels, width in (("THEORDER", h * .09, size, w * .38),
+                ("1886", h * .09 + size * 1.04, int(size * .78), w * .13)):
+            face = tkfont.Font(family="Georgia", size=-pixels)
+            gap = (width - sum(face.measure(letter) for letter in text)) / (len(text) - 1)
+            x = w * .037
+            for letter in text:
+                c.create_text(x, y, text=letter, font=("Georgia", -pixels), fill=GOLD, anchor="nw")
+                x += face.measure(letter) + gap
+        c.create_line(w * .038, h * .09 + size * 2.05,
+                      w * .245, h * .09 + size * 2.05, fill=GOLD)
+        self.readiness.configure(text=self.status.replace("CUSA00076  /  ", ""),
+                                 fg="#aec58f" if "Game files found" in self.status else MUTED,
+                                 wraplength=210, justify="left")
+        self.readiness_icon.delete("all")
+        if "Game files found" in self.status:
+            self.readiness_icon.create_oval(1, 1, 21, 21, fill="#aec58f", outline="")
+            self.readiness_icon.create_line(6, 11, 10, 15, 16, 7, fill=BLACK, width=2)
+        self.play_button.configure(text="Stopping…" if self.busy and self.session_cancel.is_set()
+                                   else "Stop session" if self.busy else "Play",
+                                   font=("Segoe UI", 15 if self.busy else 22), disabledforeground=BLACK,
+                                   state="disabled" if self.busy and self.session_cancel.is_set() else "normal")
+        surface_size = (self.play_button.winfo_width(), self.play_button.winfo_height(), self.busy)
+        if self.play_texture and min(surface_size[:2]) > 1 and self.play_surface_size != surface_size:
+            from PIL import ImageDraw, ImageOps
+            bw, bh, busy = surface_size
+            surface = self.Image.new("RGB", (bw, bh))
+            tw, th = self.play_texture.size
+            for y in range(0, bh, th):
+                for x in range(0, bw, tw):
+                    tile = ImageOps.mirror(self.play_texture) if (x // tw) % 2 else self.play_texture
+                    surface.paste(ImageOps.flip(tile) if (y // th) % 2 else tile, (x, y))
+            if not busy:
+                label_width = tkfont.Font(font=self.play_button.cget("font")).measure("Play")
+                x, y = bw // 2 + label_width // 2 + 14, bh // 2
+                ImageDraw.Draw(surface).polygon(((x, y - 8), (x, y + 8), (x + 12, y)), fill=BLACK)
+            self.play_surface = self.ImageTk.PhotoImage(surface)
+            self.play_button.configure(image=self.play_surface, compound="center", width=1, height=1)
+            self.play_surface_size = surface_size
+        state = "disabled" if self.busy or self.settings_frame else "normal"
+        self.game_entry.configure(state=state)
+        self.change_button.configure(state=state)
+        for combo in self.quick_controls:
+            combo.configure(state="disabled" if self.busy or self.settings_frame else "readonly")
+        for button in self.nav_buttons[:2]:
+            button.configure(state=state)
+        warning = "Experimental runtime. Gameplay is not yet verified."
+        if self.values["frame_rate"] == 60:
+            import order1886
+            warning += "\n" + order1886.timing.WARNING
+        if self.detail != "Experimental runtime. Gameplay is not yet verified.":
+            warning += "\n" + self.detail
+        self.warning.configure(text=warning, wraplength=max(480, int((w - 84) * .73) - 36))
+        self.play_hint.configure(text="View logs for progress" if self.busy else "Enter to play")
 
     def activate(self, event=None):
-        if not self.settings_frame and self.menu_items:
-            self.menu_items[self.menu_index][1]()
-
-    def click(self, index):
-        self.select(index)
-        self.activate()
+        if event and event.widget.winfo_class() in ("Button", "TButton"):
+            event.widget.invoke()
+            return "break"
+        if not self.settings_frame and (event is None or event.widget in (self.root, self.canvas)):
+            self.play_or_stop()
+            return "break"
 
     def back(self, event=None):
         if self.settings_frame:
             self.settings_frame.destroy()
             self.settings_frame = None
-            self.root.focus_set()
+            self.draw()
+            self.nav_buttons[0].focus_set()
 
     def button(self, parent, text, command):
         return self.tk.Button(parent, text=text, command=command, bg="#25241f", fg=PAPER,
@@ -354,9 +509,12 @@ class Launcher:
         from tkinter import filedialog, messagebox
         if self.settings_frame:
             return
+        if self.busy or not self.commit_home():
+            return
         tk = self.tk
         container = self.settings_frame = tk.Frame(self.root, bg=BLACK)
-        container.place(x=430, y=0, relwidth=1, width=-430, relheight=1)
+        container.place(relx=1, y=0, anchor="ne", width=560, relheight=1)
+        self.draw()
         scrollbar = tk.Scrollbar(container, orient="vertical")
         scrollbar.pack(side="right", fill="y")
         scroller = tk.Canvas(container, bg=BLACK, highlightthickness=0, yscrollcommand=scrollbar.set)
@@ -437,6 +595,7 @@ class Launcher:
                 messagebox.showerror("Settings could not be saved", str(exc), parent=self.root)
                 return
             self.values = values
+            self.sync_home()
             self.load_artwork()
             if not self.busy:
                 self.refresh_status()
@@ -489,6 +648,8 @@ class Launcher:
         if self.busy:
             self.show_logs()
             return
+        if not self.commit_home():
+            return
         try:
             save_settings(self.state / "settings.json", self.values)
             (self.state / "logs").mkdir(parents=True, exist_ok=True)
@@ -508,7 +669,8 @@ class Launcher:
         self.status = "Checking game files…" if mode == "verify" else "Starting experimental runtime…"
         self.detail = "Open View logs for progress."
         self.draw()
-        self.show_logs()
+        if mode == "verify":
+            self.show_logs()
         token = self.stop_file.stem.removeprefix("session-stop-")
         logfile = self.state / "logs" / f"launcher-{time.strftime('%Y%m%d-%H%M%S')}-{token[:8]}.log"
         command = backend_command(dict(self.values), mode, self.state, self.stop_file)
@@ -668,8 +830,9 @@ def main(argv=None):
                         raise RuntimeError(f"Settings did not affect {key}")
                 if command[command.index("--frame-rate") + 1] != "60":
                     raise RuntimeError("Frame-rate selection did not affect the backend command")
-                app.move(1)
-                app.move(-1)
+                app.play_button.focus_set()
+                if root.focus_get() != app.play_button:
+                    raise RuntimeError("Play must be keyboard focusable")
             except Exception as exc:
                 smoke_errors.append(str(exc))
                 print(f"Launcher smoke failed: {exc}", file=sys.stderr, flush=True)

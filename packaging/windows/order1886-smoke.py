@@ -39,7 +39,7 @@ def main():
     manifest = json.loads((copied / "package-manifest.json").read_text(encoding="utf-8-sig"))
     expected_scripts = {"prepare.py", "link_modules.py", "link_libc.py", "save_backup.py", "order1886_frame_rate.py"}
     actual_scripts = {p.name for p in (copied / "_internal/scripts").iterdir()}
-    expected_art = {"order1886.ico", "ARTWORK.txt"}
+    expected_art = {"order1886.ico", "ARTWORK.txt", "launcher-art.png", "launcher-art.txt", "play-brass.png"}
     actual_art = {p.name for p in (copied / "_internal/launcher/order1886").iterdir()}
     mismatches = [item["path"] for item in manifest["files"]
                   if sha256(copied / item["path"]) != item["sha256"]]

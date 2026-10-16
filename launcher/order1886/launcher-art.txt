@@ -1,0 +1,6 @@
+Generated launcher artwork, 2026-10-16, OpenAI image generation.
+Production plate based on the user-approved cinematic launch-bar concept.
+The exact generation prompt is embedded in launcher-art.png (PNG tEXt).
+Native generation: 1873 x 840; presentation asset resampled to 2560 x 1148.
+This file is generated launcher illustration, not artwork extracted from the game.
+The game title, controls and status are rendered separately by the launcher.
