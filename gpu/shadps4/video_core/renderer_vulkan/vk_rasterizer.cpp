@@ -483,6 +483,10 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
     };
     for (u32 index = 0; index < stage.buffers.size(); ++index) {
         const auto& desc = stage.buffers[index];
+        if (desc.buffer_type == Shader::BufferType::ReadConst) {
+            // Resolve VMA bounds and synchronize shader-data reads on the normal bind path.
+            continue;
+        }
         if (desc.IsSpecial()) {
             if (desc.buffer_type == Shader::BufferType::Flatbuf &&
                 !stage.flattened_ud_buf.empty()) {
@@ -2064,12 +2068,23 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
         } else {
             const auto vsharp =
                 prepared ? prepared->buffer_sharps[buffer_index] : desc.GetSharp(stage);
-            if (vsharp.GetSize() == 864 && gbuffer_draw &&
+            const u64 readconst_mapped_size =
+                desc.buffer_type == Shader::BufferType::ReadConst && vsharp.base_address != 0
+                    ? memory->ClampRangeSize(vsharp.base_address, vsharp.GetSize())
+                    : 0;
+            if (desc.buffer_type == Shader::BufferType::ReadConst && vsharp.base_address != 0) {
+                ASSERT_MSG((vsharp.base_address & 3) == 0 &&
+                               Shader::FitsReadConstStorageRange(readconst_mapped_size & ~u64(3), 0,
+                                                                 instance.StorageMaxRange()),
+                           "ReadConst pointer has no representable readable VMA range");
+            }
+            if (desc.buffer_type == Shader::BufferType::Guest && vsharp.GetSize() == 864 && gbuffer_draw &&
                 memory->IsValidGpuMapping(vsharp.base_address, 0)) {
                 camera_motion->OnConstants(reinterpret_cast<const float*>(vsharp.base_address));
             }
             // Object motion research: the vertex shader buffers of G-buffer draws.
-            if (FrameCapture::Active() && gbuffer_draw && stage.sw_stage == Shader::SwStage::Vertex &&
+            if (desc.buffer_type == Shader::BufferType::Guest && FrameCapture::Active() &&
+                gbuffer_draw && stage.sw_stage == Shader::SwStage::Vertex &&
                 vsharp.base_address != 0 && memory->IsValidGpuMapping(vsharp.base_address, 0)) {
                 const auto* f = reinterpret_cast<const float*>(vsharp.base_address);
                 char note[192];
@@ -2089,7 +2104,12 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
             if (vsharp.base_address == 0 || vsharp.GetSize() == 0) {
                 buffer_infos.emplace_back(VK_NULL_HANDLE, 0, VK_WHOLE_SIZE);
             } else {
-                const u64 size = memory->ClampRangeSize(vsharp.base_address, vsharp.GetSize());
+                const u64 mapped_size = desc.buffer_type == Shader::BufferType::ReadConst
+                                            ? readconst_mapped_size
+                                            : memory->ClampRangeSize(vsharp.base_address, vsharp.GetSize());
+                const u64 size = desc.buffer_type == Shader::BufferType::ReadConst
+                                     ? mapped_size & ~u64(3)
+                                     : mapped_size;
                 if (size != vsharp.GetSize()) {
                     LOG_ERROR(Render, "Clamped size from {} to {} for stage {:#x}",
                               vsharp.GetSize(), size, stage.pgm_hash);
@@ -2098,6 +2118,10 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                     vsharp.base_address, size, desc.is_written, desc.is_formatted);
                 const u64 offset_aligned = Common::AlignDown(offset, alignment);
                 const u64 adjust = offset - offset_aligned;
+                if (desc.buffer_type == Shader::BufferType::ReadConst) {
+                    ASSERT_MSG(Shader::FitsReadConstStorageRange(size, adjust, instance.StorageMaxRange()),
+                               "ReadConst VMA range exceeds Vulkan storage-buffer range");
+                }
                 if (adjust % 4 != 0) {
                     LOG_WARNING(Render_Vulkan, "Buffer binding in shader {:#x} isn't dword aligned",
                                 stage.pgm_hash);

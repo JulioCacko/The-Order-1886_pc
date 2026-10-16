@@ -90,10 +90,11 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.fps_limit = Ps4Graphics::ParseFpsLimit(i);
     } else if (key == "async_shaders") {
         v.async_shaders = i != 0;
+    } else if (key == "presentation_filter") {
+        v.fsr1 = value == "fsr1";
     } else if (key == "fsr1") {
-        // FSR 1 left the launcher and the in-game menu: a value saved by an older version has no
-        // control left to turn it off, so it stays off.
-        v.fsr1 = false;
+        // Legacy engine switches do not override the explicit presentation filter.
+        return;
     } else if (key == "rcas") {
         v.rcas = i != 0;
     } else if (key == "rcas_strength") {
@@ -135,6 +136,7 @@ Values& Get() {
 
 void Load() {
     auto& v = Get();
+    v.fsr1 = false;
     if (FILE* file = std::fopen(Path(), "r")) {
         char line[256];
         while (std::fgets(line, sizeof(line), file)) {
@@ -175,7 +177,6 @@ void Load() {
     v.upscaler = UpscalerOff;
     v.object_motion = false;
     v.jitter = false;
-    v.fsr1 = false;
     v.rcas = false;
     v.live_resolution = 0;
     v.async_shaders = false;
@@ -240,11 +241,12 @@ void Save() {
     if (!file) { std::printf("Settings: cannot write %s\n", Path()); return; }
     std::fprintf(file,
         "# The Order: 1886 runtime settings\n"
-        "display_mode=%s\nvsync=%d\nfps_limit=%d\nframes_queued=%d\n"
+        "display_mode=%s\nvsync=%d\nfps_limit=%d\nframes_queued=%d\npresentation_filter=%s\n"
         "vibration=%d\nanisotropy=%d\nshow_fps=%d\n"
         "overlay_scale=%d\noverlay_corner=%d\noverlay_opacity=%d\noverlay_layout=%d\n",
         Ps4Graphics::DisplayModeKeys[std::clamp(v.display_mode.load(), 0, 2)].data(),
         int(v.vsync.load()), v.fps_limit.load(), v.frames_queued.load(),
+        v.fsr1.load() ? "fsr1" : "linear",
         v.vibration.load(), v.anisotropy.load(), int(v.show_fps.load()),
         v.overlay_scale.load(), v.overlay_corner.load(), v.overlay_opacity.load(), v.overlay_layout.load());
     std::fclose(file);

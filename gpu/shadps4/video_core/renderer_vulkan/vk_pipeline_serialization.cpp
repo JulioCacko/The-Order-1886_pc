@@ -33,9 +33,9 @@
 
 namespace Serialization {
 /* You should increment versions below once corresponding serialization scheme is changed. */
-static constexpr u32 ShaderBinaryVersion = 11u; // typed FMask output and descriptor swizzles
-static constexpr u32 ShaderMetaVersion = 8u; // canonical lookup + effective permutation Info
-static constexpr u32 PipelineKeyVersion = 6u; // rejects layouts built from canonical Info
+static constexpr u32 ShaderBinaryVersion = 12u; // bounded dynamic constant reads and early image validation
+static constexpr u32 ShaderMetaVersion = 9u; // pointer-backed buffers and immutable image binding counts
+static constexpr u32 PipelineKeyVersion = 7u; // layouts include bounded constant-read buffers
 } // namespace Serialization
 
 namespace Vulkan {

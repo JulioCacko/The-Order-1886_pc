@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <bit>
+
 #include <atomic>
 #include <cstdlib>
 #include <optional>
@@ -147,7 +149,14 @@ enum class BufferType : u8 {
     GdsBuffer,
     SharedMemory,
     ClipPlanes,
+    ReadConst,
 };
+
+constexpr bool FitsReadConstStorageRange(u64 size, u64 adjust, u64 limit) {
+    // Buffer offsets occupy one byte in PushData and U32 aliases use DWORD offsets.
+    return size >= sizeof(u32) && (size & 3) == 0 && (adjust & 3) == 0 && adjust < 256 &&
+           size <= limit && adjust <= limit - size;
+}
 
 struct BufferResource {
     SharpFetch<AmdGpu::Buffer> sharp_fetch{};
@@ -157,13 +166,49 @@ struct BufferResource {
     bool is_formatted{};
     SharpFetchPostOp post_op{};
     u32 post_op_dw1_mask{};
+    // Conservative maximum byte extent requested by the shader's dynamic DWORD index.
+    u32 readconst_size_bytes{};
 
     bool IsSpecial() const noexcept {
-        return buffer_type != BufferType::Guest;
+        return buffer_type != BufferType::Guest && buffer_type != BufferType::ReadConst;
     }
 
     constexpr AmdGpu::Buffer GetSharp(const auto& info) const noexcept {
         AmdGpu::Buffer buffer;
+        if (buffer_type == BufferType::ReadConst) {
+            RequireResolvedSharpSource<2>(info, "ReadConst pointer", sharp_fetch);
+            if (!sharp_fetch.Fetch(info.FlatUserData().data(), &buffer)) {
+                UNREACHABLE_MSG("Validated ReadConst pointer fetch failed");
+            }
+            const auto words = std::bit_cast<std::array<u32, 4>>(buffer);
+            const u64 address = u64(words[0]) | (u64(words[1]) << 32);
+            if (address >= 0x100'0000'0000ULL) {
+                if constexpr (requires { info.pgm_hash; info.hw_stage; }) {
+                    LOG_ERROR(Render_Recompiler,
+                              "Invalid ReadConst pointer: shader={:#018x} stage={} resource={} "
+                              "raw={:08x} {:08x} address={:#018x} requested_bytes={} "
+                              "flat_size={} load_mask={:#x} locations={} immediates={}",
+                              info.pgm_hash, info.hw_stage, fmt::ptr(this), words[0], words[1],
+                              address, readconst_size_bytes, info.FlatUserData().size(),
+                              sharp_fetch.load_mask, sharp_fetch.offsets, sharp_fetch.immediates);
+                } else {
+                    LOG_ERROR(Render_Recompiler,
+                              "Invalid ReadConst pointer: source_type={} resource={} "
+                              "raw={:08x} {:08x} address={:#018x} requested_bytes={} "
+                              "flat_size={} load_mask={:#x} locations={} immediates={}",
+                              __PRETTY_FUNCTION__, fmt::ptr(this), words[0], words[1], address,
+                              readconst_size_bytes, info.FlatUserData().size(),
+                              sharp_fetch.load_mask, sharp_fetch.offsets, sharp_fetch.immediates);
+                }
+            }
+            ASSERT_MSG(address < 0x100'0000'0000ULL, "ReadConst pointer outside GPU address space");
+            // This is an address/request carrier, not a decoded hardware V# or format.
+            // BindBuffers resolves the actual VMA extent before obtaining GPU storage.
+            buffer = {};
+            buffer.base_address = address;
+            buffer.num_records = readconst_size_bytes;
+            return buffer;
+        }
         RequireResolvedSharpSource<4>(info, "buffer", sharp_fetch);
         if (!sharp_fetch.Fetch(info.FlatUserData().data(), &buffer)) {
             UNREACHABLE_MSG("Validated buffer descriptor fetch failed");
@@ -198,6 +243,8 @@ struct ImageResource {
     /// queries, offsets): needs the native-size image, not a reduced scene proxy.
     bool needs_native{};
     u8 constant_mip_index{};
+    // Captured by descriptor patching. Zero denotes an as-yet untranslated resource.
+    u32 declared_binding_count{};
     MipStorageFallbackMode mip_fallback_mode{};
     SharpFetchPostOp post_op{};
 
@@ -216,7 +263,7 @@ struct ImageResource {
             image.type = u64(AmdGpu::ImageType::Color2DArray);
             image.depth = (image.depth + 1) * 6 - 1;
         }
-        if (!image.Valid()) {
+        if (!image.Valid() || (image.Address() != 0 && !info.IsImageBaseMapped(image.Address()))) {
             image = AmdGpu::Image::Null(is_depth);
         } else if (is_depth) {
             const auto data_fmt = image.GetDataFmt();
@@ -247,8 +294,14 @@ struct ImageResource {
                    : 1;
     }
 
+    u32 NumBindings(const AmdGpu::Image& sharp) const {
+        return declared_binding_count ? declared_binding_count : NumBindingsFromSharp(sharp);
+    }
+
     u32 NumBindings(const auto& info) const {
-        return NumBindingsFromSharp(GetSharp(info));
+        // Cache warmup can precede guest VMAs. Its layout must match the already compiled
+        // module, independent of whether the descriptor's old guest address exists now.
+        return declared_binding_count ? declared_binding_count : NumBindingsFromSharp(GetSharp(info));
     }
 };
 using ImageResourceList = boost::container::static_vector<ImageResource, NUM_IMAGES>;

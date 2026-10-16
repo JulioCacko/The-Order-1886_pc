@@ -53,6 +53,10 @@ public:
         return vk13_features.subgroupSizeControl;
     }
 
+    bool IsMaintenance4Supported() const {
+        return vk13_features.maintenance4;
+    }
+
     /// Largest VkBuffer the driver allows (2 GiB on AMD's Windows driver).
     u64 GetMaxBufferSize() const {
         return vk13_props.maxBufferSize;
@@ -376,6 +380,10 @@ public:
     /// Returns the minimum required alignment for storage buffers
     vk::DeviceSize StorageMinAlignment() const {
         return properties.limits.minStorageBufferOffsetAlignment;
+    }
+
+    vk::DeviceSize StorageMaxRange() const {
+        return properties.limits.maxStorageBufferRange;
     }
 
     /// Returns the minimum alignment required for accessing host-mapped device memory

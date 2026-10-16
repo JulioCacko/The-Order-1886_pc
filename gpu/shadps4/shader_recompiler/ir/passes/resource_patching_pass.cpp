@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <limits>
+#include <atomic>
+#include <array>
+#include <cstring>
 #include "shader_recompiler/info.h"
 #include "shader_recompiler/ir/basic_block.h"
 #include "shader_recompiler/ir/breadth_first_search.h"
@@ -117,6 +120,7 @@ public:
         const u32 index{Add(image_resources, desc, [&desc](const auto& existing) {
             return desc.sharp_fetch == existing.sharp_fetch && desc.is_array == existing.is_array &&
                    desc.mip_fallback_mode == existing.mip_fallback_mode &&
+                   desc.declared_binding_count == existing.declared_binding_count &&
                    desc.constant_mip_index == existing.constant_mip_index &&
                    desc.post_op == existing.post_op;
         })};
@@ -221,6 +225,51 @@ void PatchBufferSharp(const ResourceDiscovery& resource, Info& info, Descriptors
     inst.SetArg(0, ir.Imm32(buffer_binding));
 }
 
+static void ReportFmaskFailureContext(const Info& info, const ImageResource& resource,
+                                     const IR::Inst& inst) {
+    // Failure-only evidence cannot be consumed by the ordinary image trace budget.
+    static std::atomic<u32> records{0};
+    u32 record = records.load(std::memory_order_relaxed);
+    do {
+        if (record >= 8) return;
+    } while (!records.compare_exchange_weak(record, record + 1, std::memory_order_relaxed));
+
+    const auto flat = info.FlatUserData();
+    AmdGpu::Image original{};
+    const bool fetched = resource.is_r128
+        ? resource.sharp_fetch.Fetch<4>(flat.data(), &original)
+        : resource.sharp_fetch.Fetch<8>(flat.data(), &original);
+    std::array<u32, 8> raw{};
+    std::memcpy(raw.data(), &original, sizeof(original));
+    const auto user_data = info.UserData();
+    std::array<u32, NUM_USER_DATA_REGS> sgprs{};
+    for (size_t i = 0; i < std::min(user_data.size(), sgprs.size()); ++i) sgprs[i] = user_data[i];
+    LOG_CRITICAL(Render_Recompiler,
+                 "FMask failure context {}: shader={:#018x} stage={} info={} ir_inst={} "
+                 "opcode={} fetched={} address={:#x} data_format={} num_format={} "
+                 "raw={:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
+                 record, info.pgm_hash, info.hw_stage, fmt::ptr(&info), fmt::ptr(&inst),
+                 u32(inst.GetOpcode()), fetched, original.Address(), u32(original.data_format),
+                 u32(original.num_format), raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7]);
+    LOG_CRITICAL(Render_Recompiler,
+                 "FMask failure sources {}: shader={:#018x} r128={} post_op={} "
+                 "flat={} flat_dwords={} load_mask={:#x} offsets={} "
+                 "immediates={:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
+                 record, info.pgm_hash, resource.is_r128, u32(resource.post_op), fmt::ptr(flat.data()),
+                 flat.size(), resource.sharp_fetch.load_mask, resource.sharp_fetch.offsets,
+                 resource.sharp_fetch.immediates[0], resource.sharp_fetch.immediates[1],
+                 resource.sharp_fetch.immediates[2], resource.sharp_fetch.immediates[3],
+                 resource.sharp_fetch.immediates[4], resource.sharp_fetch.immediates[5],
+                 resource.sharp_fetch.immediates[6], resource.sharp_fetch.immediates[7]);
+    LOG_CRITICAL(Render_Recompiler,
+                 "FMask failure registers {}: shader={:#018x} user_dwords={} snapshot={} "
+                 "program_base={:#x} sgprs={:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} "
+                 "{:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
+                 record, info.pgm_hash, user_data.size(), info.Snapshot() != nullptr, info.ProgramBase(),
+                 sgprs[0], sgprs[1], sgprs[2], sgprs[3], sgprs[4], sgprs[5], sgprs[6], sgprs[7],
+                 sgprs[8], sgprs[9], sgprs[10], sgprs[11], sgprs[12], sgprs[13], sgprs[14], sgprs[15]);
+}
+
 void PatchImageSharp(const ResourceDiscovery& resource, Info& info, Descriptors& descriptors,
                      const Profile& profile) {
     IR::Inst& inst = *resource.user;
@@ -288,9 +337,16 @@ void PatchImageSharp(const ResourceDiscovery& resource, Info& info, Descriptors&
         }
     }
 
+    image_res.declared_binding_count = image_res.NumBindingsFromSharp(image);
+
     // Patch image instruction if image is FMask.
     if (AmdGpu::IsFmask(image.GetDataFmt())) {
         ASSERT_MSG(!is_written, "FMask storage instructions are not supported");
+        if ((inst.GetOpcode() == IR::Opcode::ImageRead ||
+             inst.GetOpcode() == IR::Opcode::ImageSampleRaw) &&
+            !FmaskIdentityTexel(image.DstSelect())) {
+            ReportFmaskFailureContext(info, image_res, inst);
+        }
         // Classification itself is a translation dependency, even if the sampled value
         // becomes a constant. A later normal-image descriptor must select another module.
         descriptors.Add(FMaskResource{.source = image_res});

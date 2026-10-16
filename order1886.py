@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The Order: 1886 launch path using the repository's native PS4 loader.
 
-Prepared images retain original PS4 code; state and configuration belong to this title.
+Prepared images contain PS4 code; optional timing changes are hash-bound derived patches.
+State and configuration belong to this title.
 An import audit or a successful process exit is never treated as gameplay proof.
 """
 from __future__ import annotations
@@ -28,11 +29,48 @@ if str(SCRIPTS) not in sys.path:
 import prepare
 import link_modules
 import save_backup
+import order1886_frame_rate as timing
 
 TITLE_ID = 'CUSA00076'
 RUNTIME_ABI = 'order1886-native-1'
 SHADER_CACHE_ABI = 'native-ps4-v1'
 REQUIRED_FILES = ('eboot.bin', 'sce_sys/param.sfo', 'sce_module/libc.prx', 'sce_module/libSceFios2.prx')
+
+
+def emit_status(message, *, error=False, fallback=None):
+    """A detached console must not replace the runtime's result or its diagnostics."""
+    primary, secondary = ('stderr', 'stdout') if error else ('stdout', 'stderr')
+    failed = False
+    for name in (primary, secondary):
+        stream = getattr(sys, name)
+        if stream is None:
+            failed = True
+            continue
+        try:
+            print(message, file=stream, flush=True)
+            if not failed:
+                return
+            break
+        except (OSError, ValueError):
+            # Retire the dead stream so Python's final flush cannot change exit 0/23 to 120.
+            failed = True
+            for other in ('stdout', 'stderr'):
+                if getattr(sys, other) is stream:
+                    setattr(sys, other, None)
+            if hasattr(stream, 'close'):
+                try:
+                    stream.close()
+                except (OSError, ValueError):
+                    pass
+    if failed and fallback is not None:
+        if hasattr(fallback, 'write'):
+            fallback.write(message + '\n')
+            fallback.flush()
+        else:
+            path = Path(fallback)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open('a', encoding='utf-8') as log:
+                log.write(message + '\n')
 
 
 def default_game_dir():
@@ -101,15 +139,19 @@ def write_json(path, value):
     temporary.replace(path)
 
 
-def prepare_game(game, out):
+def prepare_game(game, out, frame_rate=30):
     game, out = Path(game).resolve(), Path(out).resolve()
     metadata = inspect_game(game)
     # Prevent accidental writes to the extracted game, even with custom CLI arguments.
     if out == game or game in out.parents:
         raise ValueError('Prepared images must be stored outside the game folder.')
+    profile = timing.validate_source(game / 'eboot.bin', frame_rate, metadata)
     fingerprint = {name: sha256(game / name) for name in REQUIRED_FILES}
-    for name in ('prepare.py', 'link_modules.py', 'link_libc.py'):
+    for name in ('prepare.py', 'link_modules.py', 'link_libc.py', 'order1886_frame_rate.py'):
         fingerprint['tool/' + name] = sha256(SCRIPTS / name)
+    fingerprint.update(frame_rate=profile['engine_fps'], host_fps_limit=profile['host_fps_limit'],
+                       frame_rate_recipe_sha256=profile['recipe_sha256'], runtime_abi=RUNTIME_ABI,
+                       preparation_schema=2)
     manifest = out / 'prepared.json'
     try:
         previous = json.loads(manifest.read_text(encoding='utf-8'))
@@ -117,15 +159,18 @@ def prepare_game(game, out):
         previous = {}
     image = out / 'boot-linked.bin'
     if (previous.get('inputs') == fingerprint and previous.get('game') == str(game)
-            and image.is_file() and previous.get('image_sha256') == sha256(image)):
-        print('Prepared image verified; reusing cached image.', flush=True)
+            and image.is_file() and previous.get('image_sha256') == sha256(image)
+            and (frame_rate == 30 or previous.get('frame_rate_profile', {}).get('applied') is True)):
+        emit_status('Prepared image verified; reusing cached image.', fallback=out.parent / 'logs/backend.log')
         return previous
     out.mkdir(parents=True, exist_ok=True)
     # Invalidate before writing, so interrupted preparation cannot reuse a partial image.
     manifest.unlink(missing_ok=True)
     prepare.prepare(game, out)
+    profile = timing.apply_prepared(out / 'boot.bin', profile)
     link_modules.link(game, out)
     result = {'game': str(game), 'title_id': metadata['TITLE_ID'], 'inputs': fingerprint,
+              'frame_rate_profile': profile,
               'image_sha256': sha256(image), 'status': 'prepared; gameplay unverified'}
     write_json(manifest, result)
     return result
@@ -134,12 +179,13 @@ def prepare_game(game, out):
 def runtime_environment(runtime, user, settings=None, inherited=None):
     runtime, user = Path(runtime).resolve(), Path(user).resolve()
     settings = settings or {}
+    frame_rate = timing.validate_frame_rate(settings.get('frame_rate', 30))
     source = os.environ if inherited is None else inherited
     env = {k: v for k, v in source.items() if not k.upper().startswith('ORDER1886_')}
     env.update({
         'ORDER1886_CONFIG': str(user / 'runtime.ini'), 'ORDER1886_USER_DIR': str(user),
         'ORDER1886_GPU_USER_DIR': str(user / 'gpu' / SHADER_CACHE_ABI), 'ORDER1886_GAME_PROFILE': 'order1886',
-        'ORDER1886_FPS_LIMIT': '30',
+        'ORDER1886_FPS_LIMIT': str(frame_rate),
         'ORDER1886_SETTINGS_MENU': '0',
         'ORDER1886_VBLANK_HZ': '60',
         'ORDER1886_STREAM_MEMORY': 'cached', 'PYTHONIOENCODING': 'utf-8',
@@ -160,13 +206,17 @@ def write_runtime_config(user, settings):
     mode = settings.get('display_mode', 'windowed')
     if mode not in ('windowed', 'borderless', 'fullscreen'):
         raise ValueError('Invalid display mode')
+    presentation_filter = settings.get('presentation_filter', 'fsr1')
+    if presentation_filter not in ('linear', 'fsr1'):
+        raise ValueError('Invalid presentation filter')
+    frame_rate = timing.validate_frame_rate(settings.get('frame_rate', 30))
     values = {'display_mode': mode, 'vsync': int(bool(settings.get('vsync', True))),
-              'show_fps': int(bool(settings.get('show_fps', False))), 'fps_limit': 30,
-              'render_resolution': 'native', 'frames_queued': 1,
+              'show_fps': int(bool(settings.get('show_fps', False))), 'fps_limit': frame_rate,
+              'render_resolution': 'native', 'presentation_filter': presentation_filter, 'frames_queued': 1,
               'overlay_fps': 1, 'overlay_frametime': 1, 'overlay_gpu': 1}
     Path(user).mkdir(parents=True, exist_ok=True)
     (Path(user) / 'runtime.ini').write_text(
-        '# The Order: 1886 compatibility baseline; no frame-rate unlock patch.\n'
+        '# The Order: 1886 requested settings; applied timing recipe is recorded in prepared.json.\n'
         + ''.join(f'{k}={v}\n' for k, v in values.items()), encoding='utf-8')
 
 
@@ -224,8 +274,8 @@ def run_process(command, env, log, timeout=0, stop_file=None, stop_grace_seconds
         child = subprocess.Popen(command, cwd=str(Path(env['ORDER1886_USER_DIR'])), env=env,
                                  stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
                                  creationflags=flags)
-        print(f'Runtime started (PID {child.pid})', flush=True)
         try:
+            emit_status(f'Runtime started (PID {child.pid})', fallback=output)
             while child.poll() is None:
                 if stop_file and stop_file.exists():
                     stop_requested = True
@@ -236,7 +286,7 @@ def run_process(command, env, log, timeout=0, stop_file=None, stop_grace_seconds
                         forced_stop = True
                         child.kill()
                         child.wait()
-                    print('Shutdown: forced' if forced_stop else 'Shutdown: graceful', flush=True)
+                    emit_status('Shutdown: forced' if forced_stop else 'Shutdown: graceful', fallback=output)
                     break
                 if timeout and time.monotonic() - started >= timeout:
                     timed_out = forced_stop = True
@@ -293,6 +343,10 @@ def main(argv=None):
     action.add_argument('--check-imports', action='store_true')
     parser.add_argument('--timeout', type=float, default=0, help='Host watchdog in seconds; 0 waits until exit')
     parser.add_argument('--display-mode', choices=['windowed', 'borderless', 'fullscreen'], default='windowed')
+    parser.add_argument('--presentation-filter', choices=['linear', 'fsr1'], default='fsr1',
+                        help='Output scaling filter; game rendering and timing stay native')
+    parser.add_argument('--frame-rate', type=int, choices=[30, 60], default=30,
+                        help='30 is the native baseline; 60 is experimental with known QTE risks')
     parser.add_argument('--vsync', type=int, choices=[0, 1], default=1)
     parser.add_argument('--show-fps', type=int, choices=[0, 1], default=0)
     args = parser.parse_args(argv)
@@ -300,20 +354,29 @@ def main(argv=None):
         parser.error('--timeout must be a finite nonnegative number')
     game, user = args.game_dir.resolve(), args.state_dir.resolve()
     if user == game or game in user.parents:
-        print('State directory must be outside the game folder.', file=sys.stderr)
+        emit_status('State directory must be outside the game folder.', error=True)
         return 2
+    diagnostic_log = user / 'logs/backend.log'
     try:
         user.mkdir(parents=True, exist_ok=True)
         with session_lock(user):
             metadata = inspect_game(game)
             if args.stop_file and args.stop_file.exists():
-                print('Cancelled before preparation.', flush=True)
+                emit_status('Cancelled before preparation.', fallback=diagnostic_log)
                 return 130
-            print(f'{metadata["TITLE"]} | {metadata["TITLE_ID"]} | APP_VER {metadata.get("APP_VER")} | VERSION {metadata.get("VERSION")}', flush=True)
+            emit_status(f'{metadata["TITLE"]} | {metadata["TITLE_ID"]} | APP_VER {metadata.get("APP_VER")} | VERSION {metadata.get("VERSION")}', fallback=diagnostic_log)
             runtime = None if args.prepare_only else find_runtime(args.runtime)
             if not args.prepare_only and runtime is None:
                 raise ValueError('Order runtime not found in this installation. Build build.sh or explicitly select a runtime in Settings.')
-            prepared = prepare_game(game, user / 'prepared')
+            if args.frame_rate == 60:
+                emit_status(timing.WARNING, fallback=diagnostic_log)
+            prepared = prepare_game(game, user / 'prepared', frame_rate=args.frame_rate)
+            if args.frame_rate == 60 and not (prepared.get('frame_rate_profile', {}).get('applied') is True
+                    and prepared['frame_rate_profile'].get('source_verified') is True
+                    and prepared['frame_rate_profile'].get('engine_fps') == 60
+                    and prepared['frame_rate_profile'].get('host_fps_limit') == 60
+                    and prepared['frame_rate_profile'].get('recipe_sha256') == timing.recipe_sha256(60)):
+                raise ValueError('Experimental 60 FPS requires a verified prepared timing recipe')
             if args.prepare_only:
                 return 0
             write_runtime_config(user, vars(args))
@@ -341,12 +404,14 @@ def main(argv=None):
                       'log': str(log), 'status': 'running', 'gameplay_verified': False,
                       'command': command, 'config_sha256': sha256(user / 'runtime.ini'),
                       'runtime_environment': {k: v for k, v in env.items() if k.startswith('ORDER1886_')},
-                      'settings': {'display_mode': args.display_mode, 'vsync': args.vsync,
-                                   'show_fps': args.show_fps, 'fps_limit': 30}}
+                       'frame_rate_profile': prepared.get('frame_rate_profile'),
+                       'settings': {'display_mode': args.display_mode, 'vsync': args.vsync,
+                                    'show_fps': args.show_fps, 'presentation_filter': args.presentation_filter,
+                                    'frame_rate': args.frame_rate, 'fps_limit': args.frame_rate}}
             write_json(logs / 'last-run.json', report)
-            print(f'Log: {log}', flush=True)
-            print(f'Runtime: {report["runtime"]} | SHA256 {report["runtime_sha256"]}', flush=True)
-            print('Experimental compatibility run. Gameplay and performance are not yet verified.', flush=True)
+            emit_status(f'Log: {log}', fallback=diagnostic_log)
+            emit_status(f'Runtime: {report["runtime"]} | SHA256 {report["runtime_sha256"]}', fallback=diagnostic_log)
+            emit_status('Experimental compatibility run. Gameplay and performance are not yet verified.', fallback=diagnostic_log)
             try:
                 report.update(run_process(command, env, log, args.timeout or (60 if args.check_imports else 0), args.stop_file))
             except (OSError, KeyboardInterrupt) as error:
@@ -355,7 +420,7 @@ def main(argv=None):
                               stop_reason=str(error) or 'Interrupted', timed_out=False)
                 write_json(log.with_suffix('.json'), report)
                 write_json(logs / 'last-run.json', report)
-                print(f'Runtime {report["status"]}: {report["stop_reason"]}', file=sys.stderr, flush=True)
+                emit_status(f'Runtime {report["status"]}: {report["stop_reason"]}', error=True, fallback=diagnostic_log)
                 return report['exit_code']
             tail = log.read_text(encoding='utf-8', errors='replace')
             missing = re.search(r'Imports: (\d+) missing', tail)
@@ -368,13 +433,13 @@ def main(argv=None):
             write_json(log.with_suffix('.json'), report)
             write_json(logs / 'last-run.json', report)
             if missing:
-                print(f'Import audit: {report["missing_imports"]} missing.', flush=True)
+                emit_status(f'Import audit: {report["missing_imports"]} missing.', fallback=diagnostic_log)
             if report['stop_reason']:
-                print(report['stop_reason'], flush=True)
-            print(f'Runtime {report["status"]}; exit {report["exit_code"]}. Log: {log}', flush=True)
+                emit_status(report['stop_reason'], fallback=diagnostic_log)
+            emit_status(f'Runtime {report["status"]}; exit {report["exit_code"]}. Log: {log}', fallback=diagnostic_log)
             return report['exit_code']
     except (OSError, ValueError, RuntimeError) as error:
-        print(f'The Order: {error}', file=sys.stderr, flush=True)
+        emit_status(f'The Order: {error}', error=True, fallback=diagnostic_log)
         return 2
 
 

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import codecs
+import io
 import json
 import os
 from pathlib import Path
@@ -50,7 +52,9 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
     command += ["--game-dir", values["game_dir"], "--state-dir", str(state),
                 "--display-mode", values["display_mode"],
                 "--vsync", str(int(values["vsync"])),
-                "--show-fps", str(int(values["show_fps"]))]
+                 "--show-fps", str(int(values["show_fps"])),
+                 "--presentation-filter", values.get("presentation_filter", "fsr1"),
+                 "--frame-rate", str(values.get("frame_rate", 30))]
     if values.get("runtime"):
         command += ["--runtime", values["runtime"]]
     if mode == "verify":
@@ -68,7 +72,9 @@ def session_worker(command: list[str], logfile: Path, events: queue.Queue,
     try:
         with logfile.open("w", encoding="utf-8", buffering=1) as log:
             def record(line):
+                log.seek(0, os.SEEK_END)
                 log.write(line)
+                log.flush()
                 events.put(("line", line))
             record(f"Launcher command: {subprocess.list2cmdline(command)}\n")
             record(f"Working directory: {cwd}\n")
@@ -77,18 +83,37 @@ def session_worker(command: list[str], logfile: Path, events: queue.Queue,
                 code = 130
                 return
             try:
-                with subprocess.Popen(
-                    command, cwd=cwd, stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                    text=True, encoding="utf-8", errors="replace",
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                ) as process:
-                    events.put(("started", process.pid))
-                    if cancelled.is_set():
-                        stop_file.touch()
-                    for line in process.stdout:
-                        record(line)
-                    code = process.wait()
+                with logfile.open("rb") as reader:
+                    reader.seek(log.tell())
+                    decoder = io.IncrementalNewlineDecoder(
+                        codecs.getincrementaldecoder("utf-8")("replace"), True)
+                    pending = ""
+
+                    def relay(final=False):
+                        nonlocal pending
+                        pending += decoder.decode(reader.read(), final=final)
+                        lines = pending.splitlines(keepends=True)
+                        pending = ""
+                        for line in lines:
+                            if final or line.endswith("\n"):
+                                events.put(("line", line))
+                            else:
+                                pending = line
+
+                    # A real file survives console detachment and is already the session evidence.
+                    with subprocess.Popen(
+                        command, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
+                        stdin=subprocess.DEVNULL,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    ) as process:
+                        events.put(("started", process.pid))
+                        if cancelled.is_set():
+                            stop_file.touch()
+                        while process.poll() is None:
+                            relay()
+                            time.sleep(0.05)
+                        code = process.wait()
+                        relay(final=True)
             except Exception as exc:
                 record(f"Could not start session: {exc}\n")
             record(f"Backend exit code: {code}\n")
@@ -103,19 +128,39 @@ def session_worker(command: list[str], logfile: Path, events: queue.Queue,
 
 
 def attach_stdio() -> None:
-    """Recover redirected handles for the PyInstaller windowed backend role."""
+    """Recover redirected windowed-backend handles without owning borrowed/shared handles."""
     if os.name == "nt":
         import ctypes
+        from ctypes import wintypes
         import msvcrt
-        ctypes.windll.kernel32.GetStdHandle.restype = ctypes.c_void_p
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.GetStdHandle.argtypes = [wintypes.DWORD]
+        kernel.GetStdHandle.restype = wintypes.HANDLE
+        kernel.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel.DuplicateHandle.argtypes = [wintypes.HANDLE, wintypes.HANDLE, wintypes.HANDLE,
+            ctypes.POINTER(wintypes.HANDLE), wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.DuplicateHandle.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        process = kernel.GetCurrentProcess()
         for name, code in (("stdout", -11), ("stderr", -12)):
             if getattr(sys, name) is None:
-                handle = ctypes.windll.kernel32.GetStdHandle(code)
+                owned = wintypes.HANDLE()
                 try:
-                    stream = open(msvcrt.open_osfhandle(handle, os.O_WRONLY), "w",
-                                  encoding="utf-8", errors="replace", buffering=1)
+                    handle = kernel.GetStdHandle(code & 0xffffffff)
+                    if not kernel.DuplicateHandle(process, handle, process, ctypes.byref(owned), 0, False, 2):
+                        raise ctypes.WinError(ctypes.get_last_error())
+                    fd = msvcrt.open_osfhandle(owned.value, os.O_WRONLY | os.O_BINARY)
+                    owned = wintypes.HANDLE()  # The descriptor now owns the duplicate.
+                    try:
+                        stream = open(fd, "w", encoding="utf-8", errors="replace", buffering=1)
+                    except BaseException:
+                        os.close(fd)
+                        raise
                 except (OSError, TypeError, OverflowError):
-                    stream = open(os.devnull, "w")
+                    if owned.value:
+                        kernel.CloseHandle(owned)
+                    # Backend status writes have a durable state-log fallback when no handle exists.
+                    stream = None
                 setattr(sys, name, stream)
 
 
@@ -150,10 +195,16 @@ class Launcher:
             "runtime": str(saved.get("runtime", "")),
             "display_mode": saved.get("display_mode", "borderless"),
             "vsync": bool(saved.get("vsync", True)),
-            "show_fps": bool(saved.get("show_fps", False)),
+            "show_fps": bool(saved.get("show_fps", True)),
+            "presentation_filter": saved.get("presentation_filter", "fsr1"),
+            "frame_rate": saved.get("frame_rate", 30),
         }
         if self.values["display_mode"] not in ("windowed", "borderless", "fullscreen"):
             self.values["display_mode"] = "borderless"
+        if self.values["presentation_filter"] not in ("linear", "fsr1"):
+            self.values["presentation_filter"] = "fsr1"
+        if type(self.values["frame_rate"]) is not int or self.values["frame_rate"] not in (30, 60):
+            self.values["frame_rate"] = 30
         root.title("The Order: 1886")
         root.configure(bg=BLACK)
         root.geometry("1160x700")
@@ -350,8 +401,25 @@ class Launcher:
             tk.Radiobutton(frame, text=mode.capitalize(), variable=display, value=mode,
                            bg=BLACK, fg=PAPER, selectcolor="#26251f", activebackground=BLACK,
                            activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+        tk.Label(frame, text="Output scaling", fg=PAPER, bg=BLACK,
+                 font=("Segoe UI", 10)).pack(anchor="w", pady=(18, 8))
+        presentation = tk.StringVar(value=self.values["presentation_filter"])
+        for value, label in (("fsr1", "FSR 1 (spatial)"), ("linear", "Linear")):
+            tk.Radiobutton(frame, text=label, variable=presentation, value=value,
+                           bg=BLACK, fg=PAPER, selectcolor="#26251f", activebackground=BLACK,
+                           activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+        tk.Label(frame, text="Frame rate", fg=PAPER, bg=BLACK,
+                 font=("Segoe UI", 10)).pack(anchor="w", pady=(18, 8))
+        frame_rate = tk.IntVar(value=self.values["frame_rate"])
+        for value, label in ((30, "30 FPS (baseline)"), (60, "60 FPS (experimental)")):
+            tk.Radiobutton(frame, text=label, variable=frame_rate, value=value,
+                           bg=BLACK, fg=PAPER, selectcolor="#26251f", activebackground=BLACK,
+                           activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+        import order1886
+        tk.Label(frame, text=order1886.timing.WARNING, justify="left", wraplength=340,
+                 fg=MUTED, bg=BLACK, font=("Segoe UI", 9)).pack(anchor="w", pady=(8, 4))
         vsync, fps = tk.BooleanVar(value=self.values["vsync"]), tk.BooleanVar(value=self.values["show_fps"])
-        for label, variable in (("Vertical sync", vsync), ("Show frame rate", fps)):
+        for label, variable in (("Vertical sync", vsync), ("Performance overlay (F9)", fps)):
             tk.Checkbutton(frame, text=label, variable=variable, bg=BLACK, fg=PAPER,
                            selectcolor="#26251f", activebackground=BLACK, activeforeground=GOLD,
                            font=("Segoe UI", 10)).pack(anchor="w", pady=(10, 0))
@@ -361,7 +429,8 @@ class Launcher:
         row.pack(anchor="w")
         def save():
             values = {key: v.get().strip() for key, v in fields.items()}
-            values.update(display_mode=display.get(), vsync=vsync.get(), show_fps=fps.get())
+            values.update(display_mode=display.get(), vsync=vsync.get(), show_fps=fps.get(),
+                          presentation_filter=presentation.get(), frame_rate=frame_rate.get())
             try:
                 save_settings(self.state / "settings.json", values)
             except (OSError, ValueError) as exc:
@@ -560,12 +629,24 @@ def main(argv=None):
                 yield from descendants(child)
         def smoke():
             try:
+                if app.values["show_fps"] is not True:
+                    raise RuntimeError("A fresh launcher must enable the performance overlay")
+                if app.values["presentation_filter"] != "fsr1":
+                    raise RuntimeError("A fresh launcher must select FSR 1 output scaling")
+                if app.values["frame_rate"] != 30:
+                    raise RuntimeError("A fresh launcher must retain the 30 FPS baseline")
                 root.geometry("940x620")
                 app.settings()
                 root.update()
                 widgets = list(descendants(app.settings_frame))
                 next(w for w in widgets if w.winfo_class() == "Radiobutton" and w.cget("text") == "Windowed").invoke()
-                for label in ("Vertical sync", "Show frame rate"):
+                next(w for w in widgets if w.winfo_class() == "Radiobutton" and w.cget("text") == "Linear").invoke()
+                next(w for w in widgets if w.winfo_class() == "Radiobutton" and
+                     w.cget("text") == "60 FPS (experimental)").invoke()
+                if not any(w.winfo_class() == "Label" and "Chapters 6 and 9" in w.cget("text")
+                           for w in widgets):
+                    raise RuntimeError("Experimental timing warning is missing")
+                for label in ("Vertical sync", "Performance overlay (F9)"):
                     next(w for w in widgets if w.winfo_class() == "Checkbutton" and w.cget("text") == label).invoke()
                 save = next(w for w in widgets if w.winfo_class() == "Button" and w.cget("text") == "Save settings")
                 root.focus_force()
@@ -575,12 +656,18 @@ def main(argv=None):
                     raise RuntimeError("Settings focus did not scroll Save into view")
                 save.invoke()
                 saved = read_settings(app.state / "settings.json")
-                if saved.get("display_mode") != "windowed" or saved.get("vsync") is not False or saved.get("show_fps") is not True:
+                if saved.get("display_mode") != "windowed" or saved.get("vsync") is not False or \
+                        saved.get("show_fps") is not False or saved.get("presentation_filter") != "linear":
                     raise RuntimeError("Settings controls did not persist their values")
+                if saved.get("frame_rate") != 60:
+                    raise RuntimeError("Experimental frame-rate selection did not persist")
                 command = backend_command(saved, "play", app.state)
-                for key, expected in (("--display-mode", "windowed"), ("--vsync", "0"), ("--show-fps", "1")):
+                for key, expected in (("--display-mode", "windowed"), ("--vsync", "0"), ("--show-fps", "0"),
+                                      ("--presentation-filter", "linear")):
                     if command[command.index(key) + 1] != expected:
                         raise RuntimeError(f"Settings did not affect {key}")
+                if command[command.index("--frame-rate") + 1] != "60":
+                    raise RuntimeError("Frame-rate selection did not affect the backend command")
                 app.move(1)
                 app.move(-1)
             except Exception as exc:

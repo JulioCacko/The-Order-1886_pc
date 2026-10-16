@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <type_traits>
 #include "ps4_settings.h"
+#include "ps4_graphics.h"
 #include "video_core/renderer_vulkan/order1886_render_baseline.h"
 #include "video_core/renderer_vulkan/vk_blend_rewrite.h"
 #include "video_core/amdgpu/ps4_msaa.h"
@@ -32,6 +33,9 @@ int main() {
     assert(!defaults.async_shaders && !defaults.rcas);
     assert(!defaults.deferred_readback && !defaults.stale_readback);
     assert(defaults.fps_limit == 30);
+    assert(Ps4Graphics::FsrPassRuns(true, false, 1920, 1080, 3840, 2160));
+    assert(!Ps4Graphics::FsrPassRuns(false, false, 1920, 1080, 3840, 2160));
+    assert(!Ps4Graphics::FsrPassRuns(true, false, 1920, 1080, 1920, 1080));
     assert(defaults.startup_upscaler == Ps4Settings::UpscalerOff);
     assert(!defaults.startup_object_motion && !defaults.startup_deferred_readback &&
            !defaults.startup_stale_readback);

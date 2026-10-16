@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <mutex>
+#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -953,6 +954,143 @@ void FlattenExtendedUserdataPass(IR::Program& program) {
     program.info.RefreshFlatBuf();
 }
 
+static u64 ReadConstIndexUpperBound(const IR::Value& value, u32 depth = 0) {
+    constexpr u64 unknown = std::numeric_limits<u32>::max();
+    if (value.IsImmediate()) {
+        return value.U32();
+    }
+    const auto* inst = value.TryInst();
+    if (!inst || depth >= 32) {
+        return unknown;
+    }
+    const auto bound = [&](size_t arg) {
+        return ReadConstIndexUpperBound(inst->Arg(arg), depth + 1);
+    };
+    switch (inst->GetOpcode()) {
+    case IR::Opcode::IAdd32:
+        return std::min(unknown, bound(0) + bound(1));
+    case IR::Opcode::IMul32:
+        return std::min(unknown, bound(0) * bound(1));
+    case IR::Opcode::ShiftRightLogical32:
+        if (inst->Arg(1).IsImmediate() && inst->Arg(1).U32() < 32) {
+            return bound(0) >> inst->Arg(1).U32();
+        }
+        return unknown;
+    case IR::Opcode::ShiftLeftLogical32:
+        if (inst->Arg(1).IsImmediate() && inst->Arg(1).U32() < 32) {
+            return std::min(unknown, bound(0) << inst->Arg(1).U32());
+        }
+        return unknown;
+    case IR::Opcode::BitwiseAnd32:
+        return std::min(bound(0), bound(1));
+    case IR::Opcode::UMin32:
+        return std::min(bound(0), bound(1));
+    case IR::Opcode::UMax32:
+        return std::max(bound(0), bound(1));
+    default:
+        // This is a range bound, never an evaluation of a Phi or a GPU data load.
+        return unknown;
+    }
+}
+
+static std::optional<u32> ReadConstByteSpan(const IR::Value& index) {
+    const u64 bytes = (ReadConstIndexUpperBound(index) + 1) * sizeof(u32);
+    if (bytes > std::numeric_limits<u32>::max()) {
+        return std::nullopt;
+    }
+    return static_cast<u32>(bytes);
+}
+
+static bool ReadConstPointerFetch(const IR::Value& address,
+                                  SharpFetch<AmdGpu::Buffer>& fetch) {
+    const auto* pair = address.TryInst();
+    if (!pair || pair->GetOpcode() != IR::Opcode::CompositeConstructU32x2) {
+        return false;
+    }
+    for (u32 i = 0; i < 2; ++i) {
+        const auto value = pair->Arg(i);
+        if (value.IsImmediate()) {
+            fetch.immediates[i] = value.U32();
+            continue;
+        }
+        const auto* source = value.TryInst();
+        if (!source) {
+            return false;
+        }
+        if (source->GetOpcode() == IR::Opcode::GetUserData) {
+            fetch.offsets[i] = static_cast<SharpLocation>(source->Arg(0).ScalarReg());
+        } else if (source->GetOpcode() == IR::Opcode::ReadConst ||
+                   source->GetOpcode() == IR::Opcode::ReadConstBuffer) {
+            const u16 offset = GetFlatbufOffset(source);
+            if (offset == 0) {
+                return false;
+            }
+            fetch.offsets[i] = offset;
+        } else {
+            return false;
+        }
+        fetch.load_mask |= 1U << i;
+    }
+    return true;
+}
+
+void LowerDynamicReadConstPass(IR::Program& program) {
+    auto& info = program.info;
+    const u32 initial_buffers = info.buffers.size();
+    u32 lowered = 0;
+    // ResourcePatchingPass has already consumed and validated all T#/S#/V# sources.
+    // Remaining unflattened ReadConst instructions are ordinary shader data reads.
+    for (auto* block : program.post_order_blocks) {
+        for (IR::Inst& inst : *block) {
+            if (inst.GetOpcode() != IR::Opcode::ReadConst || GetFlatbufOffset(&inst) != 0) {
+                continue;
+            }
+            SharpFetch<AmdGpu::Buffer> fetch{};
+            const auto span = ReadConstByteSpan(inst.Arg(1));
+            if (!span || !ReadConstPointerFetch(inst.Arg(0), fetch)) {
+                ASSERT_MSG(EmulatorSettings.IsDirectMemoryAccessEnabled(),
+                           "Unsupported dynamic ReadConst: no bounded uniform base/index");
+                continue;
+            }
+            u32 binding = 0;
+            for (; binding < info.buffers.size(); ++binding) {
+                auto& desc = info.buffers[binding];
+                if (desc.buffer_type == BufferType::ReadConst && desc.sharp_fetch == fetch) {
+                    desc.readconst_size_bytes = std::max(desc.readconst_size_bytes, *span);
+                    break;
+                }
+            }
+            if (binding == info.buffers.size()) {
+                ASSERT_MSG(binding < NUM_BUFFERS, "Dynamic ReadConst exceeds buffer binding limit");
+                info.buffers.push_back({
+                    .sharp_fetch = fetch,
+                    .used_types = IR::Type::U32,
+                    .buffer_type = BufferType::ReadConst,
+                    .readconst_size_bytes = *span,
+                });
+            }
+            IR::IREmitter ir{*block, IR::Block::InstructionList::s_iterator_to(inst)};
+            const auto load = ir.ReadConstBuffer(ir.Imm32(binding), IR::U32{inst.Arg(1)}, {});
+            inst.ReplaceUsesWith(load);
+            ++lowered;
+        }
+    }
+    if (lowered != 0) {
+        LOG_INFO(Render_Recompiler,
+                 "Shader {:#x}: lowered {} dynamic ReadConst loads to {} bounded GPU buffers",
+                 info.pgm_hash, lowered, info.buffers.size() - initial_buffers);
+        for (u32 binding = initial_buffers; binding < info.buffers.size(); ++binding) {
+            const auto& desc = info.buffers[binding];
+            LOG_INFO(Render_Recompiler,
+                     "ReadConst binding: shader={:#018x} stage={} binding={} requested_bytes={} "
+                     "load_mask={:#x} locations={} immediates={}",
+                     info.pgm_hash, info.hw_stage, binding, desc.readconst_size_bytes,
+                     desc.sharp_fetch.load_mask, desc.sharp_fetch.offsets,
+                     desc.sharp_fetch.immediates);
+        }
+    }
+}
+
 } // namespace Shader::Optimization
 
 #else
@@ -967,6 +1105,10 @@ namespace Optimization {
 
 void FlattenExtendedUserdataPass(IR::Program& program) {
     UNREACHABLE_MSG("FlattenExtendedUserdataPass unimplemented for target architecture.");
+}
+
+void LowerDynamicReadConstPass(IR::Program& program) {
+    UNREACHABLE_MSG("LowerDynamicReadConstPass unimplemented for target architecture.");
 }
 
 } // namespace Optimization

@@ -85,9 +85,9 @@ std::vector<ImTextureData*> choice_textures, choice_retired;
 std::atomic<bool> choice_retiring{false};
 float base_scale = 1.0f;
 
-// Present rate for the FPS counter.
-std::chrono::steady_clock::time_point last_present{};
-float frame_ms_avg = 0.0f;
+std::mutex presentation_mutex;
+Ps4PerfStats::PresentationCounter presentation_counter;
+std::chrono::steady_clock::time_point last_ui_frame{};
 
 bool SettingsMenuEnabled() {
     return false;
@@ -281,11 +281,15 @@ std::string OverlayText() {
     const auto& s = Ps4Settings::Get();
     const unsigned items = s.overlay_items;
     if ((items & (P::Gpu | P::Cpu | P::Ram | P::Vram)) && overlay_instance) {
-        P::Start(*overlay_instance);
+        P::Start(*overlay_instance, items);
     }
     P::Sample sample = P::Latest();
-    sample.fps = frame_ms_avg > 0.0f ? 1000.0f / frame_ms_avg : 0.0f;
-    sample.frame_ms = frame_ms_avg;
+    {
+        std::scoped_lock lock{presentation_mutex};
+        const auto timing = presentation_counter.Latest();
+        sample.fps = timing.fps;
+        sample.frame_ms = timing.interval_ms;
+    }
     sample.upscaler = UpscalerLabel(s.upscaler);
     return P::Format(sample, items, s.overlay_layout == 0);
 }
@@ -412,6 +416,9 @@ void FpsCounter() {
                      ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
                      ImGuiWindowFlags_NoFocusOnAppearing);
     ImGui::SetWindowFontScale(s.overlay_scale / 100.0f);
+    ImGui::TextUnformatted("The Order: 1886");
+    ImGui::TextDisabled("Presentation metrics | F9 to hide");
+    ImGui::Separator();
     ImGui::TextUnformatted(text.c_str());
     ImGui::End();
 }
@@ -463,6 +470,13 @@ void Notice() {
 }
 
 } // namespace
+
+void OnPresented(bool loading_frame) {
+    const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count();
+    std::scoped_lock lock{presentation_mutex};
+    presentation_counter.Present(u64(now_ns), loading_frame);
+}
 
 void ShowNotice(const std::string& text, int milliseconds) {
     {
@@ -636,6 +650,13 @@ bool HandleEvent(const SDL_Event& event) {
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP: {
         const bool down = event.type == SDL_EVENT_KEY_DOWN;
+        if (event.key.key == SDLK_F9) {
+            if (down && !event.key.repeat) {
+                auto& settings = Ps4Settings::Get();
+                settings.show_fps = !settings.show_fps.load();
+            }
+            return true;
+        }
         static const bool capture_key = [] {
             const char* env = std::getenv("ORDER1886_FRAME_CAPTURE_KEY");
             return env && *env == '1';
@@ -799,13 +820,10 @@ void SetTextEntry(bool active, const std::string& prompt, const std::string& tex
 }
 
 void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
-    // Present interval for the FPS readout (measured also while nothing is drawn).
+    // ImGui needs a UI delta even when no presentation sample exists yet.
     const auto now = std::chrono::steady_clock::now();
-    const float ms = std::chrono::duration<float, std::milli>(now - last_present).count();
-    last_present = now;
-    if (ms > 0.0f && ms < 1000.0f) {
-        frame_ms_avg = frame_ms_avg == 0.0f ? ms : frame_ms_avg * 0.95f + ms * 0.05f;
-    }
+    const float ms = std::chrono::duration<float, std::milli>(now - last_ui_frame).count();
+    last_ui_frame = now;
     ConfirmRestart();
     if (!Visible()) {
         return;

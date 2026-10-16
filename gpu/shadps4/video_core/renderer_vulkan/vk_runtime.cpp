@@ -6,6 +6,7 @@
 #include "video_core/buffer_cache/buffer.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
+#include "video_core/renderer_vulkan/vk_image_bounds.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_gpu_profiler.h"
 #include "video_core/renderer_vulkan/vk_scene_resolution.h"
@@ -81,21 +82,16 @@ static std::pair<u32, u32> SanitizeCopyLayers(const VideoCore::ImageInfo& src_in
     return std::make_pair(src_layers, dst_layers);
 }
 
-static u32 BufferImageCopySize(const vk::BufferImageCopy& copy, const vk::Format pixel_format) {
-    const u32 row_length = copy.bufferRowLength ? copy.bufferRowLength : copy.imageExtent.width;
-    const u32 height = copy.bufferImageHeight ? copy.bufferImageHeight : copy.imageExtent.height;
-
-    const auto block = vk::blockExtent(pixel_format);
-    const u32 block_size = vk::blockSize(pixel_format);
-    const u32 row_pitch = (row_length / block[0]) * block_size;
-    const u32 slice_pitch = (height / block[1]) * row_pitch;
-
-    const u32 width_in_blocks = (copy.imageExtent.width + block[0] - 1) / block[0];
-    const u32 height_in_blocks = (copy.imageExtent.height + block[1] - 1) / block[1];
-    const u32 num_slices = copy.imageExtent.depth * copy.imageSubresource.layerCount;
-
-    return (num_slices - 1) * slice_pitch + (height_in_blocks - 1) * row_pitch +
-           width_in_blocks * block_size;
+static u64 BufferImageCopySize(const vk::BufferImageCopy& copy, const vk::Format pixel_format) {
+    const auto bytes = BufferImageCopyByteSize(copy, pixel_format);
+    if (!bytes) {
+        UNREACHABLE_MSG("Invalid or overflowing image copy footprint: format={} extent={}x{}x{} "
+                        "layers={} row_length={} image_height={} offset={}",
+                        vk::to_string(pixel_format), copy.imageExtent.width, copy.imageExtent.height,
+                        copy.imageExtent.depth, copy.imageSubresource.layerCount, copy.bufferRowLength,
+                        copy.bufferImageHeight, copy.bufferOffset);
+    }
+    return *bytes;
 }
 
 Runtime::Runtime(const Instance& instance_, Scheduler& scheduler_)
@@ -228,6 +224,19 @@ Runtime::TransferMark::~TransferMark() {
 
 void Runtime::UploadImage(VideoCore::Image* dst, const VideoCore::Buffer* src,
                           std::span<const vk::BufferImageCopy> upload_copies) {
+    for (const auto& copy : upload_copies) {
+        const u64 copy_size = BufferImageCopySize(copy, dst->info.pixel_format);
+        if (!BufferImageCopyFits(copy, copy_size, src->SizeBytes())) {
+            UNREACHABLE_MSG("Image upload exceeds source buffer: address={:#x} format={} "
+                            "mip={} offset={} required_bytes={} buffer_bytes={} extent={}x{}x{} "
+                            "layers={} row_length={} image_height={}",
+                            dst->info.guest_address, vk::to_string(dst->info.pixel_format),
+                            copy.imageSubresource.mipLevel, copy.bufferOffset, copy_size,
+                            src->SizeBytes(), copy.imageExtent.width, copy.imageExtent.height,
+                            copy.imageExtent.depth, copy.imageSubresource.layerCount,
+                            copy.bufferRowLength, copy.bufferImageHeight);
+        }
+    }
     SetBackingSamples(dst, dst->info.num_samples, false);
     scheduler.EndRendering();
     const TransferMark mark{*this, "image upload", *dst};

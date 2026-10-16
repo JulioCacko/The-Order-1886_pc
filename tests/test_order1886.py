@@ -15,6 +15,19 @@ if str(ROOT) not in sys.path:
 import order1886
 
 
+class InvalidConsole:
+    def __init__(self, trigger=None):
+        self.trigger = trigger
+
+    def write(self, text):
+        if self.trigger is None or self.trigger in text:
+            raise OSError(22, 'Invalid argument: detached console')
+        return len(text)
+
+    def flush(self):
+        pass
+
+
 class OrderBackendTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -102,6 +115,68 @@ class OrderBackendTests(unittest.TestCase):
         self.assertEqual(env['ORDER1886_FPS_LIMIT'], '30')
         self.assertEqual(env['PATH'], str(runtime.parent.resolve()) + os.pathsep + 'original-path')
 
+    def test_frame_rate_host_cap_and_config_match_without_changing_vblank(self):
+        for rate in (30, 60):
+            with self.subTest(rate=rate):
+                settings = {'frame_rate': rate}
+                env = order1886.runtime_environment(self.base / 'runtime.exe', self.user, settings)
+                self.assertEqual(env['ORDER1886_FPS_LIMIT'], str(rate))
+                self.assertEqual(env['ORDER1886_VBLANK_HZ'], '60')
+                order1886.write_runtime_config(self.user, settings)
+                self.assertIn(f'fps_limit={rate}\n', (self.user / 'runtime.ini').read_text())
+        with self.assertRaisesRegex(ValueError, '30 or 60'):
+            order1886.write_runtime_config(self.user, {'frame_rate': 120})
+
+    def test_frame_rate_cli_requires_a_verified_matching_60_receipt(self):
+        good = {**order1886.timing.recipe(60), 'recipe_sha256': order1886.timing.recipe_sha256(60),
+                'applied': True, 'source_verified': True}
+        for profile, expected in (({}, 2), ({**good, 'host_fps_limit': 30}, 2), (good, 0)):
+            with self.subTest(profile=profile), patch.object(order1886, 'prepare_game',
+                    return_value={'image_sha256': 'fixture', 'frame_rate_profile': profile}) as prepare:
+                self.assertEqual(order1886.main(['--game-dir', str(self.game), '--state-dir', str(self.user),
+                                                 '--prepare-only', '--frame-rate', '60']), expected)
+                prepare.assert_called_once_with(self.game.resolve(), self.user / 'prepared', frame_rate=60)
+
+    def test_frame_rate_60_unknown_hash_does_not_change_existing_cache(self):
+        out = self.user / 'prepared'
+        out.mkdir()
+        (out / 'prepared.json').write_text('{"previous": "preserve"}')
+        (out / 'boot-linked.bin').write_bytes(b'previous valid image')
+        before = {p.name: p.read_bytes() for p in out.iterdir()}
+        with self.assertRaisesRegex(ValueError, 'SELF SHA256'):
+            order1886.prepare_game(self.game, out, frame_rate=60)
+        self.assertEqual({p.name: p.read_bytes() for p in out.iterdir()}, before)
+
+    def test_frame_rate_cache_30_60_30_rebuilds_and_preserves_source(self):
+        import shutil
+        from test_order1886_frame_rate import write_boot_fixture, verified_fixture_source, METADATA, SITE_RVA
+        self.metadata.update(METADATA)
+        out = self.user / 'prepared'
+        original = (self.game / 'eboot.bin').read_bytes()
+
+        def prepare(_game, target):
+            write_boot_fixture(target / 'boot.bin')
+
+        def link(_game, target):
+            shutil.copyfile(target / 'boot.bin', target / 'boot-linked.bin')
+
+        with verified_fixture_source(self.game / 'eboot.bin'), \
+                patch.object(order1886.prepare, 'prepare', side_effect=prepare) as preparer, \
+                patch.object(order1886.link_modules, 'link', side_effect=link):
+            results = [order1886.prepare_game(self.game, out, frame_rate=30),
+                       order1886.prepare_game(self.game, out, frame_rate=60),
+                       order1886.prepare_game(self.game, out, frame_rate=60),
+                       order1886.prepare_game(self.game, out, frame_rate=30)]
+        self.assertEqual(preparer.call_count, 3)
+        self.assertEqual([r['frame_rate_profile']['applied'] for r in results], [False, True, True, False])
+        self.assertNotEqual(results[0]['inputs'], results[1]['inputs'])
+        self.assertEqual(results[0]['inputs'], results[-1]['inputs'])
+        self.assertIn('tool/order1886_frame_rate.py', results[0]['inputs'])
+        self.assertEqual(results[1]['inputs']['host_fps_limit'], 60)
+        self.assertEqual(results[1]['inputs']['runtime_abi'], order1886.RUNTIME_ABI)
+        self.assertEqual((self.game / 'eboot.bin').read_bytes(), original)
+        self.assertEqual((out / 'boot.bin').read_bytes()[56 + 24 + 128 + 32 + SITE_RVA + 6], 2)
+
     def test_arguments_preserve_spaces_and_exclude_patches(self):
         runtime = self.base / 'runtime binaries' / 'probe.exe'
         image = self.user / 'prepared' / 'boot-linked.bin'
@@ -124,6 +199,43 @@ class OrderBackendTests(unittest.TestCase):
             self.assertNotIn(retired + '=', config)
         with self.assertRaisesRegex(ValueError, 'display mode'):
             order1886.write_runtime_config(self.user, {'display_mode': 'invalid'})
+
+    def test_presentation_filter_config_defaults_linear_override_and_rejection(self):
+        for settings, expected in (({}, 'fsr1'), ({'presentation_filter': 'linear'}, 'linear')):
+            with self.subTest(settings=settings):
+                order1886.write_runtime_config(self.user, settings)
+                config = (self.user / 'runtime.ini').read_text()
+                self.assertIn(f'presentation_filter={expected}\n', config)
+                self.assertIn('render_resolution=native\n', config)
+                self.assertIn('fps_limit=30\n', config)
+        with self.assertRaisesRegex(ValueError, 'presentation filter'):
+            order1886.write_runtime_config(self.user, {'presentation_filter': 'fsr3'})
+
+    def test_presentation_filter_cli_reaches_config_and_diagnostics(self):
+        runtime = self.base / 'runtime.exe'
+        runtime.write_bytes(b'identified fixture')
+
+        def finish(command, env, log, *args):
+            Path(log).write_text('CPU-only fixture\n')
+            self.assertNotIn('ORDER1886_PRESENTATION_FILTER', env)
+            self.assertEqual(env['ORDER1886_FPS_LIMIT'], '30')
+            return {'exit_code': 0, 'runtime_exit_code': 0, 'timed_out': False,
+                    'stop_requested': False, 'forced_stop': False, 'elapsed_seconds': 0}
+
+        for choice, expected in ((None, 'fsr1'), ('linear', 'linear')):
+            with self.subTest(choice=choice), \
+                    patch.object(order1886, 'find_runtime', return_value=runtime), \
+                    patch.object(order1886, 'prepare_game', return_value={'image_sha256': 'fixture'}), \
+                    patch.object(order1886.save_backup, 'backup'), \
+                    patch.object(order1886, 'run_process', side_effect=finish):
+                args = ['--game-dir', str(self.game), '--state-dir', str(self.user)]
+                if choice is not None:
+                    args += ['--presentation-filter', choice]
+                self.assertEqual(order1886.main(args), 0)
+                self.assertIn(f'presentation_filter={expected}\n', (self.user / 'runtime.ini').read_text())
+                report = json.loads((self.user / 'logs/last-run.json').read_text())
+                self.assertEqual(report['settings']['presentation_filter'], expected)
+                self.assertEqual(report['settings']['fps_limit'], 30)
 
     def test_missing_explicit_runtime_is_reported(self):
         with self.assertRaisesRegex(ValueError, 'Runtime executable not found'):
@@ -149,6 +261,9 @@ class OrderBackendTests(unittest.TestCase):
 
     def test_watchdog_kills_and_reaps_child(self):
         env = dict(os.environ, ORDER1886_USER_DIR=str(self.user))
+        # Windows venv Python is a redirector; model the native runtime's direct child.
+        host_python = getattr(sys, '_base_executable', sys.executable)
+        log = self.user / 'timeout.log'
         processes = []
         popen = subprocess.Popen
         def capture(*args, **kwargs):
@@ -156,12 +271,16 @@ class OrderBackendTests(unittest.TestCase):
             processes.append(process)
             return process
         with patch.object(order1886.subprocess, 'Popen', side_effect=capture):
-            result = order1886.run_process([sys.executable, '-c', 'import time; time.sleep(30)'], env,
-                                          self.user / 'timeout.log', timeout=0.15)
+            result = order1886.run_process(
+                [host_python, '-c', 'import os,time; print("fixture-pid=" + str(os.getpid()), flush=True); time.sleep(30)'],
+                env, log, timeout=0.15)
+        released_log = log.rename(self.user / 'released-timeout.log')
         self.assertTrue(result['timed_out'])
         self.assertEqual(result['exit_code'], 124)
         self.assertIsNotNone(processes[0].poll())
         self.assertLess(result['elapsed_seconds'], 10)
+        self.assertIn(f'fixture-pid={processes[0].pid}\n', released_log.read_text())
+        released_log.unlink()
 
     def test_default_runtime_stays_inside_selected_installation(self):
         install = self.base / 'portable package'
@@ -190,15 +309,18 @@ class OrderBackendTests(unittest.TestCase):
             order1886.find_runtime(runtime)
 
     def test_stop_request_reaps_child_and_records_forced_cleanup(self):
+        host_python = getattr(sys, '_base_executable', sys.executable)
+        log = self.user / 'stop.log'
         stop = self.user / 'stop-request'
         timer = threading.Timer(0.15, lambda: stop.write_text('stop'))
         timer.start()
         self.addCleanup(timer.join)
         with patch.object(order1886, 'request_runtime_close', return_value=False):
             result = order1886.run_process(
-                [sys.executable, '-c', 'import time; time.sleep(30)'],
-                dict(os.environ, ORDER1886_USER_DIR=str(self.user)), self.user / 'stop.log',
+                [host_python, '-c', 'import time; time.sleep(30)'],
+                dict(os.environ, ORDER1886_USER_DIR=str(self.user)), log,
                 timeout=10, stop_file=stop, stop_grace_seconds=0.05)
+        log.rename(self.user / 'released-stop.log').unlink()
         self.assertTrue(result['stop_requested'])
         self.assertTrue(result['forced_stop'])
         self.assertFalse(result['timed_out'])
@@ -217,6 +339,63 @@ class OrderBackendTests(unittest.TestCase):
         state = self.game / 'forbidden-state'
         self.assertEqual(order1886.main(['--game-dir', str(self.game), '--state-dir', str(state), '--prepare-only']), 2)
         self.assertFalse(state.exists())
+
+
+    def test_invalid_console_at_final_status_preserves_native_exit_and_diagnostics(self):
+        runtime = self.base / 'runtime.exe'
+        runtime.write_bytes(b'identified fixture')
+        for native_exit in (0, 23):
+            with self.subTest(native_exit=native_exit):
+                status = 'failed' if native_exit else 'process_exited'
+                reason = 'STOP: intentional native failure' if native_exit else None
+                command = [sys.executable, '-c', f'print({(reason or "native success")!r}); raise SystemExit({native_exit})']
+                with patch.object(order1886, 'find_runtime', return_value=runtime), \
+                        patch.object(order1886, 'prepare_game', return_value={'image_sha256': 'fixture'}), \
+                        patch.object(order1886, 'build_command', return_value=command), \
+                        patch.object(order1886.save_backup, 'backup'), \
+                        patch.object(sys, 'stdout', InvalidConsole(f'Runtime {status}; exit')), \
+                        patch.object(sys, 'stderr', InvalidConsole()):
+                    code = order1886.main(['--game-dir', str(self.game), '--state-dir', str(self.user)])
+                self.assertEqual(code, native_exit)
+                report = json.loads((self.user / 'logs/last-run.json').read_text())
+                self.assertEqual(report['status'], status)
+                self.assertEqual(report['exit_code'], native_exit)
+                self.assertEqual(report['stop_reason'], reason)
+                diagnostic = (self.user / 'logs/backend.log').read_text()
+                self.assertIn(f'Runtime {status}; exit {native_exit}.', diagnostic)
+                self.assertIn(report['log'], diagnostic)
+
+    def test_invalid_console_before_runtime_wait_cannot_orphan_child(self):
+        children = []
+        popen = subprocess.Popen
+
+        def capture(*args, **kwargs):
+            child = popen(*args, **kwargs)
+            children.append(child)
+            return child
+
+        try:
+            with patch.object(order1886.subprocess, 'Popen', side_effect=capture), \
+                    patch.object(sys, 'stdout', InvalidConsole()):
+                result = order1886.run_process(
+                    [sys.executable, '-c', "print('native failure'); raise SystemExit(23)"],
+                    dict(os.environ, ORDER1886_USER_DIR=str(self.user)), self.user / 'console.log', timeout=10)
+            self.assertEqual(result['exit_code'], 23)
+            self.assertIsNotNone(children[0].returncode)
+            self.assertIn('Runtime started (PID', (self.user / 'console.log').read_text())
+            self.assertIn('native failure', (self.user / 'console.log').read_text())
+        finally:
+            for child in children:
+                if child.poll() is None:
+                    child.kill()
+                child.wait()
+
+    def test_invalid_console_error_handler_keeps_validation_error_in_log(self):
+        with patch.object(sys, 'stdout', InvalidConsole()), patch.object(sys, 'stderr', InvalidConsole()):
+            code = order1886.main(['--game-dir', str(self.base / 'missing-game'),
+                                   '--state-dir', str(self.user)])
+        self.assertEqual(code, 2)
+        self.assertIn('Missing or empty game file:', (self.user / 'logs/backend.log').read_text())
 
 
 if __name__ == '__main__':

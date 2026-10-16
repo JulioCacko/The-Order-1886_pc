@@ -13,6 +13,7 @@
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
 #include "video_core/texture_cache/host_compatibility.h"
 #include "video_core/texture_cache/image_info.h"
+#include "video_core/texture_cache/image_size.h"
 #include "video_core/texture_cache/tile.h"
 
 namespace VideoCore {
@@ -97,15 +98,20 @@ ImageInfo::ImageInfo(const AmdGpu::ColorBuffer& buffer, AmdGpu::CbDbExtent hint)
     meta_info.fmask_addr = buffer.info.compression ? buffer.FmaskAddress() : 0;
 
     guest_address = buffer.Address();
+    size_t slice_bytes = 0;
     if (props.is_tiled) {
-        guest_size = buffer.GetColorSliceSize() * resources.layers;
-        mips_layout[0] = MipInfo(guest_size, pitch, buffer.Height(), 0);
+        slice_bytes = buffer.GetColorSliceSize();
     } else {
-        std::tie(std::ignore, std::ignore, guest_size) =
+        std::tie(std::ignore, std::ignore, slice_bytes) =
             ImageSizeLinearAligned(pitch, size.height, num_bits, guest_samples);
-        guest_size *= resources.layers;
-        mips_layout[0] = MipInfo(guest_size, pitch, size.height, 0);
     }
+    const auto image_bytes = GuestMipSize(slice_bytes, 1, resources.layers);
+    if (!image_bytes) {
+        UNREACHABLE_MSG("Color image exceeds guest layout capacity: address={:#x} "
+                        "slice_bytes={} layers={}", guest_address, slice_bytes, resources.layers);
+    }
+    guest_size = *image_bytes;
+    mips_layout[0] = MipInfo(guest_size, pitch, props.is_tiled ? buffer.Height() : size.height, 0);
     alt_tile = Libraries::Kernel::sceKernelIsNeoMode() && buffer.info.alt_tile_mode;
 }
 
@@ -132,15 +138,20 @@ ImageInfo::ImageInfo(const AmdGpu::DepthBuffer& buffer, u32 num_slices, VAddr ht
     stencil_size = pitch * size.height * sizeof(u8);
 
     guest_address = write_buffer ? buffer.DepthWriteAddress() : buffer.DepthAddress();
+    size_t slice_bytes = 0;
     if (props.is_tiled) {
-        guest_size = buffer.GetDepthSliceSize() * resources.layers;
-        mips_layout[0] = MipInfo(guest_size, pitch, buffer.Height(), 0);
+        slice_bytes = buffer.GetDepthSliceSize();
     } else {
-        std::tie(std::ignore, std::ignore, guest_size) =
+        std::tie(std::ignore, std::ignore, slice_bytes) =
             ImageSizeLinearAligned(pitch, size.height, num_bits, guest_samples);
-        guest_size *= resources.layers;
-        mips_layout[0] = MipInfo(guest_size, pitch, size.height, 0);
     }
+    const auto image_bytes = GuestMipSize(slice_bytes, 1, resources.layers);
+    if (!image_bytes) {
+        UNREACHABLE_MSG("Depth image exceeds guest layout capacity: address={:#x} "
+                        "slice_bytes={} layers={}", guest_address, slice_bytes, resources.layers);
+    }
+    guest_size = *image_bytes;
+    mips_layout[0] = MipInfo(guest_size, pitch, props.is_tiled ? buffer.Height() : size.height, 0);
 }
 
 ImageInfo::ImageInfo(const AmdGpu::Image& image, const Shader::ImageResource& desc) noexcept {
@@ -198,7 +209,7 @@ ImageInfo::ImageInfo(const AmdGpu::Image& image, const Shader::ImageResource& de
     guest_address = image.Address();
 
     alt_tile = Libraries::Kernel::sceKernelIsNeoMode() && image.alt_tile_mode;
-    UpdateSize();
+    UpdateSize(&image, &desc);
 }
 
 bool ImageInfo::IsCompatible(const ImageInfo& info) const {
@@ -207,9 +218,30 @@ bool ImageInfo::IsCompatible(const ImageInfo& info) const {
            num_samples == info.num_samples && num_bits == info.num_bits;
 }
 
-void ImageInfo::UpdateSize() {
+void ImageInfo::UpdateSize(const AmdGpu::Image* source_image,
+                           const Shader::ImageResource* source_desc) {
+    const auto reject_layout = [&](s32 mip, u64 slice_bytes, u32 depth) {
+        // Independent of the ordinary sharp-capture budget: a late invalid descriptor must
+        // still retain its exact words and fetch indices before the layout is rejected.
+        static std::atomic<u32> rejected_records{0};
+        const u32 record = rejected_records.fetch_add(1, std::memory_order_relaxed);
+        if (record < 16 && source_image && source_desc) {
+            LogResourceSharp(*source_image, *source_desc, record + 1, "invalid image layout");
+        }
+        UNREACHABLE_MSG("Invalid guest image layout: address={:#x} format={} size={}x{}x{} "
+                        "pitch={} levels={} layers={} mip={} slice_bytes={} mip_depth={} "
+                        "bytes_before={} (guest layout requires nonzero u32 sizes)",
+                        guest_address, vk::to_string(pixel_format), size.width, size.height,
+                        size.depth, pitch, resources.levels, resources.layers, mip, slice_bytes,
+                        depth, guest_size);
+    };
     guest_size = 0;
-    for (s32 mip = 0; mip < resources.levels; ++mip) {
+    if (resources.levels <= 0 || resources.levels > mips_layout.size() ||
+        resources.layers <= 0 || num_bits == 0 || guest_samples == 0 || pitch == 0 ||
+        size.width == 0 || size.height == 0 || size.depth == 0) {
+        reject_layout(-1, 0, 0);
+    }
+    for (u32 mip = 0; mip < resources.levels; ++mip) {
         u32 mip_w = pitch >> mip;
         u32 mip_h = size.height >> mip;
         if (props.is_block) {
@@ -227,8 +259,9 @@ void ImageInfo::UpdateSize() {
         }
 
         auto& mip_info = mips_layout[mip];
+        size_t slice_bytes = 0;
         if (array_mode == AmdGpu::ArrayMode::ArrayLinearAligned) {
-            std::tie(mip_info.pitch, mip_info.height, mip_info.size) =
+            std::tie(mip_info.pitch, mip_info.height, slice_bytes) =
                 ImageSizeLinearAligned(mip_w, mip_h, num_bits, guest_samples);
         } else if (array_mode == AmdGpu::ArrayMode::ArrayLinearGeneral) {
             UNREACHABLE_MSG("Unhandled array mode: ArrayLinearGeneral");
@@ -240,10 +273,10 @@ void ImageInfo::UpdateSize() {
             mip_d += (-mip_d) & (thickness - 1);
             if (AmdGpu::IsMacroTiled(array_mode)) {
                 ASSERT(!props.is_block);
-                std::tie(mip_info.pitch, mip_info.height, mip_info.size) = ImageSizeMacroTiled(
+                std::tie(mip_info.pitch, mip_info.height, slice_bytes) = ImageSizeMacroTiled(
                     mip_w, mip_h, thickness, num_bits, guest_samples, tile_mode, mip, alt_tile);
             } else {
-                std::tie(mip_info.pitch, mip_info.height, mip_info.size) =
+                std::tie(mip_info.pitch, mip_info.height, slice_bytes) =
                     ImageSizeMicroTiled(mip_w, mip_h, thickness, num_bits, guest_samples);
             }
         }
@@ -251,7 +284,11 @@ void ImageInfo::UpdateSize() {
             mip_info.pitch = std::max(mip_info.pitch * 4, 32u);
             mip_info.height = std::max(mip_info.height * 4, 32u);
         }
-        mip_info.size *= mip_d * resources.layers;
+        const auto mip_bytes = GuestMipSize(slice_bytes, mip_d, resources.layers, guest_size);
+        if (!mip_bytes) {
+            reject_layout(mip, slice_bytes, mip_d);
+        }
+        mip_info.size = *mip_bytes;
         mip_info.offset = guest_size;
         guest_size += mip_info.size;
     }

@@ -9,3 +9,12 @@ and the applicable source and dependency notices when redistributing.
 These credits identify the origin of reused software. They do not establish
 compatibility, endorsement, or ownership of The Order: 1886 game content.
 The portable package excludes extracted game artwork and game archives.
+
+The optional experimental timing recipe derives from illusion's published
+The Order 1886 patch in PS-Game-Patch, commit
+3ad781ad8748139d2ca5e6c3b018d0063b8aa1a3:
+https://github.com/illusionyy/PS-Game-Patch/blob/3ad781ad8748139d2ca5e6c3b018d0063b8aa1a3/patches/xml/TheOrder1886-Orbis.xml
+That source declares app version 01.02 and warns of QTE softlocks in Chapters
+6 and 9. This project's opt-in recipe separately verifies the exact current
+executable hashes and instruction before changing a derived prepared image.
+It does not modify original game files or establish stable 60 FPS gameplay.

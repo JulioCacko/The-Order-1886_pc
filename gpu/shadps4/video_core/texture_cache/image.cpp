@@ -6,6 +6,7 @@
 #include "common/assert.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
+#include "video_core/renderer_vulkan/vk_image_bounds.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/texture_cache/blit_helper.h"
@@ -179,14 +180,15 @@ Image::Image(const Vulkan::Instance& instance, Vulkan::Runtime& runtime_,
             format_info.usage = usage_flags;
         }
     }
-    if (image_format_properties.result == vk::Result::eErrorFormatNotSupported) {
-        LOG_ERROR(Render_Vulkan, "image format {} type {} is not supported (flags {}, usage {})",
-                  vk::to_string(supported_format), vk::to_string(format_info.type),
-                  vk::to_string(format_info.flags), vk::to_string(format_info.usage));
+    if (image_format_properties.result != vk::Result::eSuccess) {
+        UNREACHABLE_MSG("Image format query failed: address={:#x} format={} type={} flags={} "
+                        "usage={} result={}",
+                        info.guest_address, vk::to_string(supported_format),
+                        vk::to_string(format_info.type), vk::to_string(format_info.flags),
+                        vk::to_string(format_info.usage), vk::to_string(image_format_properties.result));
     }
-    supported_samples = image_format_properties.result == vk::Result::eSuccess
-                            ? image_format_properties.value.imageFormatProperties.sampleCounts
-                            : vk::SampleCountFlagBits::e1;
+    const auto& format_limits = image_format_properties.value.imageFormatProperties;
+    supported_samples = format_limits.sampleCounts;
 
     const vk::ImageCreateInfo image_ci = {
         .flags = flags,
@@ -204,6 +206,39 @@ Image::Image(const Vulkan::Instance& instance, Vulkan::Runtime& runtime_,
         .usage = usage_flags,
         .initialLayout = vk::ImageLayout::eUndefined,
     };
+
+    if (!ImageFitsFormatLimits(image_ci, format_limits)) {
+        UNREACHABLE_MSG("Image exceeds device format limits: address={:#x} format={} "
+                        "extent={}x{}x{} max_extent={}x{}x{} levels={}/{} layers={}/{} samples={}",
+                        info.guest_address, vk::to_string(supported_format), image_ci.extent.width,
+                        image_ci.extent.height, image_ci.extent.depth, format_limits.maxExtent.width,
+                        format_limits.maxExtent.height, format_limits.maxExtent.depth,
+                        image_ci.mipLevels, format_limits.maxMipLevels, image_ci.arrayLayers,
+                        format_limits.maxArrayLayers, vk::to_string(image_ci.samples));
+    }
+    vk::DeviceSize required_bytes = 0;
+    const auto device = instance.GetDevice();
+    if (instance.IsMaintenance4Supported()) {
+        required_bytes = device.getImageMemoryRequirements(vk::DeviceImageMemoryRequirements{
+            .pCreateInfo = &image_ci,
+        }).memoryRequirements.size;
+    } else {
+        // Query the actual host allocation requirement without allocating or binding memory.
+        // The temporary image is needed only on devices without maintenance4.
+        const auto probe = device.createImage(image_ci);
+        if (probe.result != vk::Result::eSuccess) {
+            UNREACHABLE_MSG("Image memory-requirement probe failed: address={:#x} result={}",
+                            info.guest_address, vk::to_string(probe.result));
+        }
+        required_bytes = device.getImageMemoryRequirements(probe.value).size;
+        device.destroyImage(probe.value);
+    }
+    if (required_bytes > format_limits.maxResourceSize) {
+        UNREACHABLE_MSG("Image exceeds device resource size: address={:#x} format={} "
+                        "required_bytes={} max_resource_bytes={}",
+                        info.guest_address, vk::to_string(supported_format), required_bytes,
+                        format_limits.maxResourceSize);
+    }
 
     backing = &backing_images.emplace_back();
     backing->num_samples = info.num_samples;

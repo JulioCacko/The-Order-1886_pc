@@ -22,7 +22,7 @@ struct ImageBindingContract {
 
 inline ImageBindingContract MakeImageBindingContract(const Shader::ImageResource& resource,
                                                     const AmdGpu::Image& sharp) {
-    return {resource.is_written, resource.NumBindingsFromSharp(sharp)};
+    return {resource.is_written, resource.NumBindings(sharp)};
 }
 
 } // namespace Vulkan

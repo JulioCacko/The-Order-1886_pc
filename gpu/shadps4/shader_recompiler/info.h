@@ -8,6 +8,7 @@
 #include <boost/container/static_vector.hpp>
 #include "common/assert.h"
 #include "common/types.h"
+#include "core/memory.h"
 #include "shader_recompiler/backend/bindings.h"
 #include "shader_recompiler/frontend/copy_shader.h"
 #include "shader_recompiler/frontend/tessellation.h"
@@ -193,6 +194,11 @@ struct Info : InfoPersistent {
             return {snapshot->flat, snapshot->flat_size};
         }
         return flattened_ud_buf;
+    }
+
+    bool IsImageBaseMapped(VAddr address) const {
+        auto* memory = Core::Memory::Instance();
+        return memory->IsValidGpuMapping(address, 0) && memory->ClampRangeSize(address, 1) == 1;
     }
 
     VAddr ProgramBase() const noexcept {

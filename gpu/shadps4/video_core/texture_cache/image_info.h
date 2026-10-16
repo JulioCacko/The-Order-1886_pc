@@ -56,7 +56,8 @@ struct ImageInfo {
     s32 SliceOf(const ImageInfo& info, s32 mip) const;
 
     bool IsCompatible(const ImageInfo& info) const;
-    void UpdateSize();
+    void UpdateSize(const AmdGpu::Image* source_image = nullptr,
+                    const Shader::ImageResource* source_desc = nullptr);
 
     struct {
         VAddr cmask_addr;

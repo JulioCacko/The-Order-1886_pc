@@ -825,10 +825,12 @@ void Presenter::PresentLoadingFrame() {
     info.AddWait(swapchain.GetImageAcquiredSemaphore());
     info.AddSignal(swapchain.GetPresentReadySemaphore());
     present_scheduler.Flush(info);
+    bool presented = false;
     {
         std::scoped_lock submit_lock{Scheduler::submit_mutex};
-        swapchain.Present();
+        presented = swapchain.Present();
     }
+    if (presented) Ps4Overlay::OnPresented(true);
     // A few frames a second during start-up: waiting keeps semaphores and the swapchain simple.
     present_scheduler.Finish();
 }
@@ -996,12 +998,15 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
     scheduler.Flush(info);
 
     // Present to swapchain.
+    bool presented = false;
     {
         std::scoped_lock submit_lock{Scheduler::submit_mutex};
-        if (!swapchain.Present() && window.GetWidth() != 0 && window.GetHeight() != 0) {
+        presented = swapchain.Present();
+        if (!presented && window.GetWidth() != 0 && window.GetHeight() != 0) {
             swapchain.Recreate(window.GetWidth(), window.GetHeight());
         }
     }
+    if (presented) Ps4Overlay::OnPresented(false);
 
     free_frame();
     if (!is_reusing_frame && is_game_frame) {

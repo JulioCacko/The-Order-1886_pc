@@ -27,10 +27,45 @@ enum Item : unsigned {
     Vram = 1u << 6,
     AllItems = (1u << 7) - 1,
 };
-inline constexpr unsigned DefaultItems = Fps | FrameTime | Upscaler;
+inline constexpr unsigned DefaultItems = Fps | FrameTime | Cpu | Ram;
+
+struct PresentationMetrics {
+    float fps = -1.0f, interval_ms = -1.0f;
+    bool loading = false;
+};
+
+// Successful host presentation intervals, including stalls. UI visibility does not
+// affect collection, and loading-screen presents do not contaminate game presents.
+class PresentationCounter {
+public:
+    void Present(uint64_t now_ns, bool loading) {
+        if (!seen || loading != metrics.loading || now_ns <= last_ns) {
+            seen = true;
+            last_ns = now_ns;
+            elapsed_ns = intervals = 0;
+            metrics = {.loading = loading};
+            return;
+        }
+        elapsed_ns += now_ns - last_ns;
+        last_ns = now_ns;
+        ++intervals;
+        if (elapsed_ns >= 500'000'000) {
+            metrics.fps = float(double(intervals) * 1'000'000'000.0 / double(elapsed_ns));
+            metrics.interval_ms = float(double(elapsed_ns) / (double(intervals) * 1'000'000.0));
+            elapsed_ns = intervals = 0;
+        }
+    }
+
+    PresentationMetrics Latest() const { return metrics; }
+
+private:
+    bool seen = false;
+    uint64_t last_ns{}, elapsed_ns{}, intervals{};
+    PresentationMetrics metrics;
+};
 
 struct Sample {
-    float fps = 0.0f, frame_ms = 0.0f;
+    float fps = -1.0f, frame_ms = -1.0f;
     std::string upscaler;
     std::string gpu_name;
     float gpu_percent = -1.0f, cpu_percent = -1.0f;
@@ -65,11 +100,13 @@ inline std::string Format(const Sample& s, unsigned mask, bool row) {
         }
     };
     if (mask & Fps) {
-        std::snprintf(part, sizeof(part), "%.0f FPS", s.fps);
+        if (s.fps < 0.0f) std::snprintf(part, sizeof(part), "Presentation FPS n/a");
+        else std::snprintf(part, sizeof(part), "Presentation %.1f FPS", s.fps);
         add();
     }
     if (mask & FrameTime) {
-        std::snprintf(part, sizeof(part), "%.1f ms", s.frame_ms);
+        if (s.frame_ms < 0.0f) std::snprintf(part, sizeof(part), "Present interval n/a");
+        else std::snprintf(part, sizeof(part), "Present interval %.1f ms", s.frame_ms);
         add();
     }
     if (mask & Upscaler) {
@@ -87,14 +124,15 @@ inline std::string Format(const Sample& s, unsigned mask, bool row) {
     }
     if (mask & Cpu) {
         if (s.cpu_percent < 0.0f) {
-            std::snprintf(part, sizeof(part), "CPU n/a");
+            std::snprintf(part, sizeof(part), "Process CPU n/a");
         } else {
-            std::snprintf(part, sizeof(part), "CPU %.0f%%", s.cpu_percent);
+            std::snprintf(part, sizeof(part), "Process CPU %.0f%%", s.cpu_percent);
         }
         add();
     }
     if (mask & Ram) {
-        pair(part, sizeof(part), "RAM", s.ram_used_gb, s.ram_total_gb);
+        if (s.ram_used_gb < 0.0) std::snprintf(part, sizeof(part), "Process RAM n/a");
+        else std::snprintf(part, sizeof(part), "Process RAM %.1f GiB", s.ram_used_gb);
         add();
     }
     if (mask & Vram) {
@@ -105,7 +143,7 @@ inline std::string Format(const Sample& s, unsigned mask, bool row) {
 }
 
 /// Starts the sampling thread the first time; later calls do nothing.
-void Start(const Vulkan::Instance& instance);
+void Start(const Vulkan::Instance& instance, unsigned items = DefaultItems);
 /// The latest CPU, RAM, GPU and VRAM values (the caller fills FPS, frametime and upscaler).
 Sample Latest();
 

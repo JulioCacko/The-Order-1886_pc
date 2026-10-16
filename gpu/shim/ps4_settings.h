@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include "ps4_perf_stats.h"
 
 namespace Ps4Settings {
 
@@ -38,12 +39,12 @@ struct Values {
     std::atomic<float> reactive_threshold{0.2f};
     std::atomic<float> reactive_max{0.9f};
     std::atomic<int> debug_view{DebugNone};
-    std::atomic<bool> show_fps{false};
+    std::atomic<bool> show_fps{true};
     /// Performance overlay (ps4_perf_stats.h): items shown, font size and background opacity
     /// in percent, corner (0 top left, 1 top right, 2 bottom left, 3 bottom right), layout
     /// (0 one line, 1 one item per line). menu_tab: the menu's last tab.
-    std::atomic<unsigned> overlay_items{7};
-    std::atomic<int> overlay_scale{100}, overlay_corner{1}, overlay_opacity{50}, overlay_layout{0};
+    std::atomic<unsigned> overlay_items{Ps4PerfStats::DefaultItems};
+    std::atomic<int> overlay_scale{100}, overlay_corner{1}, overlay_opacity{50}, overlay_layout{1};
     std::atomic<int> menu_tab{0};
     /// The game's code reads these floats directly.
     // Graphics (ps4_graphics.h). Live: applied on the next frame.

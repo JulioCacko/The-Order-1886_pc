@@ -25,6 +25,10 @@ def main():
     parser.add_argument('--dump-shaders', action='store_true')
     parser.add_argument('--dump-frame', action='store_true')
     parser.add_argument('--frame-delay', type=float, default=0, help='Seconds after launch before requesting a frame')
+    parser.add_argument('--display-mode', choices=['windowed', 'borderless', 'fullscreen'], default='windowed')
+    parser.add_argument('--presentation-filter', choices=['linear', 'fsr1'], default='fsr1')
+    parser.add_argument('--frame-rate', type=int, choices=[30, 60], default=30)
+    parser.add_argument('--show-fps', action='store_true')
     args = parser.parse_args()
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error('--timeout must be finite and positive')
@@ -42,8 +46,10 @@ def main():
         parser.error('Build the dedicated Order runtime first')
     user.mkdir(parents=True, exist_ok=True)
     with order.session_lock(user):
-        prepared = order.prepare_game(game, user / 'prepared')
-        settings = {'display_mode': 'windowed', 'vsync': True, 'show_fps': False}
+        prepared = order.prepare_game(game, user / 'prepared', frame_rate=args.frame_rate)
+        settings = {'display_mode': args.display_mode, 'vsync': True,
+                    'show_fps': args.show_fps, 'presentation_filter': args.presentation_filter,
+                    'frame_rate': args.frame_rate}
         order.write_runtime_config(user, settings)
         order.save_backup.backup(user)
         output.mkdir(parents=True)
@@ -73,7 +79,8 @@ def main():
                   'started_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
                   'game': str(game), 'game_metadata': {key: metadata.get(key) for key in
                     ('TITLE', 'TITLE_ID', 'APP_VER', 'VERSION', 'INSTALL_DIR_SAVEDATA', 'SYSTEM_VER')},
-                  'image_sha256': prepared['image_sha256'], 'command': command,
+                  'image_sha256': prepared['image_sha256'],
+                  'frame_rate_profile': prepared.get('frame_rate_profile'), 'command': command,
                   'log': str(log), 'settings': settings, 'cache_state': 'new isolated cold cache',
                   'frame_capture_delay_seconds': args.frame_delay,
                   'runtime_environment': {k: v for k, v in env.items() if k.startswith('ORDER1886_')},

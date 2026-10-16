@@ -36,6 +36,10 @@ void SetBackgroundLoading(u32 done, u32 total);
 /// Whether anything is drawn this frame (menu open or FPS counter on).
 bool Visible();
 
+/// Successful host swapchain presentation, including when the panel is hidden.
+/// This measures presentation cadence, not guest simulation or gameplay FPS.
+void OnPresented(bool loading_frame);
+
 /// Any thread: a short message in the lower right corner (a saved screenshot).
 void ShowNotice(const std::string& text, int milliseconds = 3000);
 

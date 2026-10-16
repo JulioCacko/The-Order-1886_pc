@@ -1,8 +1,14 @@
 # The Order: 1886 runtime status
 
-Updated 16 October 2026. This is emulator-backed compatibility software running the original PS4 executable. The final native build and portable package render the original intro, then stop on an unsupported FMask descriptor. A functional menu and interactive gameplay have not been established.
+Current development: the agreed [4K/60 acceptance and timing profile](order1886-4k60-verification.md) preserve the original scene detail and use FSR1 for 4K output. The 60 FPS recipe is hash-guarded and opt-in; returning to 30 restores the derived native image. Original game files are preserved.
 
-## Final build and gates
+The latest verified source runtime is `e361df5d80edaa477899b7bbab8923831308535d7aeb7841f2418ec8b5f4188b`, with shader binary/meta/key versions 12/9/7. Build and eight native checks pass (`out/order1886-evidence/image-bounds-build-tests.log`). The cold 4K/FSR1/30 run in `user/order1886/diagnostics/image-bounds-4k-cold` exits explicitly with code 23 after 27.636 seconds at `ReadConst pointer outside GPU address space`. Its 149 dumped SPIR-V modules validate; the FSR output-layout callback does not recur. Two integer-filter callbacks remain. The oversized descriptor from the preceding run was not reached, so actual guard intervention remains unverified. Menu, gameplay and the 30-minute performance target remain unverified.
+
+The last packaged launcher/overlay update is documented in [launcher recovery and verification](order1886-launcher-recovery.md), runtime `ca415f6a...`. It fixes invalid-console result reporting and adds the presentation performance panel and F9 toggle. The remaining build/package details below preserve the earlier `917a` historical baseline and do not identify the current source build.
+
+Updated 16 October 2026. This is emulator-backed compatibility software running the original PS4 executable.
+
+## Historical build and gates
 
 - Runtime: `out/order1886-runtime.exe`.
 - SHA256: `917a09caa5839844a76295279f6d9cd7d3fdf696d580cd261e2c00c49331bc85`.

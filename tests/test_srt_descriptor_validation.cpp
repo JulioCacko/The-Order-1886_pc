@@ -8,6 +8,7 @@
 #include <string_view>
 #include <memory>
 #include <vector>
+#include <set>
 #ifdef _WIN32
 #include <process.h>
 #else
@@ -33,6 +34,16 @@ void Write(std::string_view, Level, const char*, int, const char*, std::string&&
 void assert_fail_impl() { std::_Exit(86); }
 [[noreturn]] void unreachable_impl() { std::_Exit(86); }
 
+static std::set<VAddr> mapped_image_bases{0x123400};
+static u64 image_mapping_queries{};
+namespace Core {
+u64 MemoryManager::ClampRangeSize(VAddr address, u64 size) {
+    ++image_mapping_queries;
+    assert(size == 1); // Image eligibility checks only its base, not a full sparse range.
+    return mapped_image_bases.contains(address) ? size : 0;
+}
+}
+
 struct DescriptorInfo {
     // Backing storage exceeds the exposed span so the OOB fixture is safe even
     // against the old implementation; index 16 must still be rejected logically.
@@ -42,6 +53,10 @@ struct DescriptorInfo {
     std::string_view hw_stage = "cpu-fixture";
     std::span<const u32> FlatUserData() const { return {storage.data(), exposed}; }
     u64 ProgramBase() const { return 0; }
+    bool IsImageBaseMapped(VAddr address) const {
+        auto* memory = Core::Memory::Instance();
+        return memory->IsValidGpuMapping(address, 0) && memory->ClampRangeSize(address, 1) == 1;
+    }
 };
 
 static AmdGpu::Image MakeImage() {
@@ -320,6 +335,78 @@ static bool CheckFmaskIdentityComponents() {
     return true;
 }
 
+static bool CheckUnmappedImagePolicy() {
+    // Exact malformed descriptor captured in srt-failure-context-1: address 0x1000,
+    // FMask-looking format46/number1 and reserved selector3. It is not a real FMask.
+    const std::array<u32,8> captured{0x00000010,0x86e575c0,0x00000010,0x86e57590,
+                                    0x00000010,0x0224ce40,0x00000000,0x00008008};
+    DescriptorInfo data;
+    auto resource = ImageBinding(data);
+    std::memcpy(data.storage.data(), captured.data(), sizeof(captured));
+    const auto original_fetch = resource.sharp_fetch;
+    const auto null = resource.GetSharp(data);
+    AmdGpu::Image original;
+    assert(resource.Fetch(data.storage.data(), &original));
+    if (!Check(original.Address() == 0x1000 && null.Address() == 0 &&
+                   !AmdGpu::IsFmask(null.GetDataFmt()) && resource.sharp_fetch == original_fetch &&
+                   std::memcmp(data.storage.data(), captured.data(), sizeof(captured)) == 0,
+               "unmapped malformed T# becomes local null before FMask classification")) return false;
+
+    auto valid = MakeImage();
+    valid.base_address = 0x10;
+    valid.data_format = u64(AmdGpu::DataFormat::FormatFmask8_S2_F1);
+    valid.num_format = u64(AmdGpu::NumberFormat::Uint);
+    valid.dst_sel_x = valid.dst_sel_y = valid.dst_sel_z = valid.dst_sel_w =
+        u64(AmdGpu::CompSwizzle::Red);
+    Shader::Info info;
+    info.flattened_ud_buf.resize(8);
+    std::memcpy(info.flattened_ud_buf.data(), &valid, sizeof(valid));
+    info.images.push_back(resource);
+    const auto key = [&] {
+        Shader::StageSpecialization result;
+        result.info = &info;
+        u32 binding{};
+        result.ForEachSharp(binding, result.images, info.images,
+                            [](auto& spec, const auto& desc, AmdGpu::Image sharp) {
+                                spec = Shader::StageSpecialization::DescribeImage(desc, sharp);
+                            });
+        return result;
+    };
+    const auto unmapped = key();
+    mapped_image_bases.insert(0x1000);
+    const auto mapped = key();
+    const auto retried = info.images[0].GetSharp(info);
+    if (!Check(retried.Address() == 0x1000 && AmdGpu::IsFmask(retried.GetDataFmt()) &&
+                   !(unmapped == mapped) && !(mapped == unmapped),
+               "later mapped descriptor is retried and changes specialization")) return false;
+    mapped_image_bases.erase(0x1000);
+
+    // A previously compiled three-binding layout remains three bindings during cache
+    // warmup, even with no VMAs. Live specialization still sees current descriptor shape.
+    auto& array = info.images[0];
+    array.is_written = true;
+    array.mip_fallback_mode = Shader::MipStorageFallbackMode::DynamicIndex;
+    array.declared_binding_count = 3;
+    valid.data_format = u64(AmdGpu::DataFormat::Format8_8_8_8);
+    valid.num_format = u64(AmdGpu::NumberFormat::Unorm);
+    valid.base_level = 1; valid.last_level = 3;
+    std::memcpy(info.flattened_ud_buf.data(), &valid, sizeof(valid));
+    const auto before_layout = image_mapping_queries;
+    if (!Check(array.NumBindings(info) == 3 && image_mapping_queries == before_layout,
+               "cache warm layout uses immutable count without guest mapping")) return false;
+    auto contract = Vulkan::MakeImageBindingContract(array, array.GetSharp(info));
+    if (!Check(contract.storage && contract.count == 3,
+               "early-null storage binding retains declared array count")) return false;
+    const auto no_vma = key();
+    mapped_image_bases.insert(0x1000);
+    const auto with_vma = key();
+    if (!Check(no_vma.images[0].num_bindings == 1 && with_vma.images[0].num_bindings == 3 &&
+                   !(no_vma == with_vma) && !(with_vma == no_vma),
+               "live specialization uses current count instead of frozen layout count")) return false;
+    mapped_image_bases.erase(0x1000);
+    return true;
+}
+
 int main(int argc, char** argv) {
     if (argc > 1) return ChildCase(argv[1]);
     if (!CheckImageLayerCounts()) return 1;
@@ -327,6 +414,7 @@ int main(int argc, char** argv) {
     if (!CheckPermutationMetadata()) return 1;
     if (!CheckSpecializationLayoutKeys()) return 1;
     if (!CheckFmaskIdentityComponents()) return 1;
+    if (!CheckUnmappedImagePolicy()) return 1;
     DescriptorInfo info;
     auto resource = ImageBinding(info);
     // Register zero is a valid source; it must not be confused with an absent

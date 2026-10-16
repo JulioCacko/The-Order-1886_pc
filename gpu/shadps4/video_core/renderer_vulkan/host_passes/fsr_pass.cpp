@@ -180,7 +180,7 @@ vk::ImageView FsrPass::Render(vk::CommandBuffer cmdbuf, vk::ImageView input,
             .dstAccessMask = vk::AccessFlagBits2::eShaderWrite,
             .oldLayout = vk::ImageLayout::eUndefined,
             .newLayout = vk::ImageLayout::eGeneral,
-            .image = img.intermediary_image,
+            .image = settings.use_rcas ? img.intermediary_image : img.output_image,
             .subresourceRange = simple_subresource,
         },
     };

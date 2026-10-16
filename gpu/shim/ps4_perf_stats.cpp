@@ -2,6 +2,8 @@
 #include "ps4_perf_stats.h"
 
 #include <chrono>
+#include <atomic>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -21,6 +23,7 @@ namespace {
 std::mutex mutex;
 Sample latest;
 std::once_flag started;
+std::atomic<unsigned> requested_items{DefaultItems};
 
 #ifdef _WIN32
 uint64_t Ticks(const FILETIME& time) {
@@ -80,18 +83,20 @@ private:
 };
 
 void Run(const Vulkan::Instance* instance) {
-    GpuUsage gpu;
-    FILETIME created, ended, kernel, user, now;
+    std::unique_ptr<GpuUsage> gpu;
+    FILETIME created, ended, kernel, user;
     uint64_t last_process = 0, last_wall = 0;
     const unsigned cores = std::max(1u, std::thread::hardware_concurrency());
     constexpr double GiB = 1024.0 * 1024.0 * 1024.0;
     while (true) {
         Sample s;
-        s.gpu_name = std::string(instance->GetModelName());
-        GetSystemTimeAsFileTime(&now);
+        const unsigned items = requested_items.load(std::memory_order_relaxed);
+        if (items & (Gpu | Vram)) s.gpu_name = std::string(instance->GetModelName());
         if (GetProcessTimes(GetCurrentProcess(), &created, &ended, &kernel, &user)) {
-            const uint64_t process = Ticks(kernel) + Ticks(user), wall = Ticks(now);
-            if (last_wall) {
+            const uint64_t process = Ticks(kernel) + Ticks(user);
+            const uint64_t wall = uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count()) / 100;
+            if (last_wall && wall > last_wall && process >= last_process) {
                 s.cpu_percent = CpuPercent(process - last_process, wall - last_wall, cores);
             }
             last_process = process;
@@ -105,11 +110,14 @@ void Run(const Vulkan::Instance* instance) {
         if (GlobalMemoryStatusEx(&system)) {
             s.ram_total_gb = double(system.ullTotalPhys) / GiB;
         }
-        if (instance->CanReportMemoryUsage()) {
+        if ((items & Vram) && instance->CanReportMemoryUsage()) {
             s.vram_used_gb = double(instance->GetDeviceMemoryUsage()) / GiB;
             s.vram_total_gb = double(instance->GetDeviceMemoryBudgetNow()) / GiB;
         }
-        s.gpu_percent = gpu.Percent();
+        if (items & Gpu) {
+            if (!gpu) gpu = std::make_unique<GpuUsage>();
+            s.gpu_percent = gpu->Percent();
+        }
         {
             std::scoped_lock lock{mutex};
             latest = std::move(s);
@@ -133,7 +141,8 @@ void Run(const Vulkan::Instance* instance) {
 
 } // namespace
 
-void Start(const Vulkan::Instance& instance) {
+void Start(const Vulkan::Instance& instance, unsigned items) {
+    requested_items.store(items, std::memory_order_relaxed);
     // ponytail: never joined; a thread that ended while the game ran crashed in ntdll
     // (vk_pipeline_serialization.cpp, StopWarmUp). It sleeps between samples.
     std::call_once(started, [&] { std::thread(Run, &instance).detach(); });

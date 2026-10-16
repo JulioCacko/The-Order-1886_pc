@@ -240,7 +240,7 @@ void EmitContext::DefineBufferProperties() {
         auto& buffer = buffers[i];
         const auto& desc = info.buffers[i];
         const u32 binding = buffer.binding;
-        if (buffer.buffer_type != BufferType::Guest) {
+        if (buffer.buffer_type != BufferType::Guest && buffer.buffer_type != BufferType::ReadConst) {
             continue;
         }
 
