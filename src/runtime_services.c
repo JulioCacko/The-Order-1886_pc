@@ -6,7 +6,7 @@
  * Every entry here is an explicit contract; unknown functions still stop. */
 #define _GNU_SOURCE
 #include "runtime.h"
-#include "gpu/gow3gpu.h"
+#include "gpu/ps4gpu.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,7 +71,7 @@ static ABI int32_t user_event(int32_t *event) {
 }
 
 /* ---- SystemService ---- */
-static int language(void) { const char *v=getenv("GOW3_LANGUAGE"); return v ? atoi(v) : 1; }
+static int language(void) { const char *v=getenv("ORDER1886_LANGUAGE"); return v ? atoi(v) : 1; }
 static ABI int32_t system_param(int32_t id,int32_t *value) {
     if (!value) return SYSTEM_PARAMETER;
     switch (id) {
@@ -305,7 +305,7 @@ static ABI int32_t save_open(const unsigned char *p) {
     }
     uint32_t type; memcpy(&type,p+56,4);
     const char *title=type==1 ? "Save game" : type==2 ? "Load game" : "Delete save";
-    if (!n || !gow3gpu_choice_begin(title,labels,icons,n,0)) {
+    if (!n || !ps4gpu_choice_begin(title,labels,icons,n,0)) {
         printf("Runtime: SaveDataDialog list (%s): %s\n",title,n ? "no window, cancelled" : "no saves, cancelled");
         save_dialog.result=SAVE_RESULT_CANCELED;
         dialogs[2].status=DIALOG_FINISHED; dialogs[2].button=0;
@@ -318,7 +318,7 @@ static ABI int32_t save_open(const unsigned char *p) {
 }
 static ABI int32_t save_status(void) {
     if (save_dialog.choosing) {
-        int choice=gow3gpu_choice_poll();
+        int choice=ps4gpu_choice_poll();
         if (choice!=-1) {
             save_dialog.choosing=0;
             dialogs[2].status=DIALOG_FINISHED;
@@ -356,6 +356,27 @@ static ABI int32_t save_result(unsigned char *out) {
 }
 static ABI int32_t save_ready(void) { return 1; }
 static ABI int32_t profile_result(void *result) { if (result) memset(result,0,4); return 0; }
+typedef struct {
+    uint32_t option;
+    unsigned char reserved1[4];
+    void *argument;
+    void (ABI *handler)(void *,const void *);
+    unsigned char reserved2[8];
+} ImeKeyboardParam;
+static ABI int32_t ime_keyboard_open(int32_t user,const ImeKeyboardParam *param) {
+    if (!param) return (int32_t)0x80BC0031; /* INVALID_ADDRESS */
+    if (!param->handler) return (int32_t)0x80BC0022; /* INVALID_HANDLER */
+    if (param->option & ~UINT32_C(63)) return (int32_t)0x80BC0015; /* INVALID_OPTION */
+    if (user!=USER_ID) return (int32_t)0x80BC0010; /* INVALID_USER_ID */
+    for (size_t i=0;i<sizeof(param->reserved1);++i)
+        if (param->reserved1[i]) return (int32_t)0x80BC0032; /* INVALID_RESERVED */
+    for (size_t i=0;i<sizeof(param->reserved2);++i)
+        if (param->reserved2[i]) return (int32_t)0x80BC0032;
+    /* shortcut: no PS4 USB keyboard device, add a backend before accepting a listener. */
+    note("IME USB keyboard unavailable (CONNECTION_FAILED); SDL pad keyboard remains available");
+    return (int32_t)0x80BC0004;
+}
+
 /* ImeDialog: text typed on the keyboard into the game window (title bar shows it).
  * OrbisImeDialogParam: user, type, languages(8), enter label, method, filter,
  * option, max length, char16 buffer, position, alignment, placeholder, title. */
@@ -404,19 +425,19 @@ static ABI int32_t ime_init(const ImeParam *param, const void *extended) {
     char initial[512], prompt[256];
     utf16_to_utf8(param->buffer,param->max_length,initial,sizeof(initial));
     utf16_to_utf8(param->title,128,prompt,sizeof(prompt));
-    const char *preset=getenv("GOW3_IME_TEXT");
+    const char *preset=getenv("ORDER1886_IME_TEXT");
     if (preset) { ime_complete(0,preset); return 0; }
     /* An empty field starts with the user name: a controller alone can accept it (the port
      * has no on-screen keyboard). */
     const char *start=initial[0] ? initial : USER_NAME;
-    if (!gow3gpu_text_input_begin(start,prompt[0] ? prompt : "Text")) ime_complete(0,start);
+    if (!ps4gpu_text_input_begin(start,prompt[0] ? prompt : "Text")) ime_complete(0,start);
     else printf("Runtime: ImeDialog opened: shown on screen; keyboard Enter or Cross accepts, Esc or Circle cancels\n");
     return 0;
 }
 static ABI int32_t ime_status(void) {
     if (ime.running) {
         char text[512];
-        int state=gow3gpu_text_input_poll(text,sizeof(text));
+        int state=ps4gpu_text_input_poll(text,sizeof(text));
         if (state) ime_complete(state==1 ? 0 : 1,text);
     }
     return ime.running ? 1 : ime.finished ? 2 : 0; /* Running / Finished / None */
@@ -655,6 +676,7 @@ static const RuntimeExport exports[]={
     {"sceNpCommerceDialogUpdateStatus",commerce_status}, {"sceNpCommerceDialogTerminate",commerce_term},
     {"sceImeDialogInit",ime_init}, {"sceImeDialogGetStatus",ime_status}, {"sceImeDialogGetResult",ime_result},
     {"sceImeDialogTerm",ime_term}, {"sceImeDialogAbort",ime_term},
+    {"sceImeKeyboardOpen",ime_keyboard_open},
     {"sceNpTrophyCreateContext",trophy_context}, {"sceNpTrophyCreateHandle",trophy_handle},
     {"sceNpTrophyRegisterContext",trophy_register}, {"sceNpTrophyUnlockTrophy",trophy_unlock},
     {"sceNpTrophyGetGameInfo",trophy_game_info}, {"sceNpTrophyGetTrophyInfo",trophy_info},

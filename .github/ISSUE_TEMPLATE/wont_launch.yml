@@ -12,8 +12,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Port version
-      placeholder: v2.1.7
+      label: Runtime build SHA256
+      placeholder: SHA256 from bin/runtime-build.json or out/runtime-build.json
     validations:
       required: true
 
@@ -21,7 +21,7 @@ body:
     id: game_version
     attributes:
       label: Game build / update version
-      description: e.g. 01.00, 01.02, region (CUSA01623, CUSA01715, CUSA01740...)
+      description: Copy TITLE_ID, APP_VER and VERSION from the Order diagnostics (for example CUSA00076).
     validations:
       required: true
 
@@ -44,7 +44,7 @@ body:
   - type: textarea
     id: log
     attributes:
-      label: user/last_run.log
+      label: Runtime record and log under user/order1886/logs
       description: Attach the file from the port's folder.
     validations:
       required: true

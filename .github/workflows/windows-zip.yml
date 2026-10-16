@@ -1,23 +1,16 @@
-# Windows package: built with MSYS2 CLANG64 and a python.org-style Python (packaging/windows/README.md),
-# then opened on a clean runner without MSYS2 before it is published. Run by hand
-# (Actions > Windows zip > Run workflow), on the branch to build:
-#   - no tag: build and test only (the zip is kept as a workflow artifact).
-#   - tag of an existing release (e.g. windows-v2.3.0): the zip replaces the one attached to it.
-#   - new tag (e.g. windows-v2.3.1-test1): test build, published as a pre-release on that commit.
-name: Windows zip
+# Manual experimental Order build and artifact validation. This revision's CI
+# remains unverified until it has completed on GitHub Actions. These jobs do
+# not require or bundle game content; host/package smoke does not establish gameplay.
+name: The Order 1886 experimental Windows package
 
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Release to attach the zip to; a new tag makes a test pre-release. Empty builds only.
-        required: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: windows-zip-${{ inputs.tag || github.ref }}
+  group: order1886-windows-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,75 +21,128 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      # The runner's Git turns LF into CRLF, and the FSR-Vulkan patches then no longer apply.
-      - name: Keep LF line endings
+      - name: Keep source line endings and support long paths
         shell: pwsh
-        run: git config --global core.autocrlf false
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
-      # The runner's C:/msys64, where msys2-env.sh and package.sh look for the CLANG64 DLLs.
+          submodules: false
+      - name: Initialize only required native dependencies
+        shell: pwsh
+        run: |
+          git submodule update --init --recursive -- `
+            gpu/third_party/imgui gpu/third_party/magic_enum `
+            gpu/third_party/miniz gpu/third_party/xbyak third_party/LibAtrac9
+          if ($LASTEXITCODE) { throw 'Required native submodule checkout failed.' }
       - uses: msys2/setup-msys2@v2
         with:
           msystem: CLANG64
           release: false
           update: true
-          install: git patch
+          install: git
           pacboy: >-
             toolchain:p cmake:p ninja:p pkgconf:p python:p
             vulkan-headers:p vulkan-loader:p vulkan-memory-allocator:p glslang:p
             sdl3:p fmt:p boost:p robin-map:p xxhash:p ffmpeg:p zydis:p
             spirv-tools:p spirv-headers:p spirv-cross:p
-      - name: Build
-        run: bash build.sh
-      # Freezes the launcher; this Python ships Tk, as the python.org one does. Set up after the
-      # build so its Python_ROOT_DIR and PKG_CONFIG_PATH do not reach CMake.
+      - name: Build the Order native runtime and run five CPU checks
+        run: |
+          set -euo pipefail
+          export MSYS2_ROOT="$(cygpath -u "$(cygpath -w /)")"
+          mkdir -p out
+          bash build.sh --test 2>&1 | tee out/order1886-native-build-and-cpu-tests.log
+          pacman -Q > out/ci-msys2-packages.txt
+          printf 'ORDER_RUNTIME_DLL_ROOT=%s\n' "$(cygpath -w /clang64/bin)" >> "$(cygpath -u "$GITHUB_ENV")"
       - uses: actions/setup-python@v5
         id: python
         with:
           python-version: '3.13'
-      - name: Package
-        env:
-          PYTHON_EXE: ${{ steps.python.outputs.python-path }}
+      - name: Build the experimental portable package
+        id: package
+        shell: pwsh
         run: |
-          WINPYTHON=$(cygpath -u "$PYTHON_EXE") bash packaging/windows/package.sh
-          cd dist && sha256sum -b gow3-windows.zip > gow3-windows.zip.sha256
+          & ./packaging/windows/order1886-build.ps1 `
+            -Python '${{ steps.python.outputs.python-path }}' `
+            -Runtime './out/order1886-runtime.exe' `
+            -DependencyRoot $env:ORDER_RUNTIME_DLL_ROOT
+          if ($LASTEXITCODE) { throw 'Order package build failed.' }
+          $archive = Get-ChildItem -LiteralPath dist/order1886 -Filter order1886-windows.zip -File -Recurse |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if (-not $archive) { throw 'The package builder did not produce its portable archive.' }
+          $buildPython = './out/order1886-pyenv/Scripts/python.exe'
+          & $buildPython -c 'import hashlib,pathlib,sys; p=pathlib.Path(sys.argv[1]); digest=hashlib.file_digest(p.open("rb"),"sha256").hexdigest(); pathlib.Path(str(p)+".sha256").write_text(digest+"  "+p.name+"\n",encoding="utf-8")' $archive.FullName
+          if ($LASTEXITCODE) { throw 'Archive checksum creation failed.' }
+          "archive=$($archive.FullName)" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+          & $buildPython -m pip freeze | Out-File -FilePath out/ci-python-packages.txt -Encoding utf8
+          if ($LASTEXITCODE) { throw 'Python build dependency inventory failed.' }
+      - name: Run Order backend and launcher Python regressions
+        shell: pwsh
+        run: |
+          & ./out/order1886-pyenv/Scripts/python.exe -m unittest discover -s tests -p 'test_order1886*.py' -v 2>&1 |
+            Tee-Object -FilePath out/order1886-python-tests.log
+          if ($LASTEXITCODE) { throw 'Order Python regression checks failed.' }
       - uses: actions/upload-artifact@v4
         with:
-          name: gow3-windows.zip
-          path: dist/gow3-windows.zip*
+          name: order1886-windows-experimental
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.archive }}.sha256
           if-no-files-found: error
+      - name: Preserve build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: order1886-build-evidence
+          path: |
+            out/gpu-build.log
+            out/order1886-native-build-and-cpu-tests.log
+            out/runtime-build.json
+            out/order1886-python-tests.log
+            out/ci-msys2-packages.txt
+            out/ci-python-packages.txt
+          if-no-files-found: warn
 
   smoke:
     needs: build
     runs-on: windows-2025
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: '3.13'
       - uses: actions/download-artifact@v4
         with:
-          name: gow3-windows.zip
+          name: order1886-windows-experimental
           path: dist
-      - name: Open the package without MSYS2
-        shell: powershell
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/smoke-test.ps1 dist/gow3-windows.zip
-
-  publish:
-    needs: smoke
-    if: inputs.tag != ''
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: gow3-windows.zip
-          path: dist
-      - name: Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ inputs.tag }}
+      - name: Extract and smoke-test without developer runtime paths
+        shell: pwsh
         run: |
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --prerelease --target "$GITHUB_SHA" --title "Windows test build $TAG" \
-              --notes "Windows test build from \`${GITHUB_SHA::7}\`. Download \`gow3-windows.zip\`, extract it and run \`God of War III.exe\`. Not a final release: please report in the linked issue whether it opens and runs."
-          fi
-          gh release upload "$TAG" dist/gow3-windows.zip dist/gow3-windows.zip.sha256 --clobber
+          $python = '${{ steps.python.outputs.python-path }}'
+          $archive = Get-ChildItem -LiteralPath dist -Filter order1886-windows.zip -File | Select-Object -First 1
+          if (-not $archive) { throw 'The portable archive was not downloaded.' }
+          & $python -c 'import hashlib,pathlib,sys; p=pathlib.Path(sys.argv[1]); actual=hashlib.file_digest(p.open("rb"),"sha256").hexdigest(); expected=pathlib.Path(str(p)+".sha256").read_text(encoding="utf-8").split()[0]; sys.exit(0 if actual==expected else "Archive checksum mismatch")' $archive.FullName
+          if ($LASTEXITCODE) { throw 'Downloaded archive checksum verification failed.' }
+          & $python -m zipfile -e $archive.FullName unpacked
+          if ($LASTEXITCODE) { throw 'Portable archive extraction failed.' }
+          # The verifier gives every tested process only package/bin + System32
+          # on PATH, omits Python/compiler environment overrides, uses a new path
+          # containing spaces, and never invokes gameplay or a GPU benchmark.
+          & $python ./packaging/windows/order1886-smoke.py './unpacked/The Order 1886' --output './out/order1886-evidence'
+          if ($LASTEXITCODE) { throw 'Portable host/bootstrap smoke checks failed.' }
+          'Host/package smoke only. Gameplay, stability and performance remain unverified.' |
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+      - name: Preserve portable verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: order1886-portable-smoke-evidence
+          path: |
+            out/order1886-evidence/**/smoke-report.json
+            out/order1886-evidence/**/*.log
+          if-no-files-found: warn

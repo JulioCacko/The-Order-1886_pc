@@ -36,19 +36,12 @@ VertexRange IndexedRange(std::span<const Index, Extent> indices, int32_t base_ve
     return {uint32_t(int64_t(lo) + base_vertex), hi - lo + 1};
 }
 
-// Vertex shader constant buffers (stride 16) of the G-buffer shaders the motion vectors were first
-// calibrated on (still to be recalibrated for God of War III): the 864-byte
-// scene constants (camera), 416-byte model constants and palettes of 3x4 bone matrices
-// (48 bytes per bone). Characters have 656+ bytes; weapons and props 2-8 bones (96-384).
+// The native PS4 baseline treats constant buffers as ordinary guest data.
+// Engine-specific camera/bone-palette reconstruction is excluded.
 enum class BufferRole { Other, Skeleton, SmallSkeleton };
-inline BufferRole ClassifyBuffer(uint32_t size) {
-    if (size == 864 || size > 16384) {
-        return BufferRole::Other;
-    }
-    if (size >= 640) {
-        return BufferRole::Skeleton;
-    }
-    return size >= 96 && size % 48 == 0 ? BufferRole::SmallSkeleton : BufferRole::Other;
+inline constexpr BufferRole ClassifyBuffer(uint32_t size) {
+    (void)size;
+    return BufferRole::Other;
 }
 
 // Scanning and hashing the index list of every stored draw each frame took ~10% of the GPU

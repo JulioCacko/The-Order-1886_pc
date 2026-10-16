@@ -49,9 +49,10 @@ def remove(path):
 
 def create_view(base, update, out):
     """The folder holding base with update over it, made in out; the caller removes it."""
-    from patches import game_title_id
+    from prepare import read_sfo
     base, update = Path(base).resolve(), Path(update).resolve()
-    base_id, update_id = game_title_id(base), game_title_id(update)
+    base_id = (read_sfo(base / 'sce_sys/param.sfo') or {}).get('TITLE_ID')
+    update_id = (read_sfo(update / 'sce_sys/param.sfo') or {}).get('TITLE_ID')
     if not base_id or base_id != update_id:
         raise ValueError(f'Game and update are not the same title: {base_id} / {update_id}')
     if base == update or base in update.parents or update in base.parents:

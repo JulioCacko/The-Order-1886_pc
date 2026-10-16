@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <array>
+#include <atomic>
+#include <cstdlib>
+#include <cstring>
+
 #include "common/assert.h"
 #include "core/libraries/kernel/process.h"
 #include "core/libraries/videoout/buffer.h"
@@ -15,6 +20,27 @@ namespace VideoCore {
 using namespace Vulkan;
 using Libraries::VideoOut::TilingMode;
 using VideoOutFormat = Libraries::VideoOut::PixelFormat;
+
+static void LogResourceSharp(const AmdGpu::Image& image, const Shader::ImageResource& desc,
+                             u32 record, const char* reason) {
+    std::array<u32, 8> raw{};
+    static_assert(sizeof(raw) == sizeof(image));
+    std::memcpy(raw.data(), &image, sizeof(raw));
+    LOG_CRITICAL(Render_Vulkan,
+                 "Resource sharp capture {} ({}): resource={} sharp=[{:08x} {:08x} {:08x} {:08x} "
+                 "{:08x} {:08x} {:08x} {:08x}]",
+                 record, reason, fmt::ptr(&desc), raw[0], raw[1], raw[2], raw[3], raw[4], raw[5],
+                 raw[6], raw[7]);
+    const auto& fetch = desc.sharp_fetch;
+    LOG_CRITICAL(Render_Vulkan,
+                 "Resource sharp fetch: resource={} load_mask={:#x} flat_dword_offsets=[{} {} {} {} "
+                 "{} {} {} {}] immediates=[{:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}]",
+                 fmt::ptr(&desc), fetch.load_mask, fetch.offsets[0], fetch.offsets[1], fetch.offsets[2],
+                 fetch.offsets[3], fetch.offsets[4], fetch.offsets[5], fetch.offsets[6], fetch.offsets[7],
+                 fetch.immediates[0], fetch.immediates[1], fetch.immediates[2], fetch.immediates[3],
+                 fetch.immediates[4], fetch.immediates[5], fetch.immediates[6], fetch.immediates[7]);
+    Common::Log::Flush();
+}
 
 static vk::Format ConvertPixelFormat(const VideoOutFormat format) {
     switch (format) {
@@ -118,7 +144,35 @@ ImageInfo::ImageInfo(const AmdGpu::DepthBuffer& buffer, u32 num_slices, VAddr ht
 }
 
 ImageInfo::ImageInfo(const AmdGpu::Image& image, const Shader::ImageResource& desc) noexcept {
+    static const bool capture_sharps = [] {
+        const char* value = std::getenv("ORDER1886_DIAG_RESOURCE_SHARPS");
+        return value && std::strcmp(value, "1") == 0;
+    }();
+    static std::atomic<u32> records{0};
+    if (capture_sharps) {
+        u32 record = records.load(std::memory_order_relaxed);
+        while (record < 512 &&
+               !records.compare_exchange_weak(record, record + 1, std::memory_order_relaxed)) {}
+        if (record < 512) {
+            LogResourceSharp(image, desc, record + 1, "before image decode");
+        }
+    }
     tile_mode = image.GetTileMode();
+    if (AmdGpu::NameOf(tile_mode).empty()) [[unlikely]] {
+        if (!capture_sharps) {
+            LogResourceSharp(image, desc, 0, "unsupported tile mode");
+        }
+        LOG_CRITICAL(Render_Vulkan,
+                     "Image descriptor decoded: address={:#x} type={} size={}x{}x{} pitch={} "
+                     "data_format={} num_format={} levels={}..{} arrays={}..{} depth={} r128={} "
+                     "post_op={}",
+                     image.Address(), u32(image.type), u32(image.width + 1), u32(image.height + 1),
+                     u32(image.depth + 1), u32(image.pitch + 1), u32(image.data_format),
+                     u32(image.num_format), u32(image.base_level), u32(image.last_level),
+                     u32(image.base_array), u32(image.last_array), desc.is_depth, desc.is_r128,
+                     u32(desc.post_op));
+        Common::Log::Flush();
+    }
     array_mode = AmdGpu::GetArrayMode(tile_mode);
     pixel_format = LiverpoolToVK::SurfaceFormat(image.GetDataFmt(), image.GetNumberFmt());
     if (desc.is_depth) {

@@ -73,14 +73,14 @@ class ScanSegmentTests(unittest.TestCase):
 
 
 def boot_linked(segments):
-    """Fake G3PROBE5 as link_modules.py writes it: (code, size, flags) segments laid out from address 0,
+    """Fake PS4BOOT5 as link_modules.py writes it: (code, size, flags) segments laid out from address 0,
     no modules, bindings, names or relocations."""
     image = b''.join(code.ljust(size, b'\0') for code, size, flags in segments)
     table, address = [], 0
     for code, size, flags in segments:
         table.append((address, size, flags))
         address += size
-    return (struct.pack('<8s6Q', b'G3PROBE5', len(image), 0, len(table), 0, 0, 1) + struct.pack('<Q', 0)
+    return (struct.pack('<8s6Q', b'PS4BOOT5', len(image), 0, len(table), 0, 0, 1) + struct.pack('<Q', 0)
             + struct.pack('<4Q', 0, 0, 0, 0) + struct.pack('<Q', 0) + struct.pack('<Q', 0)
             + b''.join(struct.pack('<3Q', *t) for t in table) + image)
 
@@ -102,8 +102,8 @@ class ReadBootLinkedTests(unittest.TestCase):
 
     def test_read_boot_linked_rejects_bad_magic_and_truncation(self):
         data = boot_linked([(RET, 0x1000, 5)])
-        with self.assertRaisesRegex(ValueError, 'not a G3PROBE5 image'):
-            isa_rewrite.read_boot_linked(b'G3PROBE4' + data[8:])
+        with self.assertRaisesRegex(ValueError, 'not a PS4BOOT5 image'):
+            isa_rewrite.read_boot_linked(b'PS4BOOT4' + data[8:])
         with self.assertRaisesRegex(ValueError, 'out of bounds'):
             isa_rewrite.read_boot_linked(data[:-1])
 
@@ -164,9 +164,9 @@ class TableTests(unittest.TestCase):
     def test_main_reports_unavailable_input(self):
         with tempfile.TemporaryDirectory() as tmp:
             bad, short = Path(tmp) / 'bad.bin', Path(tmp) / 'short.bin'
-            bad.write_bytes(b'G3PROBE4' + bytes(64))
+            bad.write_bytes(b'PS4BOOT4' + bytes(64))
             short.write_bytes(boot_linked([(RET, 0x1000, 5)])[:-1])
-            for path, reason in ((Path(tmp) / 'missing.bin', ''), (bad, 'not a G3PROBE5 image'), (short, 'out of bounds')):
+            for path, reason in ((Path(tmp) / 'missing.bin', ''), (bad, 'not a PS4BOOT5 image'), (short, 'out of bounds')):
                 code, out = run_main([str(path), '--out', tmp])
                 self.assertEqual(code, 1, path.name)
                 self.assertTrue(out.startswith('ISA: rewrite table unavailable (' + reason), out)

@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#undef NDEBUG
 #include "runtime.h"
 #include <stdlib.h>
 
@@ -175,6 +176,51 @@ static void wall_time(void) {
     assert(get(NULL,NULL)==0 && get(NULL,z.value)==0);
     assert(!runtime_resolve("n88vx3C5nW8#libc",0));
 }
+typedef int32_t (ABI *KeyCreate)(uint32_t *,void (ABI *)(void *));
+typedef int32_t (ABI *KeyDelete)(uint32_t);
+typedef int32_t (ABI *KeySet)(uint32_t,void *);
+typedef void *(ABI *KeyGet)(uint32_t);
+static KeySet key_set;
+static KeyGet key_get;
+static uint32_t test_key;
+static int key_markers[2], key_destructors;
+static ABI void key_destructor(void *value) {
+    assert(value==&key_markers[1]);
+    ++key_destructors;
+}
+static void *key_worker(void *unused) {
+    (void)unused;
+    assert(key_get(test_key)==NULL);
+    assert(key_set(test_key,&key_markers[1])==0);
+    assert(key_get(test_key)==&key_markers[1]);
+    runtime_thread_keys_cleanup();
+    assert(key_get(test_key)==NULL);
+    return NULL;
+}
+static void posix_keys(void) {
+    KeyCreate create=GET(KeyCreate,"mqULNdimTn0#libScePosix");
+    KeyDelete destroy=GET(KeyDelete,"6BpEZuDT7YI#libScePosix");
+    key_get=GET(KeyGet,"0-KXaS70xy4#libScePosix");
+    key_set=GET(KeySet,"WrOLvHU0yQM#libScePosix");
+    assert(create && destroy && key_get && key_set);
+    assert((uintptr_t)create==runtime_resolve("mqULNdimTn0#libkernel",0));
+    assert(!strcmp(runtime_import_name("mqULNdimTn0#libScePosix"),"pthread_key_create"));
+    assert(!runtime_resolve("mqULNdimTn0#libc",0) && !runtime_resolve("mqULNdimTn0#libkernel",1));
+    assert(create(NULL,NULL)==22 && create(&test_key,key_destructor)==0);
+    assert(key_set(UINT32_MAX,NULL)==22 && destroy(UINT32_MAX)==22);
+    assert(key_get(test_key)==NULL && key_set(test_key,&key_markers[0])==0);
+    pthread_t worker;
+    assert(pthread_create(&worker,NULL,key_worker,NULL)==0 && pthread_join(worker,NULL)==0);
+    assert(key_destructors==1 && key_get(test_key)==&key_markers[0]);
+    assert(destroy(test_key)==0 && key_get(test_key)==NULL && key_set(test_key,NULL)==22);
+    uint32_t replacement;
+    assert(create(&replacement,NULL)==0 && replacement==test_key && key_get(replacement)==NULL);
+    assert(destroy(replacement)==0 && destroy(replacement)==22 && key_destructors==1);
+    uint32_t all_keys[256];
+    for (size_t i=0;i<256;++i) assert(create(&all_keys[i],NULL)==0 && all_keys[i]==i);
+    assert(create(&replacement,NULL)==35);
+    for (size_t i=0;i<256;++i) assert(destroy(all_keys[i])==0);
+}
 static void direct_memory(void) {
     Allocate alloc=GET(Allocate,"rTXw65xmLIA#libkernel");
     Map map=GET(Map,"L-Q3LEjIbgA#libkernel");
@@ -330,6 +376,9 @@ int main(int argc,char **argv) {
     runtime_start(1);
     assert(runtime_resolve("bzQExy189ZI#wrong#module",0)==0);
     assert(runtime_resolve("unknown",0)==0);
+    assert(runtime_resolve("eaFXjfJv3xs#libSceIme",0));
+    assert(!runtime_resolve("eaFXjfJv3xs#libkernel",0) && !runtime_resolve("eaFXjfJv3xs#libSceIme",1));
+    assert(!strcmp(runtime_import_name("eaFXjfJv3xs#libSceIme"),"sceImeKeyboardOpen"));
     /* Keys are NID#library for every game; libScePosix shares libkernel's contracts. */
     assert(runtime_resolve("n88vx3C5nW8#libScePosix",0) &&
            runtime_resolve("n88vx3C5nW8#libScePosix",0)==runtime_resolve("n88vx3C5nW8#libkernel",0));
@@ -355,7 +404,8 @@ int main(int argc,char **argv) {
     if (argc>1 && !strcmp(argv[1],"--rwlock-lifecycle")) { rw_lifecycle(); return 0; }
     if (argc>1 && !strcmp(argv[1],"--rwlock-concurrency")) { rw_concurrency(); return 0; }
     if (argc>1 && !strcmp(argv[1],"--rwlock-timeouts")) { rw_timeouts(); return 0; }
-    libc_support(); posix_mutexes(); wall_time(); exit_handlers(); guards(); mutexes(); direct_memory(); memory_primitives();
+    if (argc>1 && !strcmp(argv[1],"--posix-keys")) { posix_keys(); return 0; }
+    libc_support(); posix_mutexes(); wall_time(); posix_keys(); exit_handlers(); guards(); mutexes(); direct_memory(); memory_primitives();
     rw_lifecycle(); rw_concurrency(); rw_timeouts();
     puts("PASS: callback lifecycle, guard ABI, mutex errors, shared direct memory, memory primitives, resolver scope");
     return 0;

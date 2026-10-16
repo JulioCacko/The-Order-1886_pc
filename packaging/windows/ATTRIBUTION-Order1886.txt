@@ -1,0 +1,11 @@
+The Order: 1886 PC compatibility project
+
+This project reuses infrastructure from FelipePrado0/gow3_pc
+(https://github.com/FelipePrado0/gow3_pc), licensed under GPL-2.0-or-later.
+It includes components derived from shadPS4
+(https://github.com/shadps4-emu/shadPS4). Preserve the accompanying LICENSE
+and the applicable source and dependency notices when redistributing.
+
+These credits identify the origin of reused software. They do not establish
+compatibility, endorsement, or ownership of The Order: 1886 game content.
+The portable package excludes extracted game artwork and game archives.

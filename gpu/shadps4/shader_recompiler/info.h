@@ -159,7 +159,7 @@ struct Info : InfoPersistent {
         : InfoPersistent(stage_, l_stage_, params.hash), pgm_base{params.Base()},
           user_data{params.user_data} {}
 
-    /// gow3: user data of this stage as a draw saw it. The GPU command thread refreshes
+    /// user data of this stage as a draw saw it. The GPU command thread refreshes
     /// user_data/flattened_ud_buf for every draw it decodes, while the draw recording thread
     /// (vk_draw_pipe.h) may still work on an earlier draw: that thread installs snapshots here.
     struct UdSnapshot {
@@ -233,7 +233,10 @@ struct Info : InfoPersistent {
 
     void AddBindings(Backend::Bindings& bnd) const {
         bnd.buffer += buffers.size();
-        bnd.unified += buffers.size() + images.size() + samplers.size();
+        bnd.unified += buffers.size() + samplers.size();
+        for (const auto& image : images) {
+            bnd.unified += image.NumBindings(*this);
+        }
         bnd.user_data += ud_mask.NumRegs();
     }
 

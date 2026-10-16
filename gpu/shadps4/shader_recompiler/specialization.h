@@ -49,6 +49,7 @@ struct ImageSpecialization {
     bool is_storage = false;
     bool is_cube = false;
     bool is_srgb = false;
+    bool is_fmask = false;
     AmdGpu::CompMapping dst_select{};
     AmdGpu::NumberConversion num_conversion{};
     // FIXME any pipeline cache changes needed?
@@ -60,6 +61,8 @@ struct ImageSpecialization {
 struct FMaskSpecialization {
     u32 width;
     u32 height;
+    ImageSpecialization translation;
+    AmdGpu::CompMapping mapping{};
 
     bool operator==(const FMaskSpecialization&) const = default;
 };
@@ -78,7 +81,7 @@ struct SamplerSpecialization {
  * after the first compilation of a module.
  */
 struct StageSpecialization {
-    static constexpr size_t MaxStageResources = 128;
+    static constexpr size_t MaxStageResources = NUM_BUFFERS + NUM_IMAGES * 2;
 
     const Info* info{};
     RuntimeInfo runtime_info{};
@@ -92,6 +95,19 @@ struct StageSpecialization {
     Backend::Bindings start{};
 
     StageSpecialization() = default;
+    static ImageSpecialization DescribeImage(const ImageResource& desc, AmdGpu::Image sharp) {
+        ImageSpecialization spec;
+        spec.type = sharp.GetViewType(desc.is_array);
+        spec.is_integer = AmdGpu::IsInteger(sharp.GetNumberFmt());
+        spec.is_storage = desc.is_written;
+        spec.is_cube = sharp.IsCube();
+        spec.is_fmask = AmdGpu::IsFmask(sharp.GetDataFmt());
+        if (spec.is_storage || spec.is_fmask) spec.dst_select = sharp.DstSelect();
+        else spec.is_srgb = sharp.GetNumberFmt() == AmdGpu::NumberFormat::Srgb;
+        spec.num_conversion = sharp.GetNumberConversion();
+        spec.num_bindings = desc.NumBindingsFromSharp(sharp);
+        return spec;
+    }
     StageSpecialization(const Info& info_, RuntimeInfo runtime_info_, const Profile& profile_,
                         Backend::Bindings start_)
         : info{&info_}, runtime_info{runtime_info_}, start{start_} {
@@ -132,17 +148,7 @@ struct StageSpecialization {
                      });
         ForEachSharp(binding, images, info->images,
                      [&](auto& spec, const auto& desc, AmdGpu::Image sharp) {
-                         spec.type = sharp.GetViewType(desc.is_array);
-                         spec.is_integer = AmdGpu::IsInteger(sharp.GetNumberFmt());
-                         spec.is_storage = desc.is_written;
-                         spec.is_cube = sharp.IsCube();
-                         if (spec.is_storage) {
-                             spec.dst_select = sharp.DstSelect();
-                         } else {
-                             spec.is_srgb = sharp.GetNumberFmt() == AmdGpu::NumberFormat::Srgb;
-                         }
-                         spec.num_conversion = sharp.GetNumberConversion();
-                         spec.num_bindings = desc.NumBindings(*info);
+                         spec = DescribeImage(desc, sharp);
                      });
         ForEachSharp(binding, fmasks, info->fmasks,
                      [](auto& spec, const auto& desc, AmdGpu::Image sharp) {
@@ -179,6 +185,19 @@ struct StageSpecialization {
         for (const auto& desc : desc_list) {
             auto& spec = spec_list.emplace_back();
             const auto sharp = desc.GetSharp(*info);
+            if constexpr (requires { spec.num_bindings; desc.NumBindingsFromSharp(sharp); }) {
+                spec.num_bindings = desc.NumBindingsFromSharp(sharp);
+            }
+            if constexpr (requires { spec.is_fmask; sharp.GetDataFmt(); }) {
+                spec.is_fmask = AmdGpu::IsFmask(sharp.GetDataFmt());
+                if (spec.is_fmask) spec.dst_select = sharp.DstSelect();
+            }
+            if constexpr (requires { spec.translation; desc.source; }) {
+                spec.translation = DescribeImage(desc.source, sharp);
+                spec.mapping = sharp.DstSelect();
+                spec.width = sharp.width;
+                spec.height = sharp.height;
+            }
             if (!sharp) {
                 binding++;
                 continue;
@@ -195,6 +214,17 @@ struct StageSpecialization {
     bool operator==(const StageSpecialization& other) const {
         if (!Valid()) {
             return false;
+        }
+        if (buffers.size() != other.buffers.size() || images.size() != other.images.size() ||
+            samplers.size() != other.samplers.size()) {
+            return false;
+        }
+        for (u32 i = 0; i < images.size(); ++i) {
+            if (images[i].num_bindings != other.images[i].num_bindings ||
+                images[i].is_fmask != other.images[i].is_fmask ||
+                (images[i].is_fmask && images[i].dst_select != other.images[i].dst_select)) {
+                return false;
+            }
         }
 
         if (vs_attribs != other.vs_attribs) {

@@ -1,10 +1,10 @@
-/* GOW3_PAD_MAP / GOW3_KEY_MAP parsing (src/runtime_pad.c). */
+/* ORDER1886_PAD_MAP / ORDER1886_KEY_MAP parsing (src/runtime_pad.c). */
 #define _GNU_SOURCE
 #include <assert.h>
 #include "../src/runtime_pad.c"
 
-int gow3gpu_overlay_captures_input(void) { return 0; }
-int gow3gpu_vibration_percent(void) { return 100; }
+int ps4gpu_overlay_captures_input(void) { return 0; }
+int ps4gpu_vibration_percent(void) { return 100; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;

@@ -4,20 +4,40 @@
 #include <assert.h>
 
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *nid) { (void)table; (void)count; (void)nid; return 0; }
-int gow3gpu_text_input_begin(const char *text, const char *prompt) { (void)text; (void)prompt; return 0; }
-int gow3gpu_text_input_poll(char *text, uint64_t size) { (void)text; (void)size; return 0; }
+int ps4gpu_text_input_begin(const char *text, const char *prompt) { (void)text; (void)prompt; return 0; }
+int ps4gpu_text_input_poll(char *text, uint64_t size) { (void)text; (void)size; return 0; }
 int64_t runtime_file_open(const char *path, int flags, int mode) { (void)path; (void)flags; (void)mode; return -1; }
 int64_t runtime_file_read(int fd, void *buffer, uint64_t size) { (void)fd; (void)buffer; (void)size; return -1; }
 int64_t runtime_file_close(int fd) { (void)fd; return 0; }
 static int choice_next=-1;
-int gow3gpu_choice_begin(const char *title, const char *const *items, const char *const *images, int count, int focus) { (void)title; (void)items; (void)images; (void)focus; return count>0; }
-int gow3gpu_choice_poll(void) { return choice_next; }
+int ps4gpu_choice_begin(const char *title, const char *const *items, const char *const *images, int count, int focus) { (void)title; (void)items; (void)images; (void)focus; return count>0; }
+int ps4gpu_choice_poll(void) { return choice_next; }
 int runtime_savedata_param(int32_t user, const char *dir, void *param) { (void)user; (void)dir; (void)param; return -1; }
 int runtime_savedata_icon(int32_t user, const char *dir, char *out, size_t size) { (void)user; (void)dir; (void)out; (void)size; return -1; }
+static ABI void keyboard_event(void *arg,const void *event) { (void)arg; (void)event; abort(); }
 
 int main(void) {
     unsigned char param[128]={0}, result[64]={0}; /* the game zeroes the pointers it does not want */
     uint32_t value;
+
+    /* Optional USB keyboard failure is explicit; no callback or device is fabricated. */
+    ImeKeyboardParam keyboard={.handler=keyboard_event};
+    assert(sizeof(keyboard)==32 && offsetof(ImeKeyboardParam,handler)==16);
+    assert((uint32_t)ime_keyboard_open(USER_ID,NULL)==0x80BC0031);
+    keyboard.handler=NULL;
+    assert((uint32_t)ime_keyboard_open(USER_ID,&keyboard)==0x80BC0022);
+    keyboard.handler=keyboard_event;
+    assert((uint32_t)ime_keyboard_open(-1,&keyboard)==0x80BC0010);
+    keyboard.option=64;
+    assert((uint32_t)ime_keyboard_open(USER_ID,&keyboard)==0x80BC0015);
+    keyboard.option=63; keyboard.reserved1[3]=1;
+    assert((uint32_t)ime_keyboard_open(USER_ID,&keyboard)==0x80BC0032);
+    keyboard.reserved1[3]=0; keyboard.reserved2[7]=1;
+    assert((uint32_t)ime_keyboard_open(USER_ID,&keyboard)==0x80BC0032);
+    keyboard.reserved2[7]=0;
+    assert((uint32_t)ime_keyboard_open(USER_ID,&keyboard)==0x80BC0004);
+    keyboard.option=0;
+    assert((uint32_t)ime_keyboard_open(USER_ID,&keyboard)==0x80BC0004);
 
     /* MsgDialog: a user message finishes with OK; a progress bar runs until closed. */
     assert(msg_init()==0);

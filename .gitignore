@@ -22,4 +22,10 @@ perf.data
 /docs/route_run.log
 mods.json
 patches.json
-!launcher/gow3.png
+
+# Local Order dump and generated launcher/runtime output (never commit game data).
+/ShadPs4Plus-PkgExtractor-1.1-windows/
+/order1886.ini
+/launcher/order1886/order1886.ico
+/build/
+*.spec

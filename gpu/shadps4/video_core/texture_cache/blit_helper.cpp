@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "video_core/renderer_vulkan/vk_instance.h"
-#include "video_core/renderer_vulkan/vk_lighting_test.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 #include "video_core/texture_cache/blit_helper.h"
 #include "video_core/texture_cache/image.h"
 
-#include "video_core/host_shaders/color_to_ms_depth_fallback_frag.h"
 #include "video_core/host_shaders/color_to_ms_depth_frag.h"
 #include "video_core/host_shaders/fs_tri_vert.h"
 #include "video_core/host_shaders/ms_image_blit_frag.h"
 #include "video_core/host_shaders/ms_image_blit_msaa_frag.h"
+#include "video_core/host_shaders/ms_image_blit_uint_frag.h"
+#include "video_core/host_shaders/ms_image_blit_uint_msaa_frag.h"
 
 namespace VideoCore {
 
@@ -45,6 +45,8 @@ BlitHelper::~BlitHelper() {
     device.destroy(color_to_ms_depth_frag);
     device.destroy(src_msaa_copy_frag);
     device.destroy(src_non_msaa_copy_frag);
+    device.destroy(src_msaa_uint_copy_frag);
+    device.destroy(src_non_msaa_uint_copy_frag);
 }
 
 void BlitHelper::ReinterpretColorAsMsDepth(u32 width, u32 height, u32 num_samples,
@@ -253,12 +255,11 @@ void BlitHelper::CopyBetweenMsImages(u32 width, u32 height, u32 num_samples,
 void BlitHelper::CreateShaders() {
     const auto device = instance.GetDevice();
     fs_tri_vertex = Vulkan::CompileSPV(FS_TRI_VERT, device);
-    // gow3: GOW3_LIGHTING_TEST=msdepth selects the sample-fallback variant.
-    color_to_ms_depth_frag = Vulkan::LightingTest::Current().msdepth
-                                 ? Vulkan::CompileSPV(COLOR_TO_MS_DEPTH_FALLBACK_FRAG, device)
-                                 : Vulkan::CompileSPV(COLOR_TO_MS_DEPTH_FRAG, device);
+    color_to_ms_depth_frag = Vulkan::CompileSPV(COLOR_TO_MS_DEPTH_FRAG, device);
     src_msaa_copy_frag = Vulkan::CompileSPV(MS_IMAGE_BLIT_MSAA_FRAG, device);
     src_non_msaa_copy_frag = Vulkan::CompileSPV(MS_IMAGE_BLIT_FRAG, device);
+    src_msaa_uint_copy_frag = Vulkan::CompileSPV(MS_IMAGE_BLIT_UINT_MSAA_FRAG, device);
+    src_non_msaa_uint_copy_frag = Vulkan::CompileSPV(MS_IMAGE_BLIT_UINT_FRAG, device);
 }
 
 void BlitHelper::CreatePipelineLayouts() {
@@ -359,6 +360,12 @@ void BlitHelper::CreateColorToMSDepthPipeline(const MsPipelineKey& key) {
 }
 
 void BlitHelper::CreateMsCopyPipeline(const MsPipelineKey& key) {
+    // shortcut: only observed R16Uint is typed, extend when another integer backing format is used.
+    const bool src_uint = key.attachment_format == vk::Format::eR16Uint;
+    const auto fragment_shader = src_uint
+                                     ? (key.src_msaa ? src_msaa_uint_copy_frag
+                                                     : src_non_msaa_uint_copy_frag)
+                                     : (key.src_msaa ? src_msaa_copy_frag : src_non_msaa_copy_frag);
     const vk::PipelineInputAssemblyStateCreateInfo input_assembly = {
         .topology = vk::PrimitiveTopology::eTriangleList,
     };
@@ -385,7 +392,7 @@ void BlitHelper::CreateMsCopyPipeline(const MsPipelineKey& key) {
     };
     shader_stages[1] = {
         .stage = vk::ShaderStageFlagBits::eFragment,
-        .module = key.src_msaa ? src_msaa_copy_frag : src_non_msaa_copy_frag,
+        .module = fragment_shader,
         .pName = "main",
     };
 

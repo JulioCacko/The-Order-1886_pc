@@ -1,7 +1,7 @@
 /* Narrow, explicit PS4 libc contracts. No automatic success stubs. */
 #define _CRT_RAND_S
 #include "runtime.h"
-#include "gpu/gow3gpu.h"
+#include "gpu/ps4gpu.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,6 +76,7 @@ void runtime_report(void) {
     runtime_mutex_report();
     runtime_rwlock_report();
     runtime_sema_report();
+    runtime_event_flag_report();
     runtime_content_report();
     runtime_memory_report();
     runtime_ajm_report();
@@ -231,6 +232,8 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
     if (timer) return timer;
     uintptr_t sema = runtime_sema_resolve(name);
     if (sema) return sema;
+    uintptr_t flag = runtime_event_flag_resolve(name);
+    if (flag) return flag;
     uintptr_t rwlock = runtime_rwlock_resolve(name);
     if (rwlock) return rwlock;
     uintptr_t memory = runtime_memory_resolve(name);
@@ -253,12 +256,25 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
     if (save) return save;
     uintptr_t file = runtime_file_resolve(name);
     if (file) return file;
-    return gow3gpu_resolve(name);
+    return ps4gpu_resolve(name);
 }
 static const struct { const char *nid, *symbol; } import_names[]={
 #include "import_names.inc"
+    /* PS4 POSIX key imports used by The Order. */
+    {"mqULNdimTn0#libkernel","pthread_key_create"},
+    {"6BpEZuDT7YI#libkernel","pthread_key_delete"},
+    {"0-KXaS70xy4#libkernel","pthread_getspecific"},
+    {"WrOLvHU0yQM#libkernel","pthread_setspecific"},
+    {"eaFXjfJv3xs#libSceIme","sceImeKeyboardOpen"},
+    {"BpFoboUJoZU#libkernel","sceKernelCreateEventFlag"},
+    {"8mql9OcQnd4#libkernel","sceKernelDeleteEventFlag"},
+    {"IOnSvHzqu6A#libkernel","sceKernelSetEventFlag"},
+    {"7uhBFWRAS60#libkernel","sceKernelClearEventFlag"},
+    {"JTvBflhYazQ#libkernel","sceKernelWaitEventFlag"},
+    {"9lvj5DjHZiA#libkernel","sceKernelPollEventFlag"},
+    {"PZku4ZrXJqg#libkernel","sceKernelCancelEventFlag"},
 };
-/* Symbol name for a scoped NID, or NULL when this eboot/libc never imports it. */
+/* Symbol name for a known library-scoped NID, or NULL for unknown imports. */
 const char *runtime_symbol(const char *nid) {
     for (size_t i=0;i<sizeof(import_names)/sizeof(*import_names);++i)
         if (!strcmp(nid,import_names[i].nid)) return import_names[i].symbol;

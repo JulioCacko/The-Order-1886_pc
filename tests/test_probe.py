@@ -8,13 +8,13 @@ import sys
 import tempfile
 import unittest
 
-EXE = ROOT / 'out/gow3-probe'
-HOST_EXE = ROOT / ('out/gow3-probe' + ('.exe' if sys.platform == 'win32' else ''))
+EXE = ROOT / ('out/order1886-runtime' + ('.exe' if sys.platform == 'win32' else ''))
+HOST_EXE = EXE
 
 
 def package(code, relocs=(), names=(), capabilities=None):
     image = code.ljust(4096, b'\0')
-    header = struct.pack('<8sQQQQQ', b'G3PROBE1' if capabilities is None else b'G3PROBE2', len(image), 0, 1, len(relocs), len(names))
+    header = struct.pack('<8sQQQQQ', b'PS4BOOT1' if capabilities is None else b'PS4BOOT2', len(image), 0, 1, len(relocs), len(names))
     if capabilities is not None:
         header += struct.pack('<Q', capabilities)
     segment = struct.pack('<QQQ', 0, len(image), 5)
@@ -28,7 +28,7 @@ def native_package(name='fixture-native', binding_address=4112, binding_kind=1,
     code = b'\x48\x83\xec\x08\xff\x15\x16\0\0\0\x48\x83\xc4\x08\xff\x25\x14\0\0\0'
     image = code.ljust(4096,b'\0') + init.ljust(16,b'\0') + native
     image = image.ljust(12288,b'\0')
-    header=struct.pack('<8s6Q',b'G3PROBE3',len(image),0,3,2,2,1)
+    header=struct.pack('<8s6Q',b'PS4BOOT3',len(image),0,3,2,2,1)
     meta=metadata or (4096,8192,4096,8192,32,4,1,256)
     return (header + struct.pack('<8Q',*meta) + struct.pack('<3Q',0,binding_address,binding_kind)
             + struct.pack('<9Q',0,4096,5,4096,4096,lib_flags,8192,4096,6)
@@ -38,23 +38,12 @@ def native_package(name='fixture-native', binding_address=4112, binding_kind=1,
 
 @unittest.skipUnless(EXE.exists(), 'build native probe first')
 class LoaderTests(unittest.TestCase):
-    def test_invalid_content_profile_is_rejected(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path=Path(tmp)/'content.bin'
-            for data in (b'G3CONT01',struct.pack('<8s5I',b'G3CONT01',2,0,0,0,0),
-                         struct.pack('<8s5I',b'G3CONT01',3,0,0,0,0)+b'extra'):
-                with self.subTest(data=data):
-                    path.write_bytes(data)
-                    r=self.run_image(package(b'\xc3'),'--content-profile',str(path))
-                    self.assertEqual(r.returncode,1,r.stdout+r.stderr)
-                    self.assertIn('content profile',r.stderr)
-
     def run_image(self, data, *options):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'boot.bin'
             path.write_bytes(data)
             return subprocess.run([str(EXE.resolve()), str(path), '--cpu-only', *options],
-                                  capture_output=True, text=True, timeout=5)
+                                  capture_output=True, text=True, timeout=5, env=host_env())
 
     def test_original_instruction_reaches_named_import(self):
         # jmp [rip+2]; two padding bytes; relocated function pointer at +8
@@ -118,8 +107,12 @@ class LoaderTests(unittest.TestCase):
 
     def test_illegal_instruction_reports_guest_offset(self):
         r = self.run_image(package(b'\x0f\x0b'))
-        self.assertEqual(r.returncode, 132)
-        self.assertIn('at guest offset 0x0,', r.stderr)
+        if sys.platform == 'win32':
+            self.assertEqual(r.returncode, 3)
+            self.assertIn('exception 0xc000001d at guest offset 0x0', r.stderr)
+        else:
+            self.assertEqual(r.returncode, 132)
+            self.assertIn('at guest offset 0x0,', r.stderr)
 
     def test_runtime_returns_from_verified_init_env(self):
         # Align stack, call _init_env through +32, then tail-jump to unknown +40.

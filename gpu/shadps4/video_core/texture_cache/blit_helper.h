@@ -54,6 +54,8 @@ private:
     vk::ShaderModule color_to_ms_depth_frag;
     vk::ShaderModule src_msaa_copy_frag;
     vk::ShaderModule src_non_msaa_copy_frag;
+    vk::ShaderModule src_msaa_uint_copy_frag;
+    vk::ShaderModule src_non_msaa_uint_copy_frag;
 
     using MsPipeline = std::pair<MsPipelineKey, vk::UniquePipeline>;
     std::vector<MsPipeline> color_to_ms_depth_pl;

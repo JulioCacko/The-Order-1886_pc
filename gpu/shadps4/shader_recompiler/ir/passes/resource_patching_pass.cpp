@@ -10,6 +10,7 @@
 #include "shader_recompiler/ir/operand_helper.h"
 #include "shader_recompiler/ir/passes/ir_passes.h"
 #include "shader_recompiler/ir/passes/resource_pass.h"
+#include "shader_recompiler/ir/passes/fmask_identity.h"
 #include "shader_recompiler/ir/program.h"
 #include "shader_recompiler/ir/reinterpret.h"
 #include "shader_recompiler/profile.h"
@@ -137,7 +138,12 @@ public:
 
     u32 Add(const FMaskResource& desc) {
         u32 index = Add(fmask_resources, desc, [&desc](const auto& existing) {
-            return desc.sharp_idx == existing.sharp_idx;
+            return desc.source.sharp_fetch == existing.source.sharp_fetch &&
+                   desc.source.is_r128 == existing.source.is_r128 &&
+                   desc.source.is_depth == existing.source.is_depth &&
+                   desc.source.is_array == existing.source.is_array &&
+                   desc.source.post_op == existing.source.post_op &&
+                   desc.source.mip_fallback_mode == existing.source.mip_fallback_mode;
         });
         return index;
     }
@@ -285,14 +291,26 @@ void PatchImageSharp(const ResourceDiscovery& resource, Info& info, Descriptors&
     // Patch image instruction if image is FMask.
     if (AmdGpu::IsFmask(image.GetDataFmt())) {
         ASSERT_MSG(!is_written, "FMask storage instructions are not supported");
+        // Classification itself is a translation dependency, even if the sampled value
+        // becomes a constant. A later normal-image descriptor must select another module.
+        descriptors.Add(FMaskResource{.source = image_res});
 
         IR::IREmitter ir{*inst.GetParent(), IR::Block::InstructionList::s_iterator_to(inst)};
         switch (inst.GetOpcode()) {
         case IR::Opcode::ImageRead:
         case IR::Opcode::ImageSampleRaw: {
-            IR::F32 fmaskx = ir.BitCast<IR::F32>(ir.Imm32(0x76543210));
-            IR::F32 fmasky = ir.BitCast<IR::F32>(ir.Imm32(0xfedcba98));
-            inst.ReplaceUsesWith(ir.CompositeConstruct(fmaskx, fmasky));
+            const auto mapping = image.DstSelect();
+            const auto payload = FmaskIdentityTexel(mapping);
+            ASSERT_MSG(payload.has_value(),
+                       "Unsupported FMask payload selectors R={} G={} B={} A={}",
+                       u32(mapping.r), u32(mapping.g), u32(mapping.b), u32(mapping.a));
+            const auto component = [&](u32 bits) { return ir.BitCast<IR::F32>(ir.Imm32(bits)); };
+            // ImageRead/ImageSampleRaw return F32x4, including when a descriptor selects
+            // the same payload word for several output components.
+            inst.ReplaceUsesWith(ir.CompositeConstruct(component((*payload)[0]),
+                                                        component((*payload)[1]),
+                                                        component((*payload)[2]),
+                                                        component((*payload)[3])));
             return;
         }
         case IR::Opcode::ImageQueryLod:
@@ -304,10 +322,6 @@ void PatchImageSharp(const ResourceDiscovery& resource, Info& info, Descriptors&
                                                    ir.Imm32(1), ir.Imm32(1)); // depth, mip
             inst.ReplaceUsesWith(dims);
 
-            // Track FMask resource to do specialization.
-            descriptors.Add(FMaskResource{
-                .sharp_idx = SharpLocationFromSource(resource.sharps[0].dwords[0].Inst()),
-            });
             return;
         }
         default:

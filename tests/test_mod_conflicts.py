@@ -21,13 +21,13 @@ class ModConflictTest(unittest.TestCase):
             path.write_bytes(b'x')
 
     def test_last_in_order_wins(self):
-        self.mod('a', 'chr/kratos.wad', 'ui/hud.wad')
-        self.mod('b', 'chr/kratos.wad')
-        self.mod('c', 'CHR/Kratos.wad', 'music.wad')
+        self.mod('a', 'chr/actor.wad', 'ui/hud.wad')
+        self.mod('b', 'chr/actor.wad')
+        self.mod('c', 'CHR/Actor.wad', 'music.wad')
         found = mods.conflicts(self.root, ['a', 'b', 'c'])
         self.assertEqual(len(found), 1)
         path, owners = found[0]
-        self.assertEqual(path.casefold(), 'dvdroot_ps4/chr/kratos.wad')
+        self.assertEqual(path.casefold(), 'dvdroot_ps4/chr/actor.wad')
         self.assertEqual(owners, ['a', 'b', 'c'])  # c, the last one, wins
 
     def test_only_given_mods_count(self):

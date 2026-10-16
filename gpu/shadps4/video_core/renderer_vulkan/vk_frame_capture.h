@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// gow3: frame analyzer. Creating the file named by GOW3_CAPTURE_TRIGGER records the next full
-// frame: every render pass (targets, depth, draw count, shaders, sampled textures) and compute
-// dispatch, in order, plus the buffer that was presented. Input for placing a temporal
-// upscaler (scene color, depth, motion vectors, UI) in the game's frame.
-
+// Native PS4 command census between observed VideoOut flip intervals.
+// Target, shader, draw, dispatch and presented-buffer evidence is preserved.
 #pragma once
 
 #include <atomic>
@@ -24,8 +21,7 @@ public:
     /// VideoOut thread, per flip: frame boundary, presented buffer, trigger file check.
     static void OnFlip(VAddr presented_address);
 
-    /// VideoOut: a display buffer the game registered. A pass drawing into one starts a frame
-    /// in the GPU command stream (the flip itself runs a frame behind).
+    /// VideoOut: a display buffer registered by the game.
     static void AddDisplayBuffer(VAddr address);
     static bool IsDisplayBuffer(VAddr address);
 

@@ -1,34 +1,46 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Non-login MSYS2 shells do not initialize the system-tool path.
+case ${OSTYPE:-} in msys*|cygwin*) export PATH="/usr/bin:$PATH" ;; esac
 cd -- "$(dirname -- "$0")"
 mkdir -p out
-# Windows: MSYS2 CLANG64 (packages in packaging/windows/README.md). The GPU library is static
-# there and CMake links gow3-probe.exe as well; no PGO (GCC-only flags), LTO off by default.
+# A direct Windows bash invocation has no /usr/bin on PATH until this is sourced.
+# Initialize before uname so it cannot fall through to the Unix build branch.
+source ./msys2-env.sh
+# Windows: MSYS2 CLANG64 (packages in docs/order1886-build.md). The GPU library is static
+# there and CMake links order1886-runtime.exe as well; no PGO (GCC-only flags), LTO off by default.
 case $(uname -s) in
 MINGW*|MSYS*)
     # shellcheck source=msys2-env.sh
     source ./msys2-env.sh
     for tool in clang cmake ninja pkg-config; do
-        command -v "$tool" >/dev/null || { echo "Need $tool from MSYS2 CLANG64 (packaging/windows/README.md)." >&2; exit 1; }
+        command -v "$tool" >/dev/null || { echo "Need $tool from MSYS2 CLANG64 (docs/order1886-build.md)." >&2; exit 1; }
     done
-    if [[ ! -f gpu/third_party/fsr-vulkan/CMakeLists.txt || ! -f gpu/third_party/imgui/imgui.h ||
+    if [[ ! -f gpu/third_party/imgui/imgui.h ||
           ! -f gpu/third_party/xbyak/xbyak/xbyak.h ]]; then
         git submodule update --init --recursive
     fi
-    for patch in gpu/patches/fsr-vulkan/*.patch; do
-        if ! git -C gpu/third_party/fsr-vulkan apply --reverse --check "$PWD/$patch" 2>/dev/null; then
-            git -C gpu/third_party/fsr-vulkan apply "$PWD/$patch"
-        fi
-    done
-    cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DGOW3_PGO=off \
-        -DGOW3_LTO="${GOW3_LTO:-OFF}" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
-    echo "GPU library and loader: LTO ${GOW3_LTO:-OFF}"
-    if ! ninja -C out/gpu gow3-probe gow3-gpu-capabilities gow3-play > out/gpu-build.log 2>&1; then
+    cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DORDER1886_PGO=off \
+        -DORDER1886_LTO="${ORDER1886_LTO:-OFF}" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
+    echo "GPU library and loader: LTO ${ORDER1886_LTO:-OFF}"
+    if ! ninja -C out/gpu order1886-runtime ps4-gpu-capabilities > out/gpu-build.log 2>&1; then
         grep -v '^\[' out/gpu-build.log | tail -40 >&2
         echo 'Build failed (full log: out/gpu-build.log)' >&2; exit 1
     fi
-    cp out/gpu/gow3-probe.exe out/gpu/gow3-gpu-capabilities.exe out/gpu/gow3-play.exe out/
-    echo "Built $PWD/out/gow3-probe.exe"
+    cp out/gpu/order1886-runtime.exe out/gpu/ps4-gpu-capabilities.exe out/
+    if [[ ${1:-} == --test ]]; then
+        ninja -C out/gpu runtime-keys-test event-flag-test memory-hooks-test services-test content-test order-render-baseline-test srt-descriptor-validation-test pad-test
+        out/gpu/runtime-keys-test.exe
+        out/gpu/event-flag-test.exe
+        out/gpu/memory-hooks-test.exe
+        out/gpu/services-test.exe
+        out/gpu/content-test.exe
+        out/gpu/order-render-baseline-test.exe
+        out/gpu/srt-descriptor-validation-test.exe
+        out/gpu/pad-test.exe
+    fi
+    python scripts/runtime_build_identity.py out/order1886-runtime.exe
+    echo "Built $PWD/out/order1886-runtime.exe"
     exit 0
     ;;
 esac
@@ -44,41 +56,35 @@ if [[ -z ${CC:-} ]]; then echo 'Install GCC/Clang or set CC.' >&2; exit 1; fi
 # Dependencies come from pkg-config (Vulkan loader/headers, SDL3). On NixOS the
 # environment is provided by shell.nix; re-enter it automatically if needed.
 if ! { command -v pkg-config >/dev/null && pkg-config --exists vulkan sdl3 && command -v cmake >/dev/null && command -v ninja >/dev/null; }; then
-    if [[ -z ${GOW3_IN_NIX_SHELL:-} ]] && command -v nix-shell >/dev/null; then
-        exec env GOW3_IN_NIX_SHELL=1 nix-shell shell.nix --run "bash build.sh $*"
+    if [[ -z ${ORDER1886_IN_NIX_SHELL:-} ]] && command -v nix-shell >/dev/null; then
+        exec env ORDER1886_IN_NIX_SHELL=1 nix-shell shell.nix --run "bash build.sh $*"
     fi
     echo 'Need pkg-config with vulkan and sdl3, cmake and ninja (see shell.nix).' >&2; exit 1
 fi
 read -r -a includes <<< "$(pkg-config --cflags vulkan sdl3 libavcodec libavutil libswscale)"
 read -r -a libraries <<< "$(pkg-config --libs vulkan sdl3 libavcodec libavutil libswscale)"
-# GPU library (shadPS4 video core + drivers), built by CMake into out/gpu/libgow3gpu.so.
-# GOW3_PGO: generate (instrumented build that writes pgo/ while the game runs), use, off.
-# Default: use the profile in pgo/ when there is one. GOW3_LTO=OFF disables link-time optimization.
-pgo=${GOW3_PGO:-}
+# GPU library (shadPS4 video core + drivers), built by CMake into out/gpu/libps4gpu.so.
+# ORDER1886_PGO: generate (instrumented build that writes pgo/ while the game runs), use, off.
+# Default: use the profile in pgo/ when there is one. ORDER1886_LTO=OFF disables link-time optimization.
+pgo=${ORDER1886_PGO:-}
 if [[ -z $pgo ]]; then
     if [[ -n $(find pgo -name '*.gcda' -print -quit 2>/dev/null) ]]; then pgo=use; else pgo=off; fi
 fi
 mkdir -p pgo
-# Submodules (git clone --recursive, or: git submodule update --init) and this port's changes
-# to FSR-Vulkan (gpu/patches/fsr-vulkan), applied to its working tree once.
-if [[ ! -f gpu/third_party/fsr-vulkan/CMakeLists.txt || ! -f gpu/third_party/imgui/imgui.h ]]; then
+# Required PS4 runtime submodules.
+if [[ ! -f gpu/third_party/xbyak/xbyak/xbyak.h || ! -f gpu/third_party/imgui/imgui.h ]]; then
     git submodule update --init --recursive
 fi
-for patch in gpu/patches/fsr-vulkan/*.patch; do
-    if ! git -C gpu/third_party/fsr-vulkan apply --reverse --check "$PWD/$patch" 2>/dev/null; then
-        git -C gpu/third_party/fsr-vulkan apply "$PWD/$patch"
-    fi
-done
-cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DGOW3_PGO="$pgo" \
-    -DGOW3_LTO="${GOW3_LTO:-ON}" -DGOW3_PGO_DIR="$PWD/pgo" >/dev/null
-echo "GPU library: PGO $pgo, LTO ${GOW3_LTO:-ON}"
-# A failed GPU build must stop here: an older libgow3gpu.so would otherwise be used silently.
-if ! ninja -C out/gpu gow3gpu > out/gpu-build.log 2>&1; then
+cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DORDER1886_PGO="$pgo" \
+    -DORDER1886_LTO="${ORDER1886_LTO:-ON}" -DORDER1886_PGO_DIR="$PWD/pgo" >/dev/null
+echo "GPU library: PGO $pgo, LTO ${ORDER1886_LTO:-ON}"
+# A failed GPU build must stop here: an older libps4gpu.so would otherwise be used silently.
+if ! ninja -C out/gpu ps4gpu > out/gpu-build.log 2>&1; then
     grep -v '^\[' out/gpu-build.log | tail -40 >&2
     echo 'GPU library build failed (full log: out/gpu-build.log)' >&2; exit 1
 fi
 # $ORIGIN/gpu: packaged copies keep the library next to the binary without patching it.
-gpu=(-Lout/gpu -lgow3gpu -Wl,-rpath,'$ORIGIN/gpu' -Wl,-rpath,"$PWD/out/gpu" -rdynamic)
+gpu=(-Lout/gpu -lps4gpu -Wl,-rpath,'$ORIGIN/gpu' -Wl,-rpath,"$PWD/out/gpu" -rdynamic)
 runtime=(src/runtime*.c)
 # Third-party decoders: compiled once, without this project's -Werror policy.
 atrac9=(third_party/LibAtrac9/C/src/*.c)
@@ -89,10 +95,10 @@ if [[ ! -f out/libatrac9.a || -n $(find third_party/LibAtrac9/C/src -newer out/l
 fi
 # isa_emulate runs inside guest code: no XMM/YMM.
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -mgeneral-regs-only -c src/isa_emulate.c -o out/isa_emulate.o
-"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -no-pie "${includes[@]}" -I. -Isrc src/probe.c "${runtime[@]}" src/cpu_check.c src/vulkan_smoke.c out/isa_emulate.o src/isa_rewrite.c out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/gow3-probe
-echo "Built $PWD/out/gow3-probe"
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -no-pie "${includes[@]}" -I. -Isrc src/probe.c "${runtime[@]}" src/cpu_check.c src/vulkan_smoke.c out/isa_emulate.o src/isa_rewrite.c out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/order1886-runtime
+echo "Built $PWD/out/order1886-runtime"
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror -Igpu/shadps4 tools/gpu_capabilities.c "${libraries[@]}" -o out/gow3-gpu-capabilities
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror -Igpu/shadps4 tools/gpu_capabilities.c "${libraries[@]}" -o out/ps4-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test

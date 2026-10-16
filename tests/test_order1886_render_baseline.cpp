@@ -1,0 +1,50 @@
+#include <cassert>
+#include <cstdlib>
+#include <type_traits>
+#include "ps4_settings.h"
+#include "video_core/renderer_vulkan/order1886_render_baseline.h"
+#include "video_core/renderer_vulkan/vk_blend_rewrite.h"
+#include "video_core/amdgpu/ps4_msaa.h"
+
+using namespace Vulkan;
+static_assert(!CameraMotion::Enabled() && !CameraMotion::Ready());
+static_assert(!ObjectMotion::Enabled());
+static_assert(!TemporalUpscaler::Enabled() && !TemporalUpscaler::RasterScaling());
+static_assert(TemporalUpscaler::SceneMipBias() == 0);
+static_assert(TemporalUpscaler::RedirectState() == 0);
+static_assert(TemporalUpscaler::Jitter() == std::array<float, 2>{});
+static_assert(!SceneTargets::Reduced() && !SceneTargets::Tracks(42));
+static_assert(SceneTargets::Size().width == 0 && SceneTargets::Size().height == 0);
+// No engine camera/history/FFX resource state can be allocated by these types.
+static_assert(std::is_empty_v<CameraMotion> && std::is_empty_v<ObjectMotion> &&
+              std::is_empty_v<TemporalUpscaler>);
+// Sizes used by the retired palette/camera classifier remain ordinary data.
+static_assert(Motion::ClassifyBuffer(864) == Motion::BufferRole::Other);
+static_assert(Motion::ClassifyBuffer(416) == Motion::BufferRole::Other);
+static_assert(Motion::ClassifyBuffer(656) == Motion::BufferRole::Other);
+static_assert(Motion::ClassifyBuffer(96) == Motion::BufferRole::Other);
+
+int main() {
+    // Defaults must be safe before Load(), independently of config/environment.
+    Ps4Settings::Values defaults;
+    assert(defaults.upscaler == Ps4Settings::UpscalerOff);
+    assert(!defaults.object_motion && !defaults.jitter && !defaults.sharpen);
+    assert(!defaults.async_shaders && !defaults.rcas);
+    assert(!defaults.deferred_readback && !defaults.stale_readback);
+    assert(defaults.fps_limit == 30);
+    assert(defaults.startup_upscaler == Ps4Settings::UpscalerOff);
+    assert(!defaults.startup_object_motion && !defaults.startup_deferred_readback &&
+           !defaults.startup_stale_readback);
+    AmdGpu::no_msaa.store(true);
+    assert(!AmdGpu::NoMsaa());
+    using Factor = AmdGpu::BlendControl::BlendFactor;
+    using Function = AmdGpu::BlendControl::BlendFunc;
+    BlendEquation scaled{Factor::SrcColor, Function::Min, Factor::DstColor};
+    assert(RewriteScaledMinMaxBlend(scaled, AmdGpu::NumberFormat::Unorm,
+                                    BlendChannel::Color) == BlendRewriteResult::Unsupported);
+    assert(scaled.function == Function::Min && scaled.src_factor == Factor::SrcColor &&
+           scaled.dst_factor == Factor::DstColor);
+    BlendEquation native{Factor::One, Function::Add, Factor::Zero};
+    assert(RewriteScaledMinMaxBlend(native, AmdGpu::NumberFormat::Unorm,
+                                    BlendChannel::Color) == BlendRewriteResult::Native);
+}

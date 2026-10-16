@@ -47,7 +47,7 @@ typedef struct GuestThread {
     char name[32];
     int detached, finished, joined, host_owned;
 #ifdef _WIN32
-    gow3_jmp_buf exit_jump; /* no SEH unwinding through guest frames */
+    ps4_jmp_buf exit_jump; /* no SEH unwinding through guest frames */
 #else
     jmp_buf exit_jump;
 #endif
@@ -152,6 +152,7 @@ static ThreadAttr *find_attr(ThreadAttr **slot) {
 }
 
 static ABI void *thread_self(void) { return runtime_thread_current(); }
+int runtime_thread_priority(void) { return runtime_thread_current()->attr.prio; }
 static ABI int32_t *guest_error(void) { return &guest_errno; }
 int32_t *runtime_errno(void) { return &guest_errno; }
 
@@ -246,8 +247,8 @@ static void set_host_name(const char *name) {
     pthread_setname_np(pthread_self(),host);
 }
 #ifdef _WIN32
-#define exit_setjmp(t) gow3_setjmp((t)->exit_jump)
-#define exit_longjmp(t) gow3_longjmp((t)->exit_jump,1)
+#define exit_setjmp(t) ps4_setjmp((t)->exit_jump)
+#define exit_longjmp(t) ps4_longjmp((t)->exit_jump,1)
 #else
 #define exit_setjmp(t) setjmp((t)->exit_jump)
 #define exit_longjmp(t) longjmp((t)->exit_jump,1)

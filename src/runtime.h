@@ -1,13 +1,14 @@
-#ifndef GOW3_RUNTIME_H
-#define GOW3_RUNTIME_H
+#ifndef ORDER1886_RUNTIME_H
+#define ORDER1886_RUNTIME_H
 #include <stdint.h>
 #include <stddef.h>
+#include "runtime_event_flag.h"
 #ifdef _WIN32
 #include "compat_win.h"
-/* No signals on Windows: the exception handler resumes the thread in gow3_longjmp
- * (gpu/shim/gow3_toggles.h uses the same buffer type). */
-typedef gow3_jmp_buf sigjmp_buf;
-#define sigsetjmp(buffer, save) gow3_setjmp(buffer)
+/* No signals on Windows: the exception handler resumes the thread in ps4_longjmp
+ * (gpu/shim/ps4_toggles.h uses the same buffer type). */
+typedef ps4_jmp_buf sigjmp_buf;
+#define sigsetjmp(buffer, save) ps4_setjmp(buffer)
 #else
 #include <setjmp.h>
 #endif
@@ -37,6 +38,7 @@ void runtime_set_procparam(void *param);
 void **runtime_application_heap_api(void);
 uintptr_t runtime_thread_resolve(const char *name);
 void runtime_thread_report(void);
+int runtime_thread_priority(void);
 void runtime_set_main_tls(const void *data, uint64_t filesz, uint64_t memsz, uint64_t align);
 void runtime_thread_attach_main(void);
 int32_t *runtime_errno(void);
@@ -45,6 +47,8 @@ void runtime_sema_report(void);
 unsigned runtime_sema_waiters(uint32_t id);
 uintptr_t runtime_time_resolve(const char *name);
 void runtime_content_configure(const uint32_t values[5]);
+int runtime_content_configure_sfo(const char *path);
+int runtime_sfo_value(const char *path,const char *key,char *text,size_t text_size,uint32_t *number);
 uintptr_t runtime_content_resolve(const char *name);
 void runtime_content_report(void);
 typedef struct { const char *name; void *function; } RuntimeExport;

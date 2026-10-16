@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright 2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
-// gow3: from cuesta4/shadPS4 (eltutz), GNM scaled MIN/MAX blends.
+// from cuesta4/shadPS4 (eltutz), GNM scaled MIN/MAX blends.
 
 #pragma once
 
@@ -64,22 +64,11 @@ enum class BlendRewriteResult {
     if (equation.src_factor == Factor::One && equation.dst_factor == Factor::One) {
         return BlendRewriteResult::Native;
     }
-    if (!IsUnsignedNormalizedBlendTarget(target_format)) {
-        return BlendRewriteResult::Unsupported;
-    }
-    if (IsSelfScaledBlend(equation, channel)) {
-        return BlendRewriteResult::Squared;
-    }
-    if (equation.src_factor != Factor::Zero && equation.dst_factor != Factor::Zero) {
-        return BlendRewriteResult::Unsupported;
-    }
-
-    if (equation.function == Function::Min) {
-        equation.src_factor = Factor::Zero;
-        equation.dst_factor = Factor::Zero;
-    }
-    equation.function = Function::Add;
-    return BlendRewriteResult::Exact;
+    // Keep native translation and the caller's unsupported-blend warning.
+    // Preserve guest blend equations without an additional rendering pass.
+    (void)target_format;
+    (void)channel;
+    return BlendRewriteResult::Unsupported;
 }
 
 } // namespace Vulkan

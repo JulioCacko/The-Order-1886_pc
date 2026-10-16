@@ -49,6 +49,9 @@ public:
                     ComputePipelineKey compute_key, const Shader::Info& info,
                     vk::ShaderModule module, SerializationSupport& sdata, bool preloading);
     ~ComputePipeline();
+    void PublishInfo(const Shader::Info* live_info) {
+        stages[int(Shader::SwStage::Compute)] = live_info;
+    }
 
 private:
     ComputePipelineKey compute_key;

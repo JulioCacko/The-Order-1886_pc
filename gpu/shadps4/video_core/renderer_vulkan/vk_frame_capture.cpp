@@ -53,7 +53,7 @@ void AddBuffers(Entry& entry) {
 bool pass_open = false;
 std::mutex display_mutex;
 std::vector<VAddr> display_buffers;
-// gow3: read on every draw; the game registers a handful of display buffers once.
+// read on every draw; the game registers a handful of display buffers once.
 std::array<std::atomic<VAddr>, 16> display_list{};
 std::atomic<u32> display_count{0};
 
@@ -93,12 +93,12 @@ void SetResult(std::string text) {
     result = std::move(text);
 }
 
-// GOW3_CAPTURE_DIR, else <user>/captures (GOW3_GPU_USER_DIR, the saves folder).
+// ORDER1886_CAPTURE_DIR, else <user>/captures (ORDER1886_GPU_USER_DIR, the saves folder).
 std::filesystem::path CaptureDir() {
-    if (const char* dir = std::getenv("GOW3_CAPTURE_DIR"); dir && dir[0]) {
+    if (const char* dir = std::getenv("ORDER1886_CAPTURE_DIR"); dir && dir[0]) {
         return dir;
     }
-    const char* user = std::getenv("GOW3_GPU_USER_DIR");
+    const char* user = std::getenv("ORDER1886_GPU_USER_DIR");
     return std::filesystem::path(user && user[0] ? user : "user") / "captures";
 }
 
@@ -159,7 +159,7 @@ void Write(VAddr presented) {
 void FrameCapture::OnFlip(VAddr presented_address) {
     last_presented.store(presented_address, std::memory_order_relaxed);
     flips.fetch_add(1, std::memory_order_release);
-    static const char* trigger = std::getenv("GOW3_CAPTURE_TRIGGER");
+    static const char* trigger = std::getenv("ORDER1886_CAPTURE_TRIGGER");
     if (state.load(std::memory_order_relaxed) != Idle) {
         return;
     }
@@ -185,7 +185,28 @@ std::string FrameCapture::LastResult() {
     return result;
 }
 
-void FrameCapture::Poll() {}
+void FrameCapture::Poll() {
+    // GPU-side observation of actual VideoOut flips; no render-pass signature is assumed.
+    static u64 observed_flip = 0;
+    const u64 current = flips.load(std::memory_order_acquire);
+    if (current == observed_flip) return;
+    observed_flip = current;
+    const auto phase = state.load(std::memory_order_acquire);
+    if (phase == Recording) {
+        Write(last_presented.load(std::memory_order_relaxed));
+        entries.clear();
+        pending_sampled.clear();
+        pending_buffers.clear();
+        pass_open = false;
+        state.store(Idle, std::memory_order_release);
+    } else if (phase == Armed) {
+        entries.clear();
+        pending_sampled.clear();
+        pending_buffers.clear();
+        pass_open = false;
+        state.store(Recording, std::memory_order_release);
+    }
+}
 
 bool FrameCapture::IsDisplayBuffer(VAddr address) {
     const u32 count = display_count.load(std::memory_order_acquire);
@@ -215,36 +236,10 @@ void FrameCapture::AddDisplayBuffer(VAddr address) {
 
 void FrameCapture::BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_colors,
                              const VideoCore::ImageInfo* depth, std::string census) {
+    Poll();
     std::vector<Target> targets;
-    bool display = false;
-    {
-        std::scoped_lock lk{display_mutex};
-        for (u32 i = 0; i < num_colors; ++i) {
-            targets.push_back(colors[i] ? ToTarget(*colors[i]) : Target{});
-            display |= colors[i] && std::ranges::find(display_buffers, colors[i]->guest_address) !=
-                                        display_buffers.end();
-        }
-    }
-    // Frame boundaries in the command stream: the pass that writes a display buffer as its only
-    // target. gow3: God of War III also draws scene passes (two targets) into display buffers.
-    display = display && targets.size() == 1;
-    const bool new_pass = !(pass_open && !entries.empty() && !entries.back().compute &&
-                            entries.back().colors == targets);
-    if (display && new_pass) {
-        if (state.load(std::memory_order_relaxed) == Recording) {
-            Write(last_presented.load(std::memory_order_relaxed));
-            entries.clear();
-            pending_sampled.clear();
-            pending_buffers.clear();
-            state.store(Idle, std::memory_order_release);
-            return;
-        }
-        entries.clear();
-        pending_sampled.clear();
-        pending_buffers.clear();
-        pass_open = false;
-        state.store(Recording, std::memory_order_release);
-    }
+    for (u32 i = 0; i < num_colors; ++i)
+        targets.push_back(colors[i] ? ToTarget(*colors[i]) : Target{});
     if (state.load(std::memory_order_relaxed) != Recording) {
         pending_sampled.clear();
         pending_buffers.clear();
@@ -275,6 +270,7 @@ void FrameCapture::Draw(u64 vs_hash, u64 ps_hash, u32 num_indices, u32 num_insta
 }
 
 void FrameCapture::Dispatch(u64 cs_hash, u32 x, u32 y, u32 z) {
+    Poll();
     if (state.load(std::memory_order_relaxed) != Recording) {
         pending_sampled.clear();
         pending_buffers.clear();

@@ -27,7 +27,7 @@ class GameUpdateTests(unittest.TestCase):
         write(self.update / 'SCE_SYS/icon0.png', 'new icon')
 
     def view(self, ids=('CUSA01623', 'CUSA01623')):
-        with mock.patch('patches.game_title_id', side_effect=list(ids)):
+        with mock.patch('prepare.read_sfo', side_effect=[{'TITLE_ID': value} for value in ids]):
             return game_update.create_view(self.base, self.update, self.out)
 
     def test_update_files_replace_base_files_and_the_rest_stays(self):
@@ -59,7 +59,7 @@ class GameUpdateTests(unittest.TestCase):
     def test_different_titles_and_nested_folders_are_refused(self):
         with self.assertRaises(ValueError):
             self.view(('CUSA01623', 'CUSA01715'))
-        with mock.patch('patches.game_title_id', return_value='CUSA01623'):
+        with mock.patch('prepare.read_sfo', return_value={'TITLE_ID': 'CUSA01623'}):
             with self.assertRaises(ValueError):
                 game_update.create_view(self.base, self.base / 'EXEC', self.out)
         self.assertEqual(list(self.out.iterdir()) if self.out.exists() else [], [])

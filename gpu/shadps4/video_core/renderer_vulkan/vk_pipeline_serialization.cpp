@@ -20,35 +20,31 @@
 #include "common/scope_exit.h"
 #include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
 #include "common/thread.h"
-#include "gow3_overlay.h"
+#include "ps4_overlay.h"
 #include "core/emulator_settings.h"
 #include "shader_recompiler/frontend/fetch_shader.h"
 #include "shader_recompiler/info.h"
 #include "video_core/cache_storage.h"
 #include "video_core/renderer_vulkan/vk_amd_paths.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
-#include "video_core/renderer_vulkan/vk_lighting_test.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 #include "video_core/renderer_vulkan/vk_warmup_inbox.h"
 
 namespace Serialization {
 /* You should increment versions below once corresponding serialization scheme is changed. */
-static constexpr u32 ShaderBinaryVersion = 7u; // gow3: interpolated integer fix (Pascal)
-static constexpr u32 ShaderMetaVersion = 7u; // gow3: ImageResource::needs_native
-static constexpr u32 PipelineKeyVersion = 5u; // gow3: Info layout (ImageResource::needs_native)
+static constexpr u32 ShaderBinaryVersion = 11u; // typed FMask output and descriptor swizzles
+static constexpr u32 ShaderMetaVersion = 8u; // canonical lookup + effective permutation Info
+static constexpr u32 PipelineKeyVersion = 6u; // rejects layouts built from canonical Info
 } // namespace Serialization
 
 namespace Vulkan {
 
 namespace {
-// gow3: the test knobs that change recompiled SPIR-V (GOW3_LIGHTING_TEST=dref,
-// GOW3_AMD_PATHS_OFF=shaderext) get their own shader binary cache version.
+// Shader extension selection changes emitted SPIR-V.
 u32 CurrentShaderBinaryVersion() {
-    return LightingTest::ShaderBinaryVersion(
-        Serialization::ShaderBinaryVersion,
-        LightingTest::ShaderBinarySalt(LightingTest::Current().dref,
-                                       AmdPathsOff::Current().shaderext));
+    return Serialization::ShaderBinaryVersion +
+           (AmdPathsOff::Current().shaderext ? 32u : 0u);
 }
 } // namespace
 
@@ -277,8 +273,8 @@ vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
         const auto ns = u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                 std::chrono::steady_clock::now() - started)
                                 .count());
-        extern std::atomic<u64> g_gow3_pipeline_driver_ns;
-        g_gow3_pipeline_driver_ns += ns;
+        extern std::atomic<u64> g_ps4_pipeline_driver_ns;
+        g_ps4_pipeline_driver_ns += ns;
         if (enabled) {
             (restored ? binary_restore_ns : binary_compile_ns) += ns;
             ++(restored ? binary_restore_calls : binary_compile_calls);
@@ -458,7 +454,7 @@ vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
     return result;
 }
 
-// gow3: GOW3_PARALLEL_WARMUP=1. The cache store is still read and the shader modules created in
+// ORDER1886_PARALLEL_WARMUP=1. The cache store is still read and the shader modules created in
 // order on the calling thread (program_cache and its permutation checks are not thread-safe);
 // only the pipeline objects, the slow part, are built here. The runtime compiler builds
 // pipelines on worker threads the same way (vk_pipeline_cache.cpp).
@@ -467,7 +463,7 @@ struct PipelineCache::WarmupPool {
         for (u32 i = 0; i < count; ++i) {
             threads.emplace_back([this, low_priority] {
                 if (low_priority) {
-                    Common::SetCurrentThreadName("GoW3:ShaderWarmup");
+                    Common::SetCurrentThreadName("PS4:ShaderWarmup");
                     Common::SetCurrentThreadPriority(Common::ThreadPriority::Low);
                 }
                 Run();
@@ -513,7 +509,7 @@ struct PipelineCache::WarmupPool {
         return jobs.empty() && !running;
     }
     static u32 Threads() {
-        const char* env = std::getenv("GOW3_PARALLEL_WARMUP");
+        const char* env = std::getenv("ORDER1886_PARALLEL_WARMUP");
         if (!env || !*env || *env == '0') {
             return 0;
         }
@@ -540,9 +536,9 @@ private:
             try {
                 ok = job();
             } catch (const std::exception& e) {
-                LOG_ERROR(Render_Vulkan, "gow3: warm-up pipeline failed: {}", e.what());
+                LOG_ERROR(Render_Vulkan, "ps4: warm-up pipeline failed: {}", e.what());
             } catch (...) {
-                LOG_ERROR(Render_Vulkan, "gow3: warm-up pipeline failed");
+                LOG_ERROR(Render_Vulkan, "ps4: warm-up pipeline failed");
             }
             (ok ? built : failed).fetch_add(1, std::memory_order_relaxed);
             lock.lock();
@@ -597,7 +593,7 @@ void RegisterPipelineData(const GraphicsPipelineKey& key, u64 hash,
                                        fmt::format("g_{:#018x}", hash), ar.TakeOff());
 }
 
-void RegisterShaderMeta(const Shader::Info& info,
+void RegisterShaderMeta(const Shader::Info& info, const Shader::Info& effective_info,
                         const std::optional<Shader::Gcn::FetchShaderData>& fetch_shader_data,
                         const Shader::StageSpecialization& spec, size_t perm_hash,
                         size_t perm_idx) {
@@ -616,6 +612,7 @@ void RegisterShaderMeta(const Shader::Info& info,
 
     spec.Serialize(ar);
     info.Serialize(ar);
+    effective_info.Serialize(ar);
 
     Storage::DataBase::Instance().Save(Storage::BlobType::ShaderMeta,
                                        fmt::format("{:#018x}", perm_hash), ar.TakeOff());
@@ -631,7 +628,7 @@ void RegisterShaderBinary(std::vector<u32>&& spv, u64 pgm_hash, size_t perm_idx)
                                        std::move(spv));
 }
 
-bool LoadShaderMeta(Serialization::Archive& ar, Shader::Info& info,
+bool LoadShaderMeta(Serialization::Archive& ar, Shader::Info& info, Shader::Info& effective_info,
                     std::optional<Shader::Gcn::FetchShaderData>& fetch_shader_data,
                     Shader::StageSpecialization& spec, size_t& perm_idx) {
     Serialization::Reader meta{ar};
@@ -652,8 +649,9 @@ bool LoadShaderMeta(Serialization::Archive& ar, Shader::Info& info,
     meta.Read(perm_hash_ar);
     meta.Read(perm_idx);
 
-    spec.Deserialize(ar);
-    info.Deserialize(ar);
+    if (!spec.Deserialize(ar) || !info.Deserialize(ar) || !effective_info.Deserialize(ar)) {
+        return false;
+    }
 
     // Motion vertex shaders embed session-local buffer device addresses. They must be
     // recompiled for the current allocation, never loaded from a previous process.
@@ -710,11 +708,14 @@ bool PipelineCache::LoadComputePipeline(Serialization::Archive& ar) {
 
     if (warmup_pool) {
         // The slot stays null until WarmUp moves the built pipeline in (the map may rehash).
-        warmup_pool->Push([this, key = compute_key, info = sel.infos[0], module = sel.modules[0],
+        auto snapshot = std::make_shared<Shader::Info>(*sel.infos[0]);
+        warmup_pool->Push([this, key = compute_key, info = sel.infos[0], snapshot,
+                           module = sel.modules[0],
                            sdata]() mutable {
             auto pipeline = std::make_unique<ComputePipeline>(instance, scheduler, desc_heap,
-                                                              profile, *pipeline_cache, key, *info,
+                                                              profile, *pipeline_cache, key, *snapshot,
                                                               module, sdata, true);
+            pipeline->PublishInfo(info);
             std::scoped_lock lock{warmup_results_mutex};
             warmup_compute.emplace_back(key, std::move(pipeline));
             return true;
@@ -797,12 +798,19 @@ bool PipelineCache::LoadGraphicsPipeline(Serialization::Archive& ar) {
     ASSERT(is_new);
 
     if (warmup_pool) {
-        warmup_pool->Push([this, key = sel.graphics_key, infos = sel.infos,
+        std::array<std::shared_ptr<Shader::Info>, MaxShaderStages> snapshots{};
+        for (u32 i = 0; i < MaxShaderStages; ++i) {
+            if (sel.infos[i]) snapshots[i] = std::make_shared<Shader::Info>(*sel.infos[i]);
+        }
+        warmup_pool->Push([this, key = sel.graphics_key, live_infos = sel.infos, snapshots,
                            runtime_infos = sel.runtime_infos, fetch = sel.fetch_shader,
                            modules = sel.modules, sdata]() mutable {
+            std::array<const Shader::Info*, MaxShaderStages> infos{};
+            for (u32 i = 0; i < MaxShaderStages; ++i) infos[i] = snapshots[i].get();
             auto pipeline = std::make_unique<GraphicsPipeline>(
                 instance, scheduler, desc_heap, profile, key, *pipeline_cache, infos,
                 runtime_infos, fetch, modules, sdata, true);
+            pipeline->PublishStages(live_infos);
             std::scoped_lock lock{warmup_results_mutex};
             warmup_graphics.emplace_back(key, std::move(pipeline));
             return true;
@@ -822,10 +830,11 @@ bool PipelineCache::LoadGraphicsPipeline(Serialization::Archive& ar) {
 
 bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) {
     auto program = std::make_unique<Program>();
+    auto effective_info = std::make_unique<Shader::Info>();
     Shader::StageSpecialization spec{};
     spec.info = &program->info;
     size_t perm_idx{};
-    if (!LoadShaderMeta(ar, program->info, sel.fetch_shader, spec, perm_idx)) {
+    if (!LoadShaderMeta(ar, program->info, *effective_info, sel.fetch_shader, spec, perm_idx)) {
         return false;
     }
 
@@ -861,13 +870,21 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) 
                 return false;
             }
             module = it->module;
+            sel.infos[stage] = it->info.get();
+            sel.modules[stage] = module;
+            return true;
         } else {
+            if (perm_idx < it_pgm.value()->modules.size() &&
+                it_pgm.value()->modules[perm_idx].module) {
+                return false;
+            }
             module = CompileSPV(spv, instance.GetDevice());
         }
     }
-    it_pgm.value()->InsertPermut(module, std::move(spec), perm_idx);
+    spec.info = &it_pgm.value()->info;
+    it_pgm.value()->InsertPermut(module, std::move(spec), perm_idx, std::move(effective_info));
 
-    sel.infos[stage] = &it_pgm.value()->info;
+    sel.infos[stage] = it_pgm.value()->modules[perm_idx].info.get();
     sel.modules[stage] = module;
 
     return true;
@@ -901,7 +918,7 @@ bool PipelineCache::CheckCacheProfile() {
         std::memcpy(&cached_profile, profile_data.data(), sizeof(cached_profile));
     }
     if (profile_data.size() != sizeof(Shader::Profile) || cached_profile != profile) {
-        // gow3: upstream closed the cache for the session here, so it was never rewritten
+        // upstream closed the cache for the session here, so it was never rewritten
         // and every later session compiled every shader again (stutters on each new area).
         // Start a fresh cache for this build and GPU instead.
         LOG_WARNING(Render, "Pipeline cache isn't compatible with current system: rebuilding it");
@@ -1010,12 +1027,13 @@ void PipelineCache::StartOnDemand() {
     std::printf("Pipeline startup: on demand, no bulk warm-up\n");
 }
 
-// gow3: one cached shader stage read by the background warm-up, shared by every cached
+// one cached shader stage read by the background warm-up, shared by every cached
 // pipeline that uses it. A pool thread fills it; the GPU thread merges it into program_cache
 // once (MergeWarmStage).
 struct PipelineCache::WarmStage {
     vk::Device device;
     std::unique_ptr<Program> program;
+    std::unique_ptr<Shader::Info> effective_info;
     Shader::StageSpecialization spec{};
     std::optional<Shader::Gcn::FetchShaderData> fetch;
     size_t perm_idx{};
@@ -1033,7 +1051,7 @@ struct PipelineCache::WarmStage {
     }
 };
 
-// gow3: StartBackgroundWarmUp. The pool reads the store and builds the pipelines at low
+// StartBackgroundWarmUp. The pool reads the store and builds the pipelines at low
 // priority; the GPU thread merges the stages and publishes the pipelines a few at a time.
 struct PipelineCache::BackgroundWarmup {
     struct Entry {
@@ -1138,6 +1156,7 @@ void PipelineCache::ReadWarmEntry(BackgroundWarmup& warm, std::vector<u8>&& data
             stage = std::make_shared<WarmStage>();
             stage->device = instance.GetDevice();
             stage->program = std::make_unique<Program>();
+            stage->effective_info = std::make_unique<Shader::Info>();
             stage->spec.info = &stage->program->info;
             const auto io_started = std::chrono::steady_clock::now();
             u64 module_time = 0;
@@ -1145,7 +1164,8 @@ void PipelineCache::ReadWarmEntry(BackgroundWarmup& warm, std::vector<u8>&& data
             db.Load(Storage::BlobType::ShaderMeta, fmt::format("{:#018x}", hashes[i]), meta_blob);
             if (!meta_blob.empty()) {
                 Serialization::Archive meta_ar{std::move(meta_blob)};
-                if (LoadShaderMeta(meta_ar, stage->program->info, stage->fetch, stage->spec,
+                if (LoadShaderMeta(meta_ar, stage->program->info, *stage->effective_info,
+                                   stage->fetch, stage->spec,
                                    stage->perm_idx)) {
                     std::vector<u32> spv;
                     db.Load(Storage::BlobType::ShaderBinary,
@@ -1178,11 +1198,13 @@ bool PipelineCache::MergeWarmStage(WarmStage& stage) {
     const auto it_pgm = program_cache.find(hash);
     if (it_pgm == program_cache.end()) {
         Program* program = stage.program.get();
-        program->InsertPermut(stage.module, std::move(stage.spec), stage.perm_idx);
+        stage.spec.info = &program->info;
+        program->InsertPermut(stage.module, std::move(stage.spec), stage.perm_idx,
+                              std::move(stage.effective_info));
         program_cache.emplace(hash, std::move(stage.program));
         stage.module_kept = true;
         stage.result = stage.module;
-        stage.info = &program->info;
+        stage.info = program->modules[stage.perm_idx].info.get();
         return true;
     }
     // The game already uses this shader: its permutations are the ones that count.
@@ -1201,11 +1223,12 @@ bool PipelineCache::MergeWarmStage(WarmStage& stage) {
             return false;
         }
         stage.spec.info = &program.info;
-        program.InsertPermut(stage.module, std::move(stage.spec), stage.perm_idx);
+        program.InsertPermut(stage.module, std::move(stage.spec), stage.perm_idx,
+                             std::move(stage.effective_info));
         stage.module_kept = true;
         stage.result = stage.module;
     }
-    stage.info = &program.info;
+    stage.info = program.modules[stage.perm_idx].info.get();
     return true;
 }
 
@@ -1245,7 +1268,7 @@ void PipelineCache::PumpWarmUp() {
     warm.last_batch = now;
     ++warm.batches;
     const u32 done = warm.done + warm.pool->failed;
-    Gow3Overlay::SetBackgroundLoading(done, std::max(warm.total.load(), done));
+    Ps4Overlay::SetBackgroundLoading(done, std::max(warm.total.load(), done));
 
     static const std::array<Shader::RuntimeInfo, MaxShaderStages> no_runtime_infos{};
     for (auto& entry : warm.read.Take(32)) {
@@ -1279,24 +1302,33 @@ void PipelineCache::PumpWarmUp() {
             warm.done.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
+        std::array<std::shared_ptr<Shader::Info>, MaxShaderStages> snapshots{};
+        for (u32 i = 0; i < MaxShaderStages; ++i) {
+            if (infos[i]) snapshots[i] = std::make_shared<Shader::Info>(*infos[i]);
+        }
         ++warm.submitted;
         warm.pool->Push([this, &warm, queued = std::chrono::steady_clock::now(),
                           compute = entry.compute, graphics_key = entry.graphics_key,
-                         compute_key = entry.compute_key, sdata = entry.sdata, infos, modules,
+                         compute_key = entry.compute_key, sdata = entry.sdata, live_infos = infos,
+                         snapshots, modules,
                          fetch]() mutable {
             const auto build_started = std::chrono::steady_clock::now();
             warm.build_queue_ns += ElapsedNs(queued);
             SCOPE_EXIT { warm.build_ns += ElapsedNs(build_started); ++warm.completed; };
             BackgroundWarmup::Built built{graphics_key, compute_key};
+            std::array<const Shader::Info*, MaxShaderStages> infos{};
+            for (u32 i = 0; i < MaxShaderStages; ++i) infos[i] = snapshots[i].get();
             if (compute) {
                 ComputePipeline::SerializationSupport compute_data{};
                 built.compute = std::make_unique<ComputePipeline>(
                     instance, scheduler, desc_heap, profile, *pipeline_cache, compute_key,
                     *infos[0], modules[0], compute_data, true);
+                built.compute->PublishInfo(live_infos[0]);
             } else {
                 built.graphics = std::make_unique<GraphicsPipeline>(
                     instance, scheduler, desc_heap, profile, graphics_key, *pipeline_cache, infos,
                     no_runtime_infos, fetch, modules, sdata, true);
+                built.graphics->PublishStages(live_infos);
             }
             warm.built.Push(std::move(built));
             return true;
@@ -1335,17 +1367,17 @@ void PipelineCache::PumpWarmUp() {
                 binary_key_ns.load() / 1e9, binary_load_ns.load() / 1e9,
                 binary_handles_ns.load() / 1e9, binary_restore_ns.load() / 1e9,
                 binary_compile_ns.load() / 1e9);
-    extern std::atomic<u64> g_gow3_pipeline_total_ns, g_gow3_pipeline_driver_ns;
-    extern std::atomic<u32> g_gow3_pipelines_built;
-    const u32 built = std::max(1u, g_gow3_pipelines_built.load());
+    extern std::atomic<u64> g_ps4_pipeline_total_ns, g_ps4_pipeline_driver_ns;
+    extern std::atomic<u32> g_ps4_pipelines_built;
+    const u32 built = std::max(1u, g_ps4_pipelines_built.load());
     std::printf("Pipeline build time: %u graphics pipelines, %.1f ms each (driver %.1f ms, the rest "
                 "%.1f ms), %.1f s in all\n",
-                built, g_gow3_pipeline_total_ns / 1e6 / built, g_gow3_pipeline_driver_ns / 1e6 / built,
-                (g_gow3_pipeline_total_ns - g_gow3_pipeline_driver_ns) / 1e6 / built,
-                g_gow3_pipeline_total_ns / 1e9);
+                built, g_ps4_pipeline_total_ns / 1e6 / built, g_ps4_pipeline_driver_ns / 1e6 / built,
+                (g_ps4_pipeline_total_ns - g_ps4_pipeline_driver_ns) / 1e6 / built,
+                g_ps4_pipeline_total_ns / 1e9);
     // The idle threads stay parked (StopWarmUp).
     warm.finished = true;
-    Gow3Overlay::SetBackgroundLoading(0, 0);
+    Ps4Overlay::SetBackgroundLoading(0, 0);
     Storage::DataBase::Instance().FinishPreload();
 }
 
@@ -1359,7 +1391,7 @@ void PipelineCache::StopWarmUp() {
     // while the game ran crashed in ntdll (RtlWakeAllConditionVariable). Join them once the
     // cause is known.
     background = nullptr;
-    Gow3Overlay::SetBackgroundLoading(0, 0);
+    Ps4Overlay::SetBackgroundLoading(0, 0);
 }
 
 void PipelineCache::Sync() {

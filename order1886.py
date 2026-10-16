@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""The Order: 1886 launch path using the repository's native PS4 loader.
+
+Prepared images retain original PS4 code; state and configuration belong to this title.
+An import audit or a successful process exit is never treated as gameplay proof.
+"""
+from __future__ import annotations
+
+import argparse
+import contextlib
+import datetime as dt
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+
+ROOT = Path(__file__).resolve().parent
+INSTALL_ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else ROOT
+SCRIPTS = ROOT / 'scripts'
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+import prepare
+import link_modules
+import save_backup
+
+TITLE_ID = 'CUSA00076'
+RUNTIME_ABI = 'order1886-native-1'
+SHADER_CACHE_ABI = 'native-ps4-v1'
+REQUIRED_FILES = ('eboot.bin', 'sce_sys/param.sfo', 'sce_module/libc.prx', 'sce_module/libSceFios2.prx')
+
+
+def default_game_dir():
+    relative = Path('ShadPs4Plus-PkgExtractor-1.1-windows') / TITLE_ID
+    for base in (INSTALL_ROOT, INSTALL_ROOT.parent, INSTALL_ROOT.parent.parent):
+        if (base / relative / 'eboot.bin').is_file():
+            return base / relative
+    return INSTALL_ROOT / relative
+
+
+def inspect_game(game):
+    game = Path(game).expanduser().resolve()
+    for name in REQUIRED_FILES:
+        file = game / name
+        if not file.is_file() or file.stat().st_size == 0:
+            raise ValueError(f'Missing or empty game file: {file}')
+    metadata = prepare.load_sfo(game / 'sce_sys/param.sfo')
+    if metadata.get('TITLE_ID') != TITLE_ID:
+        raise ValueError(f'Expected {TITLE_ID} (The Order: 1886), found {metadata.get("TITLE_ID", "unknown title")}')
+    if not (game / '_data').is_dir() or not (game / 'archivemap.bin').is_file():
+        raise ValueError('The Order game content is incomplete: _data and archivemap.bin are required.')
+    return metadata
+
+
+def find_runtime(explicit=None):
+    if explicit:
+        path = Path(explicit).expanduser().resolve()
+        if not path.is_file():
+            raise ValueError(f'Runtime executable not found: {path}')
+        build = runtime_identity(path)['build']
+        if not build or build.get('game_profile') != 'order1886' or build.get('runtime_abi') != RUNTIME_ABI:
+            raise ValueError('Selected executable is not a verified dedicated Order runtime. Rebuild order1886-runtime.exe.')
+        return path
+    name = 'order1886-runtime.exe' if os.name == 'nt' else 'order1886-runtime'
+    bases = (INSTALL_ROOT,) if getattr(sys, 'frozen', False) else tuple(dict.fromkeys((INSTALL_ROOT, ROOT)))
+    candidates = [base / folder / name for base in bases
+                  for folder in ('bin', 'out')]
+    for candidate in candidates:
+        if candidate.is_file():
+            return find_runtime(candidate)
+    return None
+
+
+def sha256(path):
+    with Path(path).open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def runtime_identity(runtime):
+    runtime = Path(runtime).resolve()
+    digest = sha256(runtime)
+    try:
+        build = json.loads(runtime.with_name('runtime-build.json').read_text(encoding='utf-8'))
+        if not isinstance(build, dict) or build.get('runtime_sha256') != digest:
+            build = None
+    except (OSError, ValueError):
+        build = None
+    return {'runtime': str(runtime), 'runtime_sha256': digest, 'build': build}
+
+
+def write_json(path, value):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + '.tmp')
+    temporary.write_text(json.dumps(value, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    temporary.replace(path)
+
+
+def prepare_game(game, out):
+    game, out = Path(game).resolve(), Path(out).resolve()
+    metadata = inspect_game(game)
+    # Prevent accidental writes to the extracted game, even with custom CLI arguments.
+    if out == game or game in out.parents:
+        raise ValueError('Prepared images must be stored outside the game folder.')
+    fingerprint = {name: sha256(game / name) for name in REQUIRED_FILES}
+    for name in ('prepare.py', 'link_modules.py', 'link_libc.py'):
+        fingerprint['tool/' + name] = sha256(SCRIPTS / name)
+    manifest = out / 'prepared.json'
+    try:
+        previous = json.loads(manifest.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        previous = {}
+    image = out / 'boot-linked.bin'
+    if (previous.get('inputs') == fingerprint and previous.get('game') == str(game)
+            and image.is_file() and previous.get('image_sha256') == sha256(image)):
+        print('Prepared image verified; reusing cached image.', flush=True)
+        return previous
+    out.mkdir(parents=True, exist_ok=True)
+    # Invalidate before writing, so interrupted preparation cannot reuse a partial image.
+    manifest.unlink(missing_ok=True)
+    prepare.prepare(game, out)
+    link_modules.link(game, out)
+    result = {'game': str(game), 'title_id': metadata['TITLE_ID'], 'inputs': fingerprint,
+              'image_sha256': sha256(image), 'status': 'prepared; gameplay unverified'}
+    write_json(manifest, result)
+    return result
+
+
+def runtime_environment(runtime, user, settings=None, inherited=None):
+    runtime, user = Path(runtime).resolve(), Path(user).resolve()
+    settings = settings or {}
+    source = os.environ if inherited is None else inherited
+    env = {k: v for k, v in source.items() if not k.upper().startswith('ORDER1886_')}
+    env.update({
+        'ORDER1886_CONFIG': str(user / 'runtime.ini'), 'ORDER1886_USER_DIR': str(user),
+        'ORDER1886_GPU_USER_DIR': str(user / 'gpu' / SHADER_CACHE_ABI), 'ORDER1886_GAME_PROFILE': 'order1886',
+        'ORDER1886_FPS_LIMIT': '30',
+        'ORDER1886_SETTINGS_MENU': '0',
+        'ORDER1886_VBLANK_HZ': '60',
+        'ORDER1886_STREAM_MEMORY': 'cached', 'PYTHONIOENCODING': 'utf-8',
+    })
+    env['PATH'] = str(runtime.parent) + os.pathsep + env.get('PATH', '')
+    if os.name == 'nt' and not getattr(sys, 'frozen', False) and ROOT / 'out' in runtime.parents:
+        # Source builds link CLANG64 DLLs. Portable packages carry their own closure in bin/.
+        dependencies = Path(source.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
+        if dependencies.is_dir():
+            env['PATH'] = str(runtime.parent) + os.pathsep + str(dependencies) + os.pathsep + source.get('PATH', '')
+    icon = user / 'window_icon.bmp'
+    if icon.is_file():
+        env['ORDER1886_WINDOW_ICON'] = str(icon)
+    return env
+
+
+def write_runtime_config(user, settings):
+    mode = settings.get('display_mode', 'windowed')
+    if mode not in ('windowed', 'borderless', 'fullscreen'):
+        raise ValueError('Invalid display mode')
+    values = {'display_mode': mode, 'vsync': int(bool(settings.get('vsync', True))),
+              'show_fps': int(bool(settings.get('show_fps', False))), 'fps_limit': 30,
+              'render_resolution': 'native', 'frames_queued': 1,
+              'overlay_fps': 1, 'overlay_frametime': 1, 'overlay_gpu': 1}
+    Path(user).mkdir(parents=True, exist_ok=True)
+    (Path(user) / 'runtime.ini').write_text(
+        '# The Order: 1886 compatibility baseline; no frame-rate unlock patch.\n'
+        + ''.join(f'{k}={v}\n' for k, v in values.items()), encoding='utf-8')
+
+
+def build_command(runtime, image, game, user, check_imports=False):
+    command = [str(Path(runtime).resolve()), str(Path(image).resolve()),
+               '--app0', str(Path(game).resolve()), '--user', str(Path(user).resolve()), '--timeout', '0']
+    if check_imports:
+        command.append('--check-imports')
+    return command
+
+
+def request_runtime_close(pid):
+    """Request the runtime's normal window close path before considering force."""
+    if os.name != 'nt':
+        import signal
+        try:
+            os.kill(pid, signal.SIGTERM)
+            return True
+        except ProcessLookupError:
+            return False
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    sent = False
+
+    @callback_type
+    def close_window(window, _):
+        nonlocal sent
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(window, ctypes.byref(owner))
+        if owner.value == pid and user32.PostMessageW(window, 0x0010, 0, 0):
+            sent = True
+        return True
+
+    user32.EnumWindows(close_window, 0)
+    return sent
+
+
+def run_process(command, env, log, timeout=0, stop_file=None, stop_grace_seconds=5):
+    flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+    started = time.monotonic()
+    stop_file = Path(stop_file) if stop_file else None
+    timed_out = stop_requested = forced_stop = False
+    with Path(log).open('w', encoding='utf-8') as output:
+        output.write('Command: ' + json.dumps(command) + '\n')
+        output.flush()
+        if stop_file and stop_file.exists():
+            output.write('Cancelled before runtime start.\n')
+            return {'exit_code': 130, 'timed_out': False, 'stop_requested': True,
+                    'forced_stop': False, 'elapsed_seconds': 0}
+        child = subprocess.Popen(command, cwd=str(Path(env['ORDER1886_USER_DIR'])), env=env,
+                                 stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+                                 creationflags=flags)
+        print(f'Runtime started (PID {child.pid})', flush=True)
+        try:
+            while child.poll() is None:
+                if stop_file and stop_file.exists():
+                    stop_requested = True
+                    request_runtime_close(child.pid)
+                    try:
+                        child.wait(timeout=stop_grace_seconds)
+                    except subprocess.TimeoutExpired:
+                        forced_stop = True
+                        child.kill()
+                        child.wait()
+                    print('Shutdown: forced' if forced_stop else 'Shutdown: graceful', flush=True)
+                    break
+                if timeout and time.monotonic() - started >= timeout:
+                    timed_out = forced_stop = True
+                    child.kill()
+                    child.wait()
+                    break
+                try:
+                    child.wait(timeout=0.1)
+                except subprocess.TimeoutExpired:
+                    pass
+            code = 124 if timed_out else 130 if stop_requested else child.returncode
+        except BaseException:
+            child.kill()
+            child.wait()
+            raise
+    return {'exit_code': code, 'runtime_exit_code': child.returncode, 'timed_out': timed_out,
+            'stop_requested': stop_requested, 'forced_stop': forced_stop,
+            'elapsed_seconds': round(time.monotonic() - started, 3)}
+
+
+@contextlib.contextmanager
+def session_lock(user):
+    """OS-owned lock releases after a crash; prevent concurrent preparation and save writes."""
+    file = (Path(user) / 'session.lock').open('a+b')
+    try:
+        file.seek(0)
+        if os.name == 'nt':
+            import msvcrt
+            if file.read(1) == b'':
+                file.write(b'0')
+                file.flush()
+            file.seek(0)
+            msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as error:
+        file.close()
+        raise RuntimeError('The Order is already running or being prepared.') from error
+    try:
+        yield
+    finally:
+        file.close()
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--game-dir', type=Path, default=default_game_dir())
+    parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--stop-file', type=Path, help=argparse.SUPPRESS)
+    parser.add_argument('--state-dir', type=Path, default=INSTALL_ROOT / 'user' / 'order1886')
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument('--prepare-only', action='store_true')
+    action.add_argument('--check-imports', action='store_true')
+    parser.add_argument('--timeout', type=float, default=0, help='Host watchdog in seconds; 0 waits until exit')
+    parser.add_argument('--display-mode', choices=['windowed', 'borderless', 'fullscreen'], default='windowed')
+    parser.add_argument('--vsync', type=int, choices=[0, 1], default=1)
+    parser.add_argument('--show-fps', type=int, choices=[0, 1], default=0)
+    args = parser.parse_args(argv)
+    if not math.isfinite(args.timeout) or args.timeout < 0:
+        parser.error('--timeout must be a finite nonnegative number')
+    game, user = args.game_dir.resolve(), args.state_dir.resolve()
+    if user == game or game in user.parents:
+        print('State directory must be outside the game folder.', file=sys.stderr)
+        return 2
+    try:
+        user.mkdir(parents=True, exist_ok=True)
+        with session_lock(user):
+            metadata = inspect_game(game)
+            if args.stop_file and args.stop_file.exists():
+                print('Cancelled before preparation.', flush=True)
+                return 130
+            print(f'{metadata["TITLE"]} | {metadata["TITLE_ID"]} | APP_VER {metadata.get("APP_VER")} | VERSION {metadata.get("VERSION")}', flush=True)
+            runtime = None if args.prepare_only else find_runtime(args.runtime)
+            if not args.prepare_only and runtime is None:
+                raise ValueError('Order runtime not found in this installation. Build build.sh or explicitly select a runtime in Settings.')
+            prepared = prepare_game(game, user / 'prepared')
+            if args.prepare_only:
+                return 0
+            write_runtime_config(user, vars(args))
+            # Format conversion only, using the dump's unmodified icon.
+            try:
+                from PIL import Image
+                with Image.open(game / 'sce_sys/icon0.png') as icon:
+                    icon.convert('RGB').save(user / 'window_icon.bmp')
+            except (ImportError, OSError):
+                pass
+            if not args.check_imports:
+                save_backup.backup(user)
+            env = runtime_environment(runtime, user, vars(args))
+            mode = 'imports' if args.check_imports else 'boot'
+            stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+            logs = user / 'logs'
+            logs.mkdir(exist_ok=True)
+            log = logs / f'{stamp}-{mode}.log'
+            command = build_command(runtime, user / 'prepared/boot-linked.bin', game, user, args.check_imports)
+            report = {'mode': mode, 'started_utc': stamp, **runtime_identity(runtime),
+                      'game': str(game), 'title_id': TITLE_ID, 'image_sha256': prepared['image_sha256'],
+                      'game_metadata': {key: metadata.get(key) for key in
+                                        ('TITLE', 'TITLE_ID', 'APP_VER', 'VERSION', 'INSTALL_DIR_SAVEDATA', 'SYSTEM_VER')},
+                      'shader_cache_abi': SHADER_CACHE_ABI,
+                      'log': str(log), 'status': 'running', 'gameplay_verified': False,
+                      'command': command, 'config_sha256': sha256(user / 'runtime.ini'),
+                      'runtime_environment': {k: v for k, v in env.items() if k.startswith('ORDER1886_')},
+                      'settings': {'display_mode': args.display_mode, 'vsync': args.vsync,
+                                   'show_fps': args.show_fps, 'fps_limit': 30}}
+            write_json(logs / 'last-run.json', report)
+            print(f'Log: {log}', flush=True)
+            print(f'Runtime: {report["runtime"]} | SHA256 {report["runtime_sha256"]}', flush=True)
+            print('Experimental compatibility run. Gameplay and performance are not yet verified.', flush=True)
+            try:
+                report.update(run_process(command, env, log, args.timeout or (60 if args.check_imports else 0), args.stop_file))
+            except (OSError, KeyboardInterrupt) as error:
+                report.update(status='interrupted' if isinstance(error, KeyboardInterrupt) else 'launch_failed',
+                              exit_code=130 if isinstance(error, KeyboardInterrupt) else 2,
+                              stop_reason=str(error) or 'Interrupted', timed_out=False)
+                write_json(log.with_suffix('.json'), report)
+                write_json(logs / 'last-run.json', report)
+                print(f'Runtime {report["status"]}: {report["stop_reason"]}', file=sys.stderr, flush=True)
+                return report['exit_code']
+            tail = log.read_text(encoding='utf-8', errors='replace')
+            missing = re.search(r'Imports: (\d+) missing', tail)
+            report['missing_imports'] = int(missing[1]) if missing else None
+            stops = [line for line in tail.splitlines() if 'STOP:' in line or 'unresolved' in line.lower()]
+            report['stop_reason'] = stops[-1] if stops else None
+            report['status'] = ('timed_out' if report['timed_out'] else
+                                'stopped' if report.get('stop_requested') else
+                                'failed' if report['exit_code'] else 'process_exited')
+            write_json(log.with_suffix('.json'), report)
+            write_json(logs / 'last-run.json', report)
+            if missing:
+                print(f'Import audit: {report["missing_imports"]} missing.', flush=True)
+            if report['stop_reason']:
+                print(report['stop_reason'], flush=True)
+            print(f'Runtime {report["status"]}; exit {report["exit_code"]}. Log: {log}', flush=True)
+            return report['exit_code']
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f'The Order: {error}', file=sys.stderr, flush=True)
+        return 2
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

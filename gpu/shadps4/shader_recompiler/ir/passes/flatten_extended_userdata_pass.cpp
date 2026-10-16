@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <mutex>
+#include <optional>
+#include <string>
 #include <unordered_map>
 #include <boost/container/flat_map.hpp>
 #include <queue>
@@ -30,7 +32,7 @@ using namespace Xbyak::util;
 
 static Xbyak::CodeGenerator g_srt_codegen(32_MB);
 static const u8* g_srt_codegen_start = nullptr;
-// gow3: the shader compiler and the background cache warm-up append walkers from different
+// the shader compiler and the background cache warm-up append walkers from different
 // threads.
 static std::mutex g_srt_codegen_mutex;
 
@@ -174,6 +176,8 @@ struct PassInfo {
 
     // Bumped during codegen to assign offsets to readconsts
     u16 dst_off_dw;
+    const Shader::Info* shader_info = nullptr;
+    u32 offset_failure_details = 0;
 
     PtrUserList* GetUsesAsPointer(IR::Inst* inst) {
         auto it = pointer_uses.find(inst);
@@ -220,6 +224,73 @@ static inline void SetFlatbufOffset(IR::Inst* inst, u16 offset) {
         return;
     }
     UNREACHABLE_MSG("Instruction not supported");
+}
+
+static std::string DescribeOffsetValue(const IR::Value& value, const PassInfo& pass_info,
+                                       SrtGvnTable& diagnostic_gvn) {
+    if (value.IsImmediate()) {
+        if (value.Type() == IR::Type::U32) {
+            return fmt::format("U32({:#x})", value.U32());
+        }
+        return fmt::format("immediate({})", magic_enum::enum_name(value.Type()));
+    }
+    auto* inst = value.TryInst();
+    if (!inst) {
+        return "empty";
+    }
+    std::string description = fmt::format("{}(vn={})", magic_enum::enum_name(inst->GetOpcode()),
+                                         diagnostic_gvn.GetValueNumber(value));
+    if (inst->GetOpcode() == IR::Opcode::GetUserData) {
+        description += fmt::format("[s{}]", static_cast<u32>(inst->Arg(0).ScalarReg()));
+    } else if (inst->GetOpcode() == IR::Opcode::ReadConst ||
+               inst->GetOpcode() == IR::Opcode::ReadConstBuffer) {
+        const auto canonical = pass_info.vn_to_inst.find(diagnostic_gvn.GetValueNumber(value));
+        if (canonical != pass_info.vn_to_inst.end()) {
+            description += fmt::format("[flat_dw={} canonical_flat_dw={}]", GetFlatbufOffset(inst),
+                                       GetFlatbufOffset(canonical->second));
+        } else {
+            description += fmt::format("[flat_dw={} canonical=unmapped]", GetFlatbufOffset(inst));
+        }
+    }
+    return description;
+}
+
+static void ReportOffsetFailure(PassInfo& pass_info, const IR::Value& value,
+                                const char* context) {
+    // Keep the original failure and identify its actual SSA operands. Never
+    // choose an incoming control-flow value just to let compilation continue.
+    if (!pass_info.shader_info || pass_info.offset_failure_details++ >= 32) {
+        return;
+    }
+    // Diagnostic value numbering must not insert canonical instructions into the
+    // compiler's live table or otherwise affect the generated walker.
+    auto diagnostic_gvn = pass_info.gvn_table;
+    std::string description = DescribeOffsetValue(value, pass_info, diagnostic_gvn);
+    const auto* inst = value.TryInst();
+    if (inst && inst->GetOpcode() == IR::Opcode::Phi) {
+        description += fmt::format(" incoming={}", inst->NumArgs());
+        std::optional<u32> common_vn;
+        bool uniform = true;
+        u32 external = 0;
+        for (size_t i = 0; i < inst->NumArgs(); ++i) {
+            const auto incoming = inst->Arg(i);
+            const bool self = incoming.TryInst() == inst;
+            if (!self) {
+                const u32 vn = diagnostic_gvn.GetValueNumber(incoming);
+                uniform &= !common_vn || *common_vn == vn;
+                common_vn = vn;
+                ++external;
+            }
+            if (i < 8) {
+                description += fmt::format(" [{}:{}{}]", i, self ? "self:" : "",
+                                           DescribeOffsetValue(incoming, pass_info, diagnostic_gvn));
+            }
+        }
+        description += fmt::format(" all_nonself_same_vn={} nonself={}", uniform, external);
+    }
+    LOG_ERROR(Render_Recompiler, "SRT offset failure: shader={:#018x} stage={} context={} {}",
+              pass_info.shader_info->pgm_hash, pass_info.shader_info->hw_stage, context,
+              description);
 }
 
 static bool ComputeOffset(Xbyak::CodeGenerator& c, Xbyak::Reg32 reg, PassInfo& pass_info,
@@ -300,7 +371,6 @@ static bool EmitComputeOffsetShiftLeftLogical32(Xbyak::CodeGenerator& c, Xbyak::
     ASSERT(!inst->AreAllArgsImmediates());
     if (inst->Arg(0).IsImmediate()) {
         ABORT_ON_FAILURE(ComputeOffset(c, reg, pass_info, inst->Arg(1)));
-        c.shl(reg, inst->Arg(0).U32());
         c.mov(ecx, reg);
         c.mov(reg, inst->Arg(0).U32());
         c.shl(reg, cl);
@@ -527,6 +597,7 @@ static bool ComputeOffset(Xbyak::CodeGenerator& c, Xbyak::Reg32 reg, PassInfo& p
             c.mov(reg, ptr[rsi + (offset << 2)]);
             return true;
         }
+        ReportOffsetFailure(pass_info, off_dw, "unflattened-read");
         return false;
     case IR::Opcode::IAdd32:
         ABORT_ON_FAILURE(EmitComputeOffsetIAdd32(c, reg, pass_info, inst));
@@ -565,18 +636,33 @@ static bool ComputeOffset(Xbyak::CodeGenerator& c, Xbyak::Reg32 reg, PassInfo& p
         ABORT_ON_FAILURE(EmitComputeOffsetBitFieldUExtract(c, reg, pass_info, inst));
         return true;
     default:
+        ReportOffsetFailure(pass_info, off_dw, "unsupported-opcode");
         LOG_ERROR(Render_Recompiler, "Unexpected instruction for offset computation, {}",
                   magic_enum::enum_name(inst->GetOpcode()));
         return false;
     }
 }
 
+static bool TryComputeOffset(Xbyak::CodeGenerator& c, Xbyak::Reg32 reg, PassInfo& pass_info,
+                             const IR::Value& off_dw) {
+    // An unsupported dependency can be found after earlier operands emitted instructions.
+    // None of the offset emitters creates labels, so discard the entire failed expression.
+    const size_t start_size = c.getSize();
+    if (!ComputeOffset(c, reg, pass_info, off_dw)) {
+        c.setSize(start_size);
+        return false;
+    }
+    return true;
+}
+
 static inline bool PushPtr(Xbyak::CodeGenerator& c, PassInfo& pass_info, const IR::Value& off_dw) {
+    if (!off_dw.IsImmediate() && !TryComputeOffset(c, r10d, pass_info, off_dw)) {
+        return false;
+    }
     c.push(rdi);
     if (off_dw.IsImmediate()) {
         c.mov(rdi, ptr[rdi + (off_dw.U32() << 2)]);
     } else {
-        ABORT_ON_FAILURE(ComputeOffset(c, r10d, pass_info, off_dw));
         c.shl(r10d, 2);
         c.mov(r10d, r10d);
         c.mov(rdi, ptr[rdi + r10]);
@@ -599,6 +685,7 @@ static void VisitPointer(const IR::Value& off_dw, IR::Inst* subtree, PassInfo& p
     }
 
     if (!PushPtr(c, pass_info, off_dw)) {
+        ReportOffsetFailure(pass_info, off_dw, "pointer-base");
         LOG_ERROR(Render_Recompiler, "Failed to compute offset for SRT walker");
         return;
     }
@@ -614,7 +701,8 @@ static void VisitPointer(const IR::Value& off_dw, IR::Inst* subtree, PassInfo& p
         if (src_off_dw.IsImmediate()) {
             c.mov(r10d, ptr[rdi + (src_off_dw.U32() << 2)]);
         } else {
-            if (!ComputeOffset(c, r10d, pass_info, src_off_dw)) {
+            if (!TryComputeOffset(c, r10d, pass_info, src_off_dw)) {
+                ReportOffsetFailure(pass_info, src_off_dw, "table-element");
                 LOG_ERROR(Render_Recompiler, "Failed to compute offset for SRT walker");
                 continue;
             }
@@ -752,6 +840,7 @@ void SimplifyReadConstAddressAdd(IR::Inst& inst) {
 void FlattenExtendedUserdataPass(IR::Program& program) {
     auto& post_order = program.post_order_blocks;
     PassInfo pass_info;
+    pass_info.shader_info = &program.info;
 
     // traverse at end and assign offsets to duplicate readconsts, using
     // vn_to_inst as the source

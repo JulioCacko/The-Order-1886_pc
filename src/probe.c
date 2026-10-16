@@ -1,4 +1,4 @@
-/* Minimal x86-64 native loader experiment. Not a PS4 emulator or game port. */
+/* PS4 x86-64 loader and compatibility runtime for The Order: 1886. */
 #define _GNU_SOURCE
 #include <stdint.h>
 #include <stdio.h>
@@ -8,11 +8,7 @@
 #include "runtime.h"
 #include "cpu_check.h"
 #include "isa_rewrite.h"
-#include "orb_hook.h"
-#include "cheat_hook.h"
-#include "actor_hook.h"
-#include "damage_hook.h"
-#include "gpu/gow3gpu.h"
+#include "gpu/ps4gpu.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
 #error This prototype requires x86-64 GCC or Clang (including MinGW).
 #endif
@@ -140,7 +136,7 @@ static LONG fatal_exception(EXCEPTION_POINTERS *info) {
         fprintf(stderr,"Fault: exception 0x%08lx at %s (thread %lu)\n",record->ExceptionCode,where,GetCurrentThreadId());
     fprintf(stderr,"  rax=%016llx rbx=%016llx rcx=%016llx rdx=%016llx\n  rsi=%016llx rdi=%016llx rbp=%016llx rsp=%016llx\n",
             c->Rax,c->Rbx,c->Rcx,c->Rdx,c->Rsi,c->Rdi,c->Rbp,c->Rsp);
-    if (gpu_enabled) gow3gpu_dump_guest_writes(info);
+    if (gpu_enabled) ps4gpu_dump_guest_writes(info);
     /* rbp chain (guest and host code keep frame pointers). */
     uintptr_t rbp=(uintptr_t)c->Rbp;
     for (int depth=0; depth<24 && rbp; ++depth) {
@@ -179,17 +175,17 @@ static LONG CALLBACK vectored_fault(EXCEPTION_POINTERS *info) {
     }
     if (code==EXCEPTION_ACCESS_VIOLATION && record->NumberParameters>=2) {
         /* GPU page tracking (write-protected guest pages) is resolved first. */
-        if (gpu_enabled && gow3gpu_handle_fault(info,(void *)record->ExceptionInformation[1])) return EXCEPTION_CONTINUE_EXECUTION;
+        if (gpu_enabled && ps4gpu_handle_fault(info,(void *)record->ExceptionInformation[1])) return EXCEPTION_CONTINUE_EXECUTION;
         if (runtime_fault_recover) {
             /* A speculative guest memory read (GPU draw preparation) faulted: the thread resumes
-             * in gow3_longjmp, outside the exception dispatcher, back at its recovery point. */
+             * in ps4_longjmp, outside the exception dispatcher, back at its recovery point. */
             unsigned long long *buffer=*runtime_fault_recover;
             runtime_fault_recover=NULL;
             CONTEXT *c=info->ContextRecord;
             c->Rsp=((c->Rsp-128)&~(DWORD64)15)-40;
             c->Rcx=(DWORD64)(uintptr_t)buffer;
             c->Rdx=1;
-            c->Rip=(DWORD64)(uintptr_t)gow3_longjmp;
+            c->Rip=(DWORD64)(uintptr_t)ps4_longjmp;
             return EXCEPTION_CONTINUE_EXECUTION;
         }
     }
@@ -204,7 +200,7 @@ static LONG CALLBACK vectored_fault(EXCEPTION_POINTERS *info) {
                  !module;
         if (ours) return fatal_exception(info);
     }
-    /* GOW3_STRICT_HANDLES=1: a closed or invalid handle used anywhere is reported (diagnostics). */
+    /* ORDER1886_STRICT_HANDLES=1: a closed or invalid handle used anywhere is reported (diagnostics). */
     if (code==0xC0000008 /* STATUS_INVALID_HANDLE */) return fatal_exception(info);
     return EXCEPTION_CONTINUE_SEARCH;
 }
@@ -245,7 +241,7 @@ static void fault(int sig, siginfo_t *info, void *context) {
         }
     }
     /* GPU page tracking (write-protected guest pages) is resolved first. */
-    if (gpu_enabled && sig == SIGSEGV && gow3gpu_handle_fault(context, info->si_addr)) return;
+    if (gpu_enabled && sig == SIGSEGV && ps4gpu_handle_fault(context, info->si_addr)) return;
     /* A speculative guest memory read (runtime_memory.c) failed: resume its recovery point. */
     if ((sig == SIGSEGV || sig == SIGBUS) && runtime_fault_recover) {
         sigjmp_buf *recover = runtime_fault_recover;
@@ -275,7 +271,7 @@ static void fault(int sig, siginfo_t *info, void *context) {
     else
         snprintf(line, sizeof(line), "Fault (signal %d) at RIP %p, address %p\n", sig, (void *)rip, info->si_addr);
     { ssize_t written_=write(2, line, strlen(line)); (void)written_; }
-    if (gpu_enabled) gow3gpu_dump_guest_writes(context);
+    if (gpu_enabled) ps4gpu_dump_guest_writes(context);
     /* Host call chain (frames with unwind info; guest frames end it). */
     void *frames[32];
     int depth = backtrace(frames, 32);
@@ -338,192 +334,12 @@ static void watchdog(int sig, siginfo_t *info, void *context) {
     _exit(128 + sig);
 }
 #endif
-/* param.sfo lookup: string or integer value of key, 0 when absent. */
-static int sfo_value(const char *path, const char *key, char *text, size_t text_size, uint32_t *number) {
-    FILE *f=fopen(path,"rb");
-    if (!f) return 0;
-    unsigned char data[65536];
-    size_t n=fread(data,1,sizeof(data),f); fclose(f);
-    if (n<20 || memcmp(data,"\0PSF",4)) return 0;
-    uint32_t keys, values, count;
-    memcpy(&keys,data+8,4); memcpy(&values,data+12,4); memcpy(&count,data+16,4);
-    for (uint32_t i=0;i<count && 20+i*16+16<=n;++i) {
-        const unsigned char *e=data+20+i*16;
-        uint16_t key_offset, format; uint32_t length, offset;
-        memcpy(&key_offset,e,2); memcpy(&format,e+2,2); memcpy(&length,e+4,4); memcpy(&offset,e+12,4);
-        if (keys+key_offset>=n || values+offset+length>n || strcmp((const char *)data+keys+key_offset,key)) continue;
-        if (format==0x0404 && number && length>=4) { memcpy(number,data+values+offset,4); return 1; }
-        if (text && text_size) {
-            size_t copy=length<text_size-1 ? length : text_size-1;
-            memcpy(text,data+values+offset,copy); text[copy]=0;
-        }
-        return 1;
-    }
-    return 0;
-}
 static int mapped(Segment *segments, uint64_t count, uint64_t address, uint64_t bytes) {
     for (uint64_t i = 0; i < count; ++i)
         if (address >= segments[i].address && bytes <= segments[i].size &&
             address - segments[i].address <= segments[i].size - bytes) return 1;
     return 0;
 }
-extern ABI float gow3_orbs_gain(void *player, float requested);
-extern void gow3_orbs_status(int supported);
-extern uintptr_t gow3_cheat_flag(unsigned id);
-extern uintptr_t gow3_actor_slots_address(void);
-extern void gow3_actor_status(int supported);
-extern void gow3_cheat_status(unsigned id);
-extern uintptr_t gow3_damage_multiplier(int taken);
-extern uintptr_t gow3_orb_pickup_multiplier(unsigned kind);
-extern void gow3_stat_multipliers_status(int damage, int orb_pickup);
-
-/* The hooks below find their sites by signature (src/signature.h), so they work in any region
- * and version of the game whose code matches; a site that is not found leaves its feature off. */
-static void install_cheats(Segment *segments, uint64_t count, uint64_t size) {
-    const char *names[] = {"health", "magic", "item meter", "Rage of Sparta", "red orbs",
-                           "Very Hard unlock", "infinite double jumps"};
-    uint64_t at[GOW3_CHEAT_HOOK_COUNT];
-    for (unsigned i = 0; i < GOW3_CHEAT_HOOK_COUNT; ++i)
-        at[i] = gow3_signature_find(image, size, &gow3_cheat_hooks[i].site);
-    for (unsigned id = 0; id < GOW3_CHEAT_COUNT; ++id) {
-        int valid = 1;
-        for (unsigned i = 0; i < GOW3_CHEAT_HOOK_COUNT; ++i) {
-            const Gow3CheatHook *hook = &gow3_cheat_hooks[i];
-            if (hook->id != id) continue;
-            if (at[i] == UINT64_MAX || !mapped(segments, count, at[i], hook->length) ||
-                !gow3_cheat_signature_match(hook, image + at[i], size - at[i])) valid = 0;
-        }
-        if (!valid) {
-            printf("Cheats: %s unavailable (code not found in this eboot.bin)\n", names[id]);
-            continue;
-        }
-        unsigned char *stubs = allocate(page_size);
-        int32_t relative[GOW3_CHEAT_HOOK_COUNT] = {0};
-        for (unsigned i = 0; i < GOW3_CHEAT_HOOK_COUNT; ++i) {
-            const Gow3CheatHook *hook = &gow3_cheat_hooks[i];
-            if (hook->id != id) continue;
-            unsigned char *stub = stubs + i * 256;
-            int64_t delta = (int64_t)(uintptr_t)stub - (int64_t)(uintptr_t)(image + at[i] + 5);
-            if (delta < INT32_MIN || delta > INT32_MAX) { valid = 0; break; }
-            relative[i] = (int32_t)delta;
-            gow3_cheat_build_stub(stub, hook, gow3_cheat_flag(id),
-                                 (uintptr_t)(image + at[i] + hook->length));
-        }
-        if (!valid) {
-            printf("Cheats: %s unavailable (hook outside relative-jump range)\n", names[id]);
-            continue;
-        }
-        protect(stubs, page_size, 5);
-        for (unsigned i = 0; i < GOW3_CHEAT_HOOK_COUNT; ++i) {
-            const Gow3CheatHook *hook = &gow3_cheat_hooks[i];
-            if (hook->id != id) continue;
-            image[at[i]] = 0xe9;
-            memcpy(image + at[i] + 1, &relative[i], 4);
-            memset(image + at[i] + 5, 0x90, hook->length - 5);
-        }
-        gow3_cheat_status(id);
-        printf("Cheats: %s ready (live toggle, initially disabled unless saved)\n", names[id]);
-    }
-}
-
-/* Damage hook for the enemy health bar (src/actor_hook.h). Always
- * installed when the code matches: it only records values; the overlay decides what to show. */
-static void install_actor_watch(Segment *segments, uint64_t count, uint64_t size) {
-    const uint64_t at = gow3_signature_find(image, size, &gow3_actor_site);
-    if (at == UINT64_MAX || !mapped(segments, count, at, GOW3_ACTOR_HOOK_LENGTH) ||
-        !gow3_actor_signature_match(image + at, size - at)) {
-        printf("Health display: unavailable (code not found in this eboot.bin)\n");
-        return;
-    }
-    unsigned char *stub = allocate(page_size);
-    const int64_t delta = (int64_t)(uintptr_t)stub - (int64_t)(uintptr_t)(image + at + 5);
-    if (delta < INT32_MIN || delta > INT32_MAX) {
-        printf("Health display: unavailable (hook outside relative-jump range)\n");
-        return;
-    }
-    gow3_actor_build_stub(stub, gow3_actor_slots_address(), (uintptr_t)(image + at + GOW3_ACTOR_HOOK_LENGTH));
-    protect(stub, page_size, 5);
-    const int32_t relative = (int32_t)delta;
-    image[at] = 0xe9;
-    memcpy(image + at + 1, &relative, 4);
-    memset(image + at + 5, 0x90, GOW3_ACTOR_HOOK_LENGTH - 5);
-    gow3_actor_status(1);
-    printf("Health display: damage hook ready (enemy health bar in the menu)\n");
-}
-
-static void install_orb_multiplier(Segment *segments, uint64_t count, uint64_t size) {
-    uint64_t calls[3];
-    const uint64_t setter_at = gow3_orb_find(image, size, calls);
-    if (setter_at == UINT64_MAX) {
-        printf("Red orbs: multiplier unavailable (code not found in this eboot.bin)\n");
-        return;
-    }
-    for (unsigned i = 0; i < 3; ++i) {
-        if (!mapped(segments, count, calls[i], 5)) return;
-    }
-    /* SysV call sites: preserve the receiver across the helper, then tail-call the original
-     * setter. Its cap and upgrade notifications remain in the game's own code. */
-    unsigned char *stub = allocate(page_size);
-    uintptr_t helper = (uintptr_t)gow3_orbs_gain, setter = (uintptr_t)(image + setter_at);
-    unsigned char code[26];
-    gow3_orb_build_stub(code, helper, setter);
-    int32_t displacements[3];
-    for (unsigned i = 0; i < 3; ++i) {
-        int64_t delta = (int64_t)(uintptr_t)stub - (int64_t)(uintptr_t)(image + calls[i] + 5);
-        if (delta < INT32_MIN || delta > INT32_MAX) {
-            printf("Red orbs: multiplier unavailable (hook outside relative-call range)\n");
-            return;
-        }
-        displacements[i] = (int32_t)delta;
-    }
-    memcpy(stub, code, sizeof(code));
-    protect(stub, page_size, 5);
-    for (unsigned i = 0; i < 3; ++i)
-        memcpy(image + calls[i] + 1, &displacements[i], 4);
-    gow3_orbs_status(1);
-    printf("Red orbs: live multiplier ready (3 validated gain paths, 0.1x to 100x)\n");
-}
-/* Writes a jump from image+at to `stub`; the rest of the replaced bytes become nops (the stub
- * replays them). 0 when the stub is out of relative-jump range. */
-static int install_jump(uint64_t at, unsigned length, unsigned char *stub) {
-    const int64_t delta = (int64_t)(uintptr_t)stub - (int64_t)(uintptr_t)(image + at + 5);
-    if (delta < INT32_MIN || delta > INT32_MAX) return 0;
-    const int32_t relative = (int32_t)delta;
-    image[at] = 0xe9;
-    memcpy(image + at + 1, &relative, 4);
-    memset(image + at + 5, 0x90, length - 5);
-    return 1;
-}
-
-/* Damage dealt/taken and green/blue/gold orb multipliers (src/damage_hook.h, src/orb_hook.h):
- * the stubs read the menu's floats directly, so changes apply on the next hit or pickup. */
-static void install_stat_multipliers(Segment *segments, uint64_t count, uint64_t size) {
-    const uint64_t damage_at = gow3_signature_find(image, size, &gow3_damage_site);
-    const uint64_t pickup_at = gow3_signature_find(image, size, &gow3_orb_pickup_site);
-    int damage = damage_at != UINT64_MAX && mapped(segments, count, damage_at, GOW3_DAMAGE_HOOK_LENGTH) &&
-                 gow3_damage_signature_match(image + damage_at, size - damage_at);
-    int pickup = pickup_at != UINT64_MAX && mapped(segments, count, pickup_at, GOW3_ORB_PICKUP_LENGTH) &&
-                 gow3_orb_pickup_signature_match(image + pickup_at, size - pickup_at);
-    unsigned char *stubs = damage || pickup ? allocate(page_size) : NULL;
-    if (damage) {
-        gow3_damage_build_stub(stubs, gow3_damage_multiplier(1), gow3_damage_multiplier(0),
-                               (uintptr_t)(image + damage_at + GOW3_DAMAGE_HOOK_LENGTH));
-    }
-    if (pickup) {
-        gow3_orb_pickup_build_stub(stubs + 256, gow3_orb_pickup_multiplier(0), gow3_orb_pickup_multiplier(1),
-                                   gow3_orb_pickup_multiplier(2),
-                                   (uintptr_t)(image + pickup_at + GOW3_ORB_PICKUP_LENGTH));
-    }
-    if (stubs) protect(stubs, page_size, 5);
-    damage = damage && install_jump(damage_at, GOW3_DAMAGE_HOOK_LENGTH, stubs);
-    pickup = pickup && install_jump(pickup_at, GOW3_ORB_PICKUP_LENGTH, stubs + 256);
-    gow3_stat_multipliers_status(damage, pickup);
-    printf("Multipliers: damage %s, green/blue/gold orbs %s\n", damage ? "ready" : "unavailable",
-           pickup ? "ready" : "unavailable");
-}
-/* G3PATCH2 (patches.py): the patches' image base, then byte writes at image offsets, applied
- * after relocation. A write may replace a whole base-relative pointer slot (60/90 FPS++ swap
- * function pointers): the patch holds the address at the patches' base, rebased here. */
 static void apply_patches(const char *path, Segment *segments, uint64_t ns, const Reloc *relocs, uint64_t nr) {
     FILE *f=fopen(path,"rb");
     char magic[8];
@@ -563,10 +379,10 @@ static void apply_patches(const char *path, Segment *segments, uint64_t ns, cons
 void runtime_restart(void) {
     fflush(NULL);
 #ifdef _WIN32
-    /* run.py sets GOW3_RESTART_COMMAND: the launch command line, started again (new patches). */
-    const char *command=getenv("GOW3_RESTART_COMMAND");
+    /* run.py sets ORDER1886_RESTART_COMMAND: the launch command line, started again (new patches). */
+    const char *command=getenv("ORDER1886_RESTART_COMMAND");
     puts("Runtime: restarting through run.py");
-    if (!command || !*command) { fputs("runtime_restart: GOW3_RESTART_COMMAND is not set\n",stderr); _exit(1); }
+    if (!command || !*command) { fputs("runtime_restart: ORDER1886_RESTART_COMMAND is not set\n",stderr); _exit(1); }
     char *line=_strdup(command);
     /* Same output handles: a launcher reading the game's log keeps reading the new launch. */
     STARTUPINFOA startup={.cb=sizeof(startup),.dwFlags=STARTF_USESTDHANDLES,
@@ -580,10 +396,10 @@ void runtime_restart(void) {
     /* The new launch waits for this process's GPU device to go away (run.py --after). */
     TerminateProcess(GetCurrentProcess(),0);
 #else
-    const char *command = getenv("GOW3_RESTART_COMMAND");
+    const char *command = getenv("ORDER1886_RESTART_COMMAND");
     syscall(SYS_close_range, 3u, ~0u, 0u);
     if (command && *command) {
-        puts("Runtime: restarting through GOW3_RESTART_COMMAND");
+        puts("Runtime: restarting through ORDER1886_RESTART_COMMAND");
         execl("/bin/sh", "sh", "-c", command, (char *)NULL);
     } else {
         puts("Runtime: restarting through run.sh");
@@ -594,12 +410,12 @@ void runtime_restart(void) {
 #endif
 }
 
-/* The guest code needs the PS4's instruction sets (#33, #66); GOW3_CPU_CHECK=0 skips this. A
+/* The guest code needs the PS4's instruction sets (#33, #66); ORDER1886_CPU_CHECK=0 skips this. A
  * missing fatal set prints STOP and returns 0; the rewritable ones go to cpu_missing_sets, named
  * in missing. */
 static int cpu_supported(char *missing, size_t size) {
     missing[0] = 0;
-    const char *check = getenv("GOW3_CPU_CHECK");
+    const char *check = getenv("ORDER1886_CPU_CHECK");
     if (check && !strcmp(check, "0")) return 1;
     const CpuFeatureWords words = cpu_feature_words();
     if (cpu_missing_fatal(words, missing, size)) {
@@ -613,6 +429,17 @@ static int cpu_supported(char *missing, size_t size) {
 
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
+    if (argc == 2 && !strcmp(argv[1], "--runtime-info")) {
+        puts("{\"runtime_abi\":\"order1886-native-1\",\"title_id\":\"CUSA00076\","
+             "\"prepared_format\":\"PS4BOOT5\",\"renderer_profile\":\"native-ps4\"}");
+        return 0;
+    }
+    if (argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h"))) {
+        puts("The Order: 1886 native PS4 runtime\n"
+             "Usage: order1886-runtime.exe image --app0 game --user state [--check-imports] [--cpu-only]\n"
+             "       order1886-runtime.exe --runtime-info");
+        return 0;
+    }
 #ifndef _WIN32
     /* Keep host heap objects handed to the guest (thread handles, TLS) in the
        non-PIE brk heap, i.e. below 1 TiB: the guest packs pointers into 40 bits. */
@@ -640,13 +467,12 @@ int main(int argc, char **argv) {
 #endif
     int cpu_only = 0, strict_imports = 0, check_imports = 0;
     unsigned timeout_seconds = 10;
-    const char *content_profile=NULL, *app0=NULL, *user_dir=NULL, *patch_file=NULL, *isa_file=NULL;
+    const char *app0=NULL, *user_dir=NULL, *patch_file=NULL, *isa_file=NULL;
     const char *mounts[8]; int mount_count=0;
     for (int i = 2; i < argc; ++i) {
         if (!strcmp(argv[i], "--cpu-only")) cpu_only = 1;
         else if (!strcmp(argv[i], "--strict-imports")) strict_imports = 1;
         else if (!strcmp(argv[i], "--check-imports")) check_imports = 1;
-        else if (!strcmp(argv[i], "--content-profile") && i+1<argc) content_profile=argv[++i];
         else if (!strcmp(argv[i], "--app0") && i+1<argc) app0=argv[++i];
         else if (!strcmp(argv[i], "--user") && i+1<argc) user_dir=argv[++i];
         else if (!strcmp(argv[i], "--patches") && i+1<argc) patch_file=argv[++i];
@@ -661,34 +487,21 @@ int main(int argc, char **argv) {
         else { fprintf(stderr, "Unknown option: %s\n", argv[i]); return 1; }
     }
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s boot.bin [--cpu-only] [--strict-imports] [--check-imports] [--content-profile file] [--app0 dir] [--user dir] [--patches file] [--isa-rewrite file] [--mount guest=host]... [--timeout seconds] | --vulkan-only | --cpu-features | --gamepad\n", argv[0]);
+        fprintf(stderr, "Usage: %s boot.bin [--cpu-only] [--strict-imports] [--check-imports] [--app0 dir] [--user dir] [--patches file] [--isa-rewrite file] [--mount guest=host]... [--timeout seconds] | --vulkan-only | --cpu-features | --gamepad\n", argv[0]);
         return 1;
     }
     if (!cpu_supported(missing, sizeof missing)) return 20;
     if (cpu_missing_sets) printf("CPU: missing %s\n", missing);
-    /* GOW3_ISA_REWRITE=0 never rewrites, =1 rewrites every site; by default the sets the CPU lacks. */
-    const char *policy = getenv("GOW3_ISA_REWRITE");
+    /* ORDER1886_ISA_REWRITE=0 never rewrites, =1 rewrites every site; by default the sets the CPU lacks. */
+    const char *policy = getenv("ORDER1886_ISA_REWRITE");
     unsigned isa_sets = policy && !strcmp(policy, "1") ? 0xffffffffu : policy && !strcmp(policy, "0") ? 0 : cpu_missing_sets;
     if (cpu_missing_sets && !isa_sets) {
-        printf("STOP: this CPU lacks %s and the rewrite is disabled (GOW3_ISA_REWRITE=0)\n", missing);
+        printf("STOP: this CPU lacks %s and the rewrite is disabled (ORDER1886_ISA_REWRITE=0)\n", missing);
         return 20;
     }
     if (cpu_missing_sets && !isa_file) {
         printf("STOP: this CPU lacks %s and no rewrite table matches the image\n", missing);
         return 20;
-    }
-    if (content_profile) {
-        FILE *profile=fopen(content_profile,"rb");
-        unsigned char data[28];
-        if (!profile) fail("cannot open content profile");
-        if (fread(data,1,sizeof(data),profile)!=sizeof(data) || fgetc(profile)!=EOF || memcmp(data,"G3CONT01",8)) fail("invalid content profile");
-        fclose(profile);
-        uint32_t values[5];
-        for (unsigned i=0;i<5;++i) {
-            unsigned char *p=data+8+i*4;
-            values[i]=(uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
-        }
-        runtime_content_configure(values);
     }
     if (app0) {
         runtime_file_configure(app0, user_dir ? user_dir : "user");
@@ -702,21 +515,23 @@ int main(int argc, char **argv) {
             printf("Runtime: mount %s -> %s\n", guest, eq + 1);
         }
         char sfo[4096], id[16]="";
-        snprintf(sfo,sizeof(sfo),"%s/sce_sys/param.sfo",app0);
-        if (sfo_value(sfo,"INSTALL_DIR_SAVEDATA",id,sizeof(id),NULL) || sfo_value(sfo,"TITLE_ID",id,sizeof(id),NULL))
+        int length=snprintf(sfo,sizeof(sfo),"%s/sce_sys/param.sfo",app0);
+        if (length<0 || (size_t)length>=sizeof(sfo) || !runtime_content_configure_sfo(sfo))
+            fail("AppContent requires a valid --app0/sce_sys/param.sfo with TITLE_ID");
+        if (runtime_sfo_value(sfo,"INSTALL_DIR_SAVEDATA",id,sizeof(id),NULL) || runtime_sfo_value(sfo,"TITLE_ID",id,sizeof(id),NULL))
             runtime_savedata_configure(id);
     }
-    gow3gpu_register_kernel();
+    ps4gpu_register_kernel();
 #ifdef _WIN32
     SYSTEM_INFO system_info; GetSystemInfo(&system_info); page_size = system_info.dwPageSize;
     AddVectoredExceptionHandler(1, vectored_fault);
     SetUnhandledExceptionFilter(unhandled_fault);
-    if (getenv("GOW3_STRICT_HANDLES")) {
+    if (getenv("ORDER1886_STRICT_HANDLES")) {
         PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY strict={0};
         strict.RaiseExceptionOnInvalidHandleReference=1;
         strict.HandleExceptionsPermanentlyEnabled=1;
         if (!SetProcessMitigationPolicy(ProcessStrictHandleCheckPolicy,&strict,sizeof(strict)))
-            fprintf(stderr,"GOW3_STRICT_HANDLES: policy not set (%lu)\n",GetLastError());
+            fprintf(stderr,"ORDER1886_STRICT_HANDLES: policy not set (%lu)\n",GetLastError());
     }
     (void)timeout_seconds; /* no watchdog on Windows */
 #else
@@ -736,16 +551,16 @@ int main(int argc, char **argv) {
     FILE *f = fopen(argv[1], "rb");
     if (!f) fail("cannot open boot file; run prepare.py first");
     char magic[8];
-    if (fread(magic, 1, 8, f) != 8 || (memcmp(magic, "G3PROBE1", 8) && memcmp(magic, "G3PROBE2", 8) && memcmp(magic,"G3PROBE3",8) && memcmp(magic,"G3PROBE4",8) && memcmp(magic,"G3PROBE5",8))) fail("bad boot file signature");
+    if (fread(magic, 1, 8, f) != 8 || (memcmp(magic, "PS4BOOT1", 8) && memcmp(magic, "PS4BOOT2", 8) && memcmp(magic,"PS4BOOT3",8) && memcmp(magic,"PS4BOOT4",8) && memcmp(magic,"PS4BOOT5",8))) fail("bad boot file signature");
     uint64_t size = read64(f), entry = read64(f), ns = read64(f), nr = read64(f);
     import_count = read64(f);
-    uint64_t capabilities = memcmp(magic, "G3PROBE1", 8) ? read64(f) : 0;
+    uint64_t capabilities = memcmp(magic, "PS4BOOT1", 8) ? read64(f) : 0;
     if (capabilities & ~UINT64_C(1)) fail("unknown runtime capabilities");
     runtime_start(strict_imports ? 0 : capabilities);
     if (!size || size > 512*1024*1024 || entry >= size || !ns || ns > 64 || nr > 1000000 || import_count > 100000)
         fail("boot file limits exceeded");
-    int multi=!memcmp(magic,"G3PROBE5",8);
-    int linked=!memcmp(magic,"G3PROBE3",8) || !memcmp(magic,"G3PROBE4",8) || multi;
+    int multi=!memcmp(magic,"PS4BOOT5",8);
+    int linked=!memcmp(magic,"PS4BOOT3",8) || !memcmp(magic,"PS4BOOT4",8) || multi;
     int native_libc=linked && !strict_imports && (capabilities&1);
     uint64_t main_tls[4]={0};
     uint64_t nb=0,procparam=0;
@@ -753,7 +568,7 @@ int main(int argc, char **argv) {
     uint64_t *binding_kinds=calloc(import_count ? import_count : 1,sizeof(*binding_kinds));
     if (!bindings || !binding_kinds) fail("allocation failed");
     if (multi) {
-        /* G3PROBE5: procparam, eboot TLS, module table, bindings (link_modules.py). */
+        /* PS4BOOT5: procparam, eboot TLS, module table, bindings (link_modules.py). */
         procparam=read64(f);
         for (int i=0;i<4;++i) main_tls[i]=read64(f);
         module_count=read64(f);
@@ -770,7 +585,7 @@ int main(int argc, char **argv) {
         x->base=read64(f); x->size=read64(f); x->init=read64(f);
         x->tls_address=read64(f); x->tls_memsz=read64(f); x->tls_filesz=read64(f); x->tls_module=2; nb=read64(f);
         procparam=read64(f);
-        if (!memcmp(magic,"G3PROBE4",8)) for (int i=0;i<4;++i) main_tls[i]=read64(f);
+        if (!memcmp(magic,"PS4BOOT4",8)) for (int i=0;i<4;++i) main_tls[i]=read64(f);
     }
     if (linked) {
         if (main_tls[1]>main_tls[2] || main_tls[2]>1024*1024 || main_tls[0]>size ||
@@ -843,19 +658,23 @@ int main(int argc, char **argv) {
         printf("STOP: this CPU lacks %s and no rewrite table matches the image\n", missing);
         return 20;
     }
+    const char *game_profile=getenv("ORDER1886_GAME_PROFILE");
+    int order_profile=game_profile && !strcmp(game_profile,"order1886");
     if (!cpu_only) {
-        char title[128]="God of War III", serial[16]="UNKNOWN", sfo[4096];
+        char title[128]="The Order: 1886", serial[16]="UNKNOWN", sfo[4096];
         uint32_t attributes=0;
         snprintf(sfo,sizeof(sfo),"%s/sce_sys/param.sfo",app0 ? app0 : ".");
-        sfo_value(sfo,"TITLE",title,sizeof(title),NULL);
-        sfo_value(sfo,"TITLE_ID",serial,sizeof(serial),NULL);
-        sfo_value(sfo,"ATTRIBUTE",NULL,0,&attributes);
+        runtime_sfo_value(sfo,"TITLE",title,sizeof(title),NULL);
+        runtime_sfo_value(sfo,"TITLE_ID",serial,sizeof(serial),NULL);
+        if (!strcmp(serial,"CUSA00076")) order_profile=1;
+        runtime_sfo_value(sfo,"ATTRIBUTE",NULL,0,&attributes);
         uint64_t sdk=0;
         if (procparam) memcpy(&sdk,image+procparam+16,8); /* procparam: size, magic, count, sdk_version */
-        Gow3GpuConfig gpu={title,serial,user_dir ? user_dir : "user",(uint32_t)sdk,attributes,1920,1080};
+        const char *gpu_user_dir=getenv("ORDER1886_GPU_USER_DIR");
+        Ps4GpuConfig gpu={title,serial,gpu_user_dir && *gpu_user_dir ? gpu_user_dir : (user_dir ? user_dir : "user"),(uint32_t)sdk,attributes,1920,1080};
         gpu_enabled=1; /* page tracking starts while the rasterizer registers guest memory */
-        if (gow3gpu_init(&gpu)) fail("GPU initialization failed");
-        printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,gow3gpu_symbol_count());
+        if (ps4gpu_init(&gpu)) fail("GPU initialization failed");
+        printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,ps4gpu_symbol_count());
     }
     unsigned char *traps = allocate(round_page((import_count + 1) * 32));
     unsigned char *data_traps = allocate((import_count + 1) * page_size);
@@ -904,10 +723,7 @@ int main(int argc, char **argv) {
         _exit(missing ? 1 : 0); /* no destructors: GPU threads are running */
     }
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
-    if (gpu_enabled) install_orb_multiplier(segments, ns, size);
-    if (gpu_enabled) install_cheats(segments, ns, size);
-    if (gpu_enabled) install_actor_watch(segments, ns, size);
-    if (gpu_enabled) install_stat_multipliers(segments, ns, size);
+    if (order_profile) printf("The Order profile: original executable, no game-specific injection hooks\n");
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif
@@ -918,7 +734,7 @@ int main(int argc, char **argv) {
             fflush(NULL);
             _exit(20); /* no destructors: GPU threads are running */
         }
-        if (isa_sets == 0xffffffffu) printf("ISA: forced rewrite of all %u sites (GOW3_ISA_REWRITE=1), %u skipped\n", r.rewritten, r.skipped);
+        if (isa_sets == 0xffffffffu) printf("ISA: forced rewrite of all %u sites (ORDER1886_ISA_REWRITE=1), %u skipped\n", r.rewritten, r.skipped);
         else printf("ISA: CPU lacks %s: %u sites rewritten (%u jmp, %u relocated, %u int3), %u skipped\n",
                     missing, r.rewritten, r.jmp, r.relocated, r.int3, r.skipped);
         runtime_set_report_hook(isa_report_hook);

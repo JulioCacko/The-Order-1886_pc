@@ -3,6 +3,11 @@
 
 #pragma once
 
+#include <atomic>
+#include <cstdlib>
+#include <optional>
+#include <type_traits>
+#include "common/assert.h"
 #include "common/types.h"
 #include "shader_recompiler/ir/type.h"
 #include "video_core/amdgpu/resource.h"
@@ -32,12 +37,24 @@ struct SharpFetch {
 
     bool operator==(const SharpFetch&) const = default;
 
+    template <u32 num_dwords = sizeof(T) / sizeof(u32)>
+    [[nodiscard]] constexpr std::optional<u32> UnresolvedDword(size_t flatbuf_dwords) const {
+        static_assert(num_dwords <= sizeof(T) / sizeof(u32));
+        for (u32 i = 0; i < num_dwords; ++i) {
+            if (((load_mask >> i) & 1) &&
+                (offsets[i] == UNKNOWN_LOCATION || offsets[i] >= flatbuf_dwords)) {
+                return i;
+            }
+        }
+        return std::nullopt;
+    }
+
     template <u32 num_dwords = N>
         requires(num_dwords <= N)
     constexpr bool Fetch(const u32* flatbuf, T* out) const {
         u8 mask = load_mask;
         for (u32 i = 0; i < num_dwords; i++) {
-            if (offsets[i] == UNKNOWN_LOCATION) {
+            if (((load_mask >> i) & 1) && offsets[i] == UNKNOWN_LOCATION) {
                 return false;
             }
         }
@@ -50,6 +67,63 @@ struct SharpFetch {
         return true;
     }
 };
+
+template <u32 num_dwords, typename T>
+constexpr void RequireResolvedSharpSource(const auto& info, const char* kind,
+                                          const SharpFetch<T>& fetch) {
+    const auto flatbuf = info.FlatUserData();
+    if (const auto missing = fetch.template UnresolvedDword<num_dwords>(flatbuf.size())) {
+        if constexpr (requires { info.pgm_hash; info.hw_stage; }) {
+            LOG_ERROR(Render_Recompiler,
+                      "Unresolved {} descriptor: shader={:#018x} stage={} dword={} "
+                      "location={} flat_size={} load_mask={:#x} locations={}",
+                      kind, info.pgm_hash, info.hw_stage, *missing, fetch.offsets[*missing],
+                      flatbuf.size(), fetch.load_mask, fetch.offsets);
+        }
+        UNREACHABLE_MSG("Cannot bind {} descriptor: dword {} has an unknown or out-of-range "
+                        "SRT source (location {}, flat size {})",
+                        kind, *missing, fetch.offsets[*missing], flatbuf.size());
+    }
+}
+
+inline void TraceImageSharp(const auto& info, const SharpFetch<AmdGpu::Image>& fetch,
+                           const AmdGpu::Image& image, bool r128) {
+    static const bool enabled = [] {
+        const char* value = std::getenv("ORDER1886_DIAG_RESOURCE_SHARPS");
+        return value && value[0] == '1';
+    }();
+    if (!enabled) return;
+    const auto data_format = static_cast<AmdGpu::DataFormat>(image.data_format);
+    const bool packed_context = data_format == AmdGpu::DataFormat::FormatBG_RG ||
+                                data_format == AmdGpu::DataFormat::FormatGB_GR;
+    // Keep packed-format failure context available after ordinary tracing is exhausted.
+    static std::atomic<u32> records{0}, packed_records{0};
+    auto& budget = packed_context ? packed_records : records;
+    const u32 limit = packed_context ? 16 : 512;
+    u32 record = budget.load(std::memory_order_relaxed);
+    do {
+        if (record >= limit) return;
+    } while (!budget.compare_exchange_weak(record, record + 1, std::memory_order_relaxed));
+    std::array<u32, 8> raw{};
+    std::memcpy(raw.data(), &image, sizeof(image));
+    if constexpr (requires { info.pgm_hash; info.hw_stage; }) {
+        LOG_WARNING(Render_Recompiler,
+                    "Image sharp fetch: resource={} packed_context={} shader={:#018x} stage={} "
+                    "r128={} load_mask={:#x} "
+                    "locations={} raw={:08x} {:08x} {:08x} {:08x} "
+                    "{:08x} {:08x} {:08x} {:08x}",
+                    fmt::ptr(&fetch), packed_context, info.pgm_hash, info.hw_stage, r128,
+                    fetch.load_mask, fetch.offsets,
+                    raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7]);
+    } else {
+        LOG_WARNING(Render_Recompiler,
+                    "Image sharp fetch: source_type={} resource={} packed_context={} "
+                    "r128={} load_mask={:#x} locations={} raw={:08x} {:08x} {:08x} {:08x} "
+                    "{:08x} {:08x} {:08x} {:08x}",
+                    __PRETTY_FUNCTION__, fmt::ptr(&fetch), packed_context, r128, fetch.load_mask,
+                    fetch.offsets, raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7]);
+    }
+}
 
 enum class SharpFetchPostOp : u8 {
     None,
@@ -90,8 +164,9 @@ struct BufferResource {
 
     constexpr AmdGpu::Buffer GetSharp(const auto& info) const noexcept {
         AmdGpu::Buffer buffer;
+        RequireResolvedSharpSource<4>(info, "buffer", sharp_fetch);
         if (!sharp_fetch.Fetch(info.FlatUserData().data(), &buffer)) {
-            return AmdGpu::Buffer::Null();
+            UNREACHABLE_MSG("Validated buffer descriptor fetch failed");
         }
         if (post_op == SharpFetchPostOp::BitwiseOrDw1WithImm) {
             reinterpret_cast<u32*>(&buffer)[1] |= post_op_dw1_mask;
@@ -119,7 +194,7 @@ struct ImageResource {
     bool is_array{};
     bool is_written{};
     bool is_r128{};
-    /// gow3: read other than by normalized sampling without offsets (texel loads, size
+    /// read other than by normalized sampling without offsets (texel loads, size
     /// queries, offsets): needs the native-size image, not a reduced scene proxy.
     bool needs_native{};
     u8 constant_mip_index{};
@@ -128,9 +203,15 @@ struct ImageResource {
 
     constexpr AmdGpu::Image GetSharp(const auto& info) const noexcept {
         AmdGpu::Image image{};
-        if (!Fetch(info.FlatUserData().data(), &image)) {
-            return AmdGpu::Image::Null(is_depth);
+        if (is_r128) {
+            RequireResolvedSharpSource<4>(info, "image-r128", sharp_fetch);
+        } else {
+            RequireResolvedSharpSource<8>(info, "image", sharp_fetch);
         }
+        if (!Fetch(info.FlatUserData().data(), &image)) {
+            UNREACHABLE_MSG("Validated image descriptor fetch failed");
+        }
+        if (!std::is_constant_evaluated()) TraceImageSharp(info, sharp_fetch, image, is_r128);
         if (post_op == SharpFetchPostOp::ConvertCubeTo2DArray) {
             image.type = u64(AmdGpu::ImageType::Color2DArray);
             image.depth = (image.depth + 1) * 6 - 1;
@@ -160,11 +241,14 @@ struct ImageResource {
         return true;
     }
 
-    u32 NumBindings(const auto& info) const {
-        const AmdGpu::Image tsharp = GetSharp(info);
+    u32 NumBindingsFromSharp(const AmdGpu::Image& tsharp) const {
         return (mip_fallback_mode == MipStorageFallbackMode::DynamicIndex)
                    ? (tsharp.last_level - tsharp.base_level + 1)
                    : 1;
+    }
+
+    u32 NumBindings(const auto& info) const {
+        return NumBindingsFromSharp(GetSharp(info));
     }
 };
 using ImageResourceList = boost::container::static_vector<ImageResource, NUM_IMAGES>;
@@ -177,8 +261,15 @@ struct SamplerResource {
 
     constexpr AmdGpu::Sampler GetSharp(const auto& info) const noexcept {
         AmdGpu::Sampler sampler{};
-        sharp_fetch.Fetch(info.FlatUserData().data(), &sampler);
+        RequireResolvedSharpSource<4>(info, "sampler", sharp_fetch);
+        if (!sharp_fetch.Fetch(info.FlatUserData().data(), &sampler)) {
+            UNREACHABLE_MSG("Validated sampler descriptor fetch failed");
+        }
         if (post_op == SharpFetchPostOp::DisableAnisoIfSingleLod) {
+            SharpFetch<u32> lod_source{};
+            lod_source.load_mask = 1;
+            lod_source.offsets[0] = post_op_tsharp_dw3_off;
+            RequireResolvedSharpSource<1>(info, "sampler LOD dependency", lod_source);
             const u32 tsharp_dw3 = info.FlatUserData()[post_op_tsharp_dw3_off];
             if (((tsharp_dw3 >> 12) & 0xff) == 0) {
                 sampler.max_aniso.Assign(AmdGpu::AnisoRatio::One);
@@ -201,13 +292,13 @@ struct SamplerResource {
 using SamplerResourceList = boost::container::static_vector<SamplerResource, NUM_SAMPLERS>;
 
 struct FMaskResource {
-    SharpLocation sharp_idx;
+    ImageResource source;
 
     constexpr AmdGpu::Image GetSharp(const auto& info) const noexcept {
-        return info.template ReadUdSharp<AmdGpu::Image>(sharp_idx);
+        return source.GetSharp(info);
     }
 };
-using FMaskResourceList = boost::container::static_vector<FMaskResource, NUM_FMASKS>;
+using FMaskResourceList = boost::container::static_vector<FMaskResource, NUM_IMAGES>;
 
 struct PushData {
     static constexpr u32 XOffsetIndex = 0;
@@ -225,7 +316,7 @@ struct PushData {
     float yscale;
     std::array<u32, NUM_USER_DATA_REGS> ud_regs;
     std::array<u8, NUM_BUFFERS> buf_offsets;
-    u32 motion_param; ///< gow3: object motion parameter index (0: off)
+    u32 motion_param; ///< object motion parameter index (0: off)
     u32 scene_size; ///< reduced width | height << 16; zero means native pixel coordinates
 
     void AddOffset(u32 binding, u32 offset) {

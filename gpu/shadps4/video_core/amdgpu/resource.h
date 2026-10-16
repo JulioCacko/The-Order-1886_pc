@@ -7,7 +7,7 @@
 #include "common/assert.h"
 #include "common/bit_field.h"
 #include "video_core/amdgpu/pixel_format.h"
-#include "video_core/amdgpu/gow3_msaa.h"
+#include "video_core/amdgpu/ps4_msaa.h"
 #include "video_core/amdgpu/tiling.h"
 
 namespace AmdGpu {
@@ -224,12 +224,15 @@ struct Image {
     }
 
     [[nodiscard]] u32 NumLayers() const noexcept {
-        // Depth is the number of layers for Array images.
+        const auto image_type = static_cast<ImageType>(type);
+        if (image_type != ImageType::Color1DArray && image_type != ImageType::Color2DArray &&
+            image_type != ImageType::Color2DMsaaArray && image_type != ImageType::Cube) {
+            // Depth is a volume extent for 3D and does not encode layers for ordinary images.
+            return 1;
+        }
+        // Depth is the number of layers minus one for array images.
         u32 slices = depth + 1;
-        if (GetType() == ImageType::Color3D) {
-            // Depth is the actual texture depth for 3D images.
-            slices = 1;
-        } else if (IsCube()) {
+        if (image_type == ImageType::Cube) {
             // Depth is the number of full cubes for Cube images.
             slices *= 6;
         }
@@ -266,7 +269,7 @@ struct Image {
 
     ImageType GetType() const noexcept {
         if (NoMsaa() && IsGuestMsaa()) {
-            // gow3: see gow3_msaa.h; shaders then fetch it without a sample index.
+            // see ps4_msaa.h; shaders then fetch it without a sample index.
             return static_cast<ImageType>(type) == ImageType::Color2DMsaa ? ImageType::Color2D
                                                                           : ImageType::Color2DArray;
         }
