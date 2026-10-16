@@ -14,7 +14,11 @@ An earlier cached run stopped on the ordinary pointer in fragment shader `a91682
 
 The previous `e361df5d...` cold 4K/FSR1/30 run stopped at the same class of invalid ordinary pointer after 27.636 seconds. Its 149 dumped SPIR-V modules validated, but that did not establish rendering correctness. These are historical diagnostic results, not current 4K/60 acceptance.
 
-The last packaged launcher/overlay update is documented in [launcher recovery and verification](order1886-launcher-recovery.md), runtime `ca415f6a...`. It fixes invalid-console result reporting and adds the presentation performance panel and F9 toggle. The remaining build/package details below preserve the earlier `917a` historical baseline and do not identify the current source build.
+The new preview is `dist/order1886/20261016T185001Z-b6db10c4284d/The Order 1886/The Order 1886.exe`, containing the source runtime above from implementation commit `7e6d2a3`. All 12 portable CPU checks pass after relocation into a directory with spaces and a restricted PATH, including frozen GUI/bootstrap, invalid standard handles, native preparation, and opt-in 60 FPS preparation. Evidence: `out/order1886-evidence/post-reset-portable-smoke/Portable Smoke 85f80695e4/smoke-report.json`. This does not establish packaged gameplay or performance under the normal cache policy.
+
+The ZIP is 98,650,231 bytes, SHA256 `e177fa9e1dcdeb53700af1bd2ecbd711d501ea663297c5deef53a728eddee86e`. Archive CRC, archive/installed manifest equality and all 1304 packaged file hashes pass. The bundle contains no game dump, player state, shader caches or logs. Delivery identity: `out/order1886-evidence/post-reset-delivery.json`.
+
+Historical launcher/overlay recovery is documented in [launcher recovery and verification](order1886-launcher-recovery.md), runtime `ca415f6a...`. The remaining build/package details below preserve the earlier `917a` baseline and do not identify the current source build.
 
 Updated 16 October 2026. This is emulator-backed compatibility software running the original PS4 executable.
 
