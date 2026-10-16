@@ -171,9 +171,11 @@ namespace Shader::Optimization {
 }
 struct FixtureInfo {
     std::array<u32, 8> words{};
+    std::array<u32, 4> user_data{0x87654321, 0x10, 0, 0};
     u64 pgm_hash = 1;
     std::string_view hw_stage = "cpu";
     std::span<const u32> FlatUserData() const { return words; }
+    std::span<const u32> UserData() const { return user_data; }
     u64 ProgramBase() const { return 0; }
 };
 int main(int argc, char**) {
@@ -289,7 +291,9 @@ class SrtCodegenTests(unittest.TestCase):
             for expected in ('Invalid ReadConst pointer: shader=0x00000000804aeead stage=cpu',
                              'raw=deadbeef a5a50100', 'address=0xa5a50100deadbeef',
                              'requested_bytes=4194368', 'flat_size=8', 'load_mask=0x3',
-                             'locations=[0, 1, 65535, 65535]', 'immediates=[0, 0, 0, 0]'):
+                             'locations=[0, 1, 65535, 65535]', 'immediates=[0, 0, 0, 0]',
+                             'ReadConst source snapshot: info=',
+                             'user_data=[2271560481, 16, 0, 0]'):
                 self.assertIn(expected, rejected.stderr)
 
     def test_failure_rolls_back_and_valid_roots_execute(self):

@@ -39,12 +39,40 @@ int main() {
     assert(timing.Latest().fps < 0.0f);
     timing.Present(3'500'000'000, false);
     assert(timing.Latest().fps == 2.0f);
+
+    // Repeated host presentations must not inflate completed guest output.
+    P::PresentationCounter guest, host;
+    assert(guest.Latest(9'000'000'000).fps < 0.0f);
+    assert(!guest.Latest(9'000'000'000).stale);
+    guest.Present(0, false);
+    host.Present(0, false);
+    for (uint64_t i = 1; i <= 90; ++i) {
+        const auto now = i * 33'333'333;
+        host.Present(now, false);
+        if (i % 3 == 0) guest.Present(now, false);
+    }
+    assert(std::abs(host.Latest().fps - 30.0f) < 0.001f);
+    assert(std::abs(guest.Latest(3'000'000'000).fps - 10.0f) < 0.001f);
+    assert(std::abs(guest.Latest().interval_ms - 100.0f) < 0.001f);
+    assert(!guest.Latest(3'900'000'000).stale);
+    const auto stopped = guest.Latest(4'000'000'000);
+    assert(stopped.fps == 0.0f && stopped.interval_ms < 0.0f && stopped.stale);
+    // Sampling the stopped counter never invents guest flips. Resumption includes the gap.
+    guest.Present(5'000'000'000, false);
+    assert(!guest.Latest(5'000'000'000).stale);
+    assert(guest.Latest().fps < 1.0f && guest.Latest().interval_ms > 1900.0f);
+    P::PresentationCounter first_only;
+    first_only.Present(1'000'000'000, false);
+    assert(first_only.Latest(1'100'000'000).fps < 0.0f);
+    assert(first_only.Latest(2'000'000'000).fps == 0.0f);
     assert(P::CpuPercent(50, 100, 1) == 50.0f);
     assert(P::CpuPercent(400, 100, 8) == 50.0f);
     assert(P::CpuPercent(5000, 100, 4) == 100.0f);
     assert(P::CpuPercent(10, 0, 4) < 0.0f && P::CpuPercent(10, 100, 0) < 0.0f);
 
     P::Sample s;
+    s.game_fps = 10.0f;
+    s.game_frame_ms = 100.0f;
     s.fps = 238.4f;
     s.frame_ms = 4.19f;
     s.upscaler = "FSR 3.1";
@@ -56,9 +84,9 @@ int main() {
     s.vram_used_gb = 5.4;
     s.vram_total_gb = 12.0;
     assert(P::Format(s, P::DefaultItems, true) ==
-           "Presentation 238.4 FPS   Present interval 4.2 ms   Process CPU 34%   Process RAM 6.1 GiB");
+           "Game output 10.0 FPS   Presentation 238.4 FPS   Guest flip interval 100.0 ms   Present interval 4.2 ms   Process CPU 34%   Process RAM 6.1 GiB");
     assert(P::Format(s, P::AllItems, false) ==
-           "Presentation 238.4 FPS\nPresent interval 4.2 ms\nFSR 3.1\nRTX 4070 87%\nProcess CPU 34%\nProcess RAM 6.1 GiB\nVRAM 5.4 / 12.0 GB");
+           "Game output 10.0 FPS\nPresentation 238.4 FPS\nGuest flip interval 100.0 ms\nPresent interval 4.2 ms\nFSR 3.1\nRTX 4070 87%\nProcess CPU 34%\nProcess RAM 6.1 GiB\nVRAM 5.4 / 12.0 GB");
     assert(P::Format(s, P::Cpu | P::Vram, true) == "Process CPU 34%   VRAM 5.4 / 12.0 GB");
     assert(P::Format(s, 0, true).empty());
 
@@ -67,7 +95,12 @@ int main() {
     assert(P::Format(unknown, P::Upscaler | P::Gpu | P::Cpu | P::Ram | P::Vram, false) ==
            "Native\nGPU n/a\nProcess CPU n/a\nProcess RAM n/a\nVRAM n/a");
     assert(P::Format(unknown, P::Fps | P::FrameTime, false) ==
-           "Presentation FPS n/a\nPresent interval n/a");
+           "Game output FPS n/a\nPresentation FPS n/a\nGuest flip interval n/a\nPresent interval n/a");
+    unknown.game_fps = stopped.fps;
+    unknown.game_frame_ms = stopped.interval_ms;
+    unknown.game_stale = stopped.stale;
+    assert(P::Format(unknown, P::Fps | P::FrameTime, false) ==
+           "Game output 0.0 FPS (stale)\nPresentation FPS n/a\nGuest flip interval stale\nPresent interval n/a");
     unknown.ram_used_gb = 2.0;
     assert(P::Format(unknown, P::Ram, true) == "Process RAM 2.0 GiB");
 

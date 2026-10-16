@@ -70,6 +70,26 @@ struct SharpFetch {
     }
 };
 
+// Necessary wave-uniform condition for every use of a sampled image: count > threshold.
+// An unknown source never proves inactivity.
+struct UniformResourceGuard {
+    SharpFetch<u32> count{};
+    u32 threshold{};
+    u16 proven_uses{};
+    bool enabled{};
+    bool operator==(const UniformResourceGuard&) const = default;
+
+    constexpr std::optional<u32> InactiveCount(const auto& info) const {
+        if (!enabled || proven_uses == 0) return std::nullopt;
+        const auto flat = info.FlatUserData();
+        if (count.UnresolvedDword(flat.size())) return std::nullopt;
+        u32 value{};
+        if (!count.Fetch(flat.data(), &value) || value > threshold) return std::nullopt;
+        return value;
+    }
+    constexpr bool IsInactive(const auto& info) const { return InactiveCount(info).has_value(); }
+};
+
 template <u32 num_dwords, typename T>
 constexpr void RequireResolvedSharpSource(const auto& info, const char* kind,
                                           const SharpFetch<T>& fetch) {
@@ -98,16 +118,30 @@ inline void TraceImageSharp(const auto& info, const SharpFetch<AmdGpu::Image>& f
     const auto data_format = static_cast<AmdGpu::DataFormat>(image.data_format);
     const bool packed_context = data_format == AmdGpu::DataFormat::FormatBG_RG ||
                                 data_format == AmdGpu::DataFormat::FormatGB_GR;
+    // Keep shader/root provenance after ordinary tracing is exhausted. This is
+    // only a diagnostic threshold; actual device limits are checked later.
+    const bool oversized_context = image.NumLayers() > 2048;
     // Keep packed-format failure context available after ordinary tracing is exhausted.
-    static std::atomic<u32> records{0}, packed_records{0};
-    auto& budget = packed_context ? packed_records : records;
-    const u32 limit = packed_context ? 16 : 512;
+    static std::atomic<u32> records{0}, packed_records{0}, oversized_records{0};
+    auto& budget = oversized_context ? oversized_records : packed_context ? packed_records : records;
+    const u32 limit = oversized_context || packed_context ? 16 : 512;
     u32 record = budget.load(std::memory_order_relaxed);
     do {
         if (record >= limit) return;
     } while (!budget.compare_exchange_weak(record, record + 1, std::memory_order_relaxed));
     std::array<u32, 8> raw{};
     std::memcpy(raw.data(), &image, sizeof(image));
+    if (oversized_context) {
+        if constexpr (requires { info.UserData(); info.pgm_hash; info.hw_stage; }) {
+            LOG_WARNING(Render_Recompiler,
+                        "Oversized image root sources: fetch={} info={} shader={:#018x} stage={} "
+                        "r128={} type={} depth={} pitch={} layers={} root_ud={} flat={} flat_size={}",
+                        fmt::ptr(&fetch), fmt::ptr(&info), info.pgm_hash, info.hw_stage, r128,
+                        u32(image.type), u32(image.depth), image.Pitch(), image.NumLayers(),
+                        info.UserData(), fmt::ptr(info.FlatUserData().data()),
+                        info.FlatUserData().size());
+        }
+    }
     if constexpr (requires { info.pgm_hash; info.hw_stage; }) {
         LOG_WARNING(Render_Recompiler,
                     "Image sharp fetch: resource={} packed_context={} shader={:#018x} stage={} "
@@ -200,6 +234,11 @@ struct BufferResource {
                               readconst_size_bytes, info.FlatUserData().size(),
                               sharp_fetch.load_mask, sharp_fetch.offsets, sharp_fetch.immediates);
                 }
+                if constexpr (requires { info.UserData(); }) {
+                    LOG_ERROR(Render_Recompiler,
+                              "ReadConst source snapshot: info={} user_data={} flat_data={}",
+                              fmt::ptr(&info), info.UserData(), info.FlatUserData());
+                }
             }
             ASSERT_MSG(address < 0x100'0000'0000ULL, "ReadConst pointer outside GPU address space");
             // This is an address/request carrier, not a decoded hardware V# or format.
@@ -234,6 +273,7 @@ enum class MipStorageFallbackMode : u16 {
 
 struct ImageResource {
     SharpFetch<AmdGpu::Image> sharp_fetch{};
+    UniformResourceGuard uniform_guard{};
     bool is_depth{};
     bool is_atomic{};
     bool is_array{};
@@ -248,7 +288,41 @@ struct ImageResource {
     MipStorageFallbackMode mip_fallback_mode{};
     SharpFetchPostOp post_op{};
 
+    constexpr std::optional<u32> InactiveGuardCount(const auto& info) const {
+        if (is_depth || is_atomic || is_written || is_r128 ||
+            post_op != SharpFetchPostOp::None || mip_fallback_mode != MipStorageFallbackMode::None) {
+            return std::nullopt;
+        }
+        return uniform_guard.InactiveCount(info);
+    }
+    constexpr bool IsUniformlyInactive(const auto& info) const { return InactiveGuardCount(info).has_value(); }
+
     constexpr AmdGpu::Image GetSharp(const auto& info) const noexcept {
+        if (const auto count = InactiveGuardCount(info)) {
+            if (!std::is_constant_evaluated()) {
+                if constexpr (requires { info.pgm_hash; info.hw_stage; }) {
+                    static const bool diagnostic = [] {
+                        const char* value = std::getenv("ORDER1886_DIAG_RESOURCE_SHARPS");
+                        return value && value[0] == '1';
+                    }();
+                    static std::atomic<u32> records{0};
+                    if (diagnostic && records.fetch_add(1, std::memory_order_relaxed) < 32) {
+                        LOG_INFO(Render_Recompiler,
+                                 "Inactive sampled image: shader={:#018x} stage={} resource={} info={} "
+                                 "count={} threshold={} source_mask={:#x} source={} immediate={} "
+                                 "flat_size={} proven_uses={} contract=float-sampled-placeholder",
+                                 info.pgm_hash, info.hw_stage, fmt::ptr(this), fmt::ptr(&info), *count,
+                                 uniform_guard.threshold, uniform_guard.count.load_mask,
+                                 uniform_guard.count.offsets[0], uniform_guard.count.immediates[0],
+                                 info.FlatUserData().size(), uniform_guard.proven_uses);
+                    }
+                }
+            }
+            // Guard analysis only admits ordinary sampled images. This permutation
+            // compiles a float 2D/2D-array placeholder; its explicit inactive key state
+            // prevents reusing that shape when a later snapshot enables the resource.
+            return AmdGpu::Image::Null(false);
+        }
         AmdGpu::Image image{};
         if (is_r128) {
             RequireResolvedSharpSource<4>(info, "image-r128", sharp_fetch);

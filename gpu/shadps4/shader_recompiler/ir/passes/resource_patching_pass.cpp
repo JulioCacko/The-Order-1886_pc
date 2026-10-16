@@ -119,6 +119,8 @@ public:
     u32 Add(const ImageResource& desc) {
         const u32 index{Add(image_resources, desc, [&desc](const auto& existing) {
             return desc.sharp_fetch == existing.sharp_fetch && desc.is_array == existing.is_array &&
+                   desc.is_depth == existing.is_depth && desc.is_r128 == existing.is_r128 &&
+                   desc.uniform_guard == existing.uniform_guard &&
                    desc.mip_fallback_mode == existing.mip_fallback_mode &&
                    desc.declared_binding_count == existing.declared_binding_count &&
                    desc.constant_mip_index == existing.constant_mip_index &&
@@ -143,6 +145,7 @@ public:
     u32 Add(const FMaskResource& desc) {
         u32 index = Add(fmask_resources, desc, [&desc](const auto& existing) {
             return desc.source.sharp_fetch == existing.source.sharp_fetch &&
+                   desc.source.uniform_guard == existing.source.uniform_guard &&
                    desc.source.is_r128 == existing.source.is_r128 &&
                    desc.source.is_depth == existing.source.is_depth &&
                    desc.source.is_array == existing.source.is_array &&
@@ -293,6 +296,7 @@ void PatchImageSharp(const ResourceDiscovery& resource, Info& info, Descriptors&
         !inst_info.has_offset && !inst_info.is_unnormalized;
     ImageResource image_res = {
         .sharp_fetch = ConstructSharpFetch<AmdGpu::Image>(resource.sharps[0]),
+        .uniform_guard = resource.uniform_guard,
         .is_depth = bool(inst_info.is_depth),
         .is_atomic = is_atomic,
         .is_array = bool(inst_info.is_array),

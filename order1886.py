@@ -186,6 +186,9 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
         'ORDER1886_CONFIG': str(user / 'runtime.ini'), 'ORDER1886_USER_DIR': str(user),
         'ORDER1886_GPU_USER_DIR': str(user / 'gpu' / SHADER_CACHE_ABI), 'ORDER1886_GAME_PROFILE': 'order1886',
         'ORDER1886_FPS_LIMIT': str(frame_rate),
+        # Reuse validated cached pipelines before playback rather than compiling during it.
+        'ORDER1886_PIPELINE_BINARIES': '0', 'ORDER1886_BACKGROUND_WARMUP': '0',
+        'ORDER1886_PARALLEL_WARMUP': '0',
         'ORDER1886_SETTINGS_MENU': '0',
         'ORDER1886_VBLANK_HZ': '60',
         'ORDER1886_STREAM_MEMORY': 'cached', 'PYTHONIOENCODING': 'utf-8',

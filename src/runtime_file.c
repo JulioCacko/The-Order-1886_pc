@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #ifdef _WIN32
@@ -34,6 +35,8 @@ typedef struct stat HostStat;
 #define MAX_MOUNTS 16
 
 typedef struct { int64_t sec, nsec; } GuestTimespec;
+typedef struct { int64_t sec, usec; } GuestTimeval;
+_Static_assert(sizeof(GuestTimeval)==16 && offsetof(GuestTimeval,usec)==8,"FreeBSD timeval layout");
 typedef struct {
     uint32_t dev, ino;
     uint16_t mode, nlink;
@@ -91,6 +94,18 @@ void runtime_file_configure(const char *app0,const char *user) {
         runtime_file_mount(guest,path);
     }
 }
+/* Match an already validated absolute guest path while the fd/mount lock is held. */
+static int translate_locked(const char *buffer,char *out,size_t size) {
+    size_t best=0; const Mount *m=NULL;
+    for (size_t i=0;i<mount_count;++i) {
+        size_t n=strlen(mounts[i].guest);
+        if (!strncmp(buffer,mounts[i].guest,n) && (buffer[n]=='/' || !buffer[n]) && n>best) { best=n; m=&mounts[i]; }
+    }
+    int result=0;
+    if (!m) result=ENOENT;
+    else if ((size_t)snprintf(out,size,"%s%s",m->host,buffer+best)>=size) result=ENAMETOOLONG;
+    return result;
+}
 /* Resolve a guest path to a host path; returns 0 or a host errno. */
 static int translate(const char *guest,char *out,size_t size) {
     if (!guest || !*guest) return ENOENT;
@@ -100,14 +115,7 @@ static int translate(const char *guest,char *out,size_t size) {
     for (const char *p=buffer;(p=strstr(p,".."));p+=2)
         if ((p==buffer || p[-1]=='/') && (p[2]==0 || p[2]=='/')) return EACCES;
     pthread_mutex_lock(&lock);
-    size_t best=0; const Mount *m=NULL;
-    for (size_t i=0;i<mount_count;++i) {
-        size_t n=strlen(mounts[i].guest);
-        if (!strncmp(buffer,mounts[i].guest,n) && (buffer[n]=='/' || !buffer[n]) && n>best) { best=n; m=&mounts[i]; }
-    }
-    int result=0;
-    if (!m) result=ENOENT;
-    else if ((size_t)snprintf(out,size,"%s%s",m->host,buffer+best)>=size) result=ENAMETOOLONG;
+    int result=translate_locked(buffer,out,size);
     pthread_mutex_unlock(&lock);
     if (result==ENOENT) fprintf(stderr,"Runtime: no mount for guest path %s\n",guest);
     return result;
@@ -439,6 +447,81 @@ static int64_t do_truncate(const char *guest,int64_t length) {
 #endif
 }
 static int64_t do_fsync(int fd) { int h=host_fd(fd); if (h<0) return -EBADF; return fsync(h) ? -errno : 0; }
+#ifdef _WIN32
+static int timeval_filetime(const GuestTimeval *value,FILETIME *out) {
+    /* NT absolute timestamps start in 1601 and occupy the positive signed 64-bit range. */
+    if (value->sec < -INT64_C(11644473600)) return EINVAL;
+    const uint64_t seconds=(uint64_t)value->sec+UINT64_C(11644473600);
+    const uint64_t fraction=(uint64_t)value->usec*10;
+    if (seconds>((uint64_t)INT64_MAX-fraction)/UINT64_C(10000000)) return EINVAL;
+    const uint64_t ticks=seconds*UINT64_C(10000000)+fraction;
+    out->dwLowDateTime=(DWORD)ticks; out->dwHighDateTime=(DWORD)(ticks>>32);
+    return 0;
+}
+#endif
+static int64_t do_futimes(int fd,const GuestTimeval *times) {
+    GuestTimeval values[2];
+    if (times) {
+        memcpy(values,times,sizeof(values));
+        for (unsigned i=0;i<2;++i)
+            if (values[i].usec<0 || values[i].usec>=1000000) return -EINVAL;
+    }
+#ifdef _WIN32
+    FILETIME native[2];
+    if (times)
+        for (unsigned i=0;i<2;++i) {
+            int error=timeval_filetime(&values[i],&native[i]);
+            if (error) return -error;
+        }
+#else
+    struct timespec native[2];
+    if (times)
+        for (unsigned i=0;i<2;++i) {
+            native[i].tv_sec=(time_t)values[i].sec;
+            if ((int64_t)native[i].tv_sec!=values[i].sec) return -EINVAL;
+            native[i].tv_nsec=(long)(values[i].usec*1000);
+        }
+#endif
+    /* Keep close/reuse and mount changes out of this descriptor's timestamp operation. */
+    pthread_mutex_lock(&lock);
+    File *file=get(fd);
+    const int host=file ? file->host : fd>=0 && fd<3 ? fd : -1;
+    int64_t result=0;
+    if (!file && host<0) { result=-EBADF; goto done; }
+    if (file && game_path(file->path)) { result=-EROFS; goto done; }
+    if (!(file && file->dir)) {
+        HostStat info;
+        if (host<0) { result=-EBADF; goto done; }
+        if (host_fstat(host,&info)) { result=-errno; goto done; }
+        if (!S_ISREG(info.st_mode) && !S_ISDIR(info.st_mode)) { result=-EINVAL; goto done; }
+    }
+#ifdef _WIN32
+    HANDLE attributes;
+    if (file && file->dir) {
+        /* Windows guest directories are path-backed listings rather than CRT descriptors. */
+        char path[1024];
+        int error=translate_locked(file->path,path,sizeof(path));
+        if (error) { result=-error; goto done; }
+        attributes=CreateFileA(path,FILE_WRITE_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+                               NULL,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,NULL);
+    } else {
+        HANDLE original=(HANDLE)_get_osfhandle(host);
+        if (original==INVALID_HANDLE_VALUE) { result=-EBADF; goto done; }
+        /* O_RDONLY does not prohibit metadata changes. Reopen the same object, never its pathname. */
+        attributes=ReOpenFile(original,FILE_WRITE_ATTRIBUTES,
+                              FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,0);
+    }
+    if (attributes==INVALID_HANDLE_VALUE) { result=-compat_errno_from_win32(GetLastError()); goto done; }
+    if (!times) { GetSystemTimePreciseAsFileTime(&native[0]); native[1]=native[0]; }
+    if (!SetFileTime(attributes,NULL,&native[0],&native[1])) result=-compat_errno_from_win32(GetLastError());
+    CloseHandle(attributes);
+#else
+    if (futimens(host,times ? native : NULL)) result=-errno;
+#endif
+done:
+    pthread_mutex_unlock(&lock);
+    return result;
+}
 static int64_t do_access(const char *guest,int mode) {
     char path[1024];
     int e=translate(guest,path,sizeof(path));
@@ -470,6 +553,7 @@ PAIR(rename,(const char *a,const char *b),(a,b))
 PAIR(ftruncate,(int fd,int64_t l),(fd,l))
 PAIR(truncate,(const char *p,int64_t l),(p,l))
 PAIR(fsync,(int fd),(fd))
+PAIR(futimes,(int fd,const GuestTimeval *times),(fd,times))
 static ABI int64_t posix_access(const char *p,int m) { return posix(do_access(p,m)); }
 static ABI int64_t sce_mkdir(const char *p,int m) { return sce(path_op(p,0,m)); }
 static ABI int64_t posix_mkdir(const char *p,int m) { return posix(path_op(p,0,m)); }
@@ -496,6 +580,7 @@ static const RuntimeExport exports[]={
     {"sceKernelFtruncate",sce_ftruncate}, {"ftruncate",posix_ftruncate},
     {"sceKernelTruncate",sce_truncate}, {"truncate",posix_truncate},
     {"sceKernelFsync",sce_fsync}, {"fsync",posix_fsync},
+    {"sceKernelFutimes",sce_futimes}, {"futimes",posix_futimes},
     {"access",posix_access}, {"sceKernelCheckReachability",sce_check_reachability},
     {"sceKernelMkdir",sce_mkdir}, {"mkdir",posix_mkdir},
     {"sceKernelRmdir",sce_rmdir}, {"rmdir",posix_rmdir},

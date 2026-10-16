@@ -17,6 +17,7 @@
 #include "common/assert.h"
 #include "ps4_toggles.h"
 #include "ps4_settings.h"
+#include "ps4_perf_stats.h"
 #include "ps4_graphics.h"
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
 #include "common/debug.h"
@@ -305,6 +306,7 @@ void VideoOutDriver::Flip(const Request& req) {
     RunPresenter([this, frame = req.frame, hdr = req.port->is_hdr] {
         presenter->SetHDR(hdr);
         presenter->Present(frame);
+        Ps4PerfStats::OnGuestFlip();
     });
     Vulkan::FrameCapture::OnFlip(req.index >= 0 ? req.port->buffer_slots[req.index].address_left
                                                 : 0);

@@ -6,6 +6,7 @@
  * Metadata lives beside the directory so the guest's own files are untouched. */
 #define _GNU_SOURCE
 #include "runtime.h"
+#include "runtime_save_trace.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,6 +83,10 @@ static int make_dirs(const char *path) {
 }
 static void root(int32_t user, const char *title, char *out, size_t size) {
     snprintf(out,size,"%s/savedata/%d/%s",runtime_file_user_dir(),user,title && *title ? title : title_id);
+    static RuntimeSaveTraceApi trace=RUNTIME_SAVE_TRACE_INIT;
+    RuntimeSaveTraceCall call=runtime_save_trace_begin(&trace,"savedata.root",0,
+        "user=%d title=%.15s path=%s",user,title && *title ? title : title_id,out);
+    (void)runtime_save_trace_end(call,0,initialized);
 }
 static int valid_name(const char *name, size_t max) {
     size_t n=strnlen(name,max);
@@ -172,10 +177,12 @@ static int32_t mount(int32_t user, const char *title, const DirName *dir, uint32
 }
 static ABI int32_t save_mount(const Mount1 *m, MountResult *result) {
     if (!m) return ERR_PARAMETER;
+    if (!initialized) return ERR_NOT_INITIALIZED;
     return mount(m->user,m->title ? m->title->data : NULL,m->dir,m->mode,result);
 }
 static ABI int32_t save_mount2(const Mount2 *m, MountResult *result) {
     if (!m) return ERR_PARAMETER;
+    if (!initialized) return ERR_NOT_INITIALIZED;
     return mount(m->user,NULL,m->dir,m->mode,result);
 }
 static int slot_of(const MountPoint *point) {
@@ -331,14 +338,45 @@ static int32_t memory_io(void *buffer, uint64_t size, int64_t offset, int write)
 static ABI int32_t memory_get(int32_t user, void *buffer, uint64_t size, int64_t offset) { (void)user; return memory_io(buffer,size,offset,0); }
 static ABI int32_t memory_set(int32_t user, void *buffer, uint64_t size, int64_t offset) { (void)user; return memory_io(buffer,size,offset,1); }
 
+/* The typed export wrappers leave all API validation, work and return paths intact. */
+#define TRACE_SAVE(name,api,parameters,arguments,...) \
+    static ABI int32_t trace_##name parameters { \
+        if (!runtime_save_trace_enabled()) return name arguments; \
+        static RuntimeSaveTraceApi trace=RUNTIME_SAVE_TRACE_INIT; \
+        RuntimeSaveTraceCall call=runtime_save_trace_begin(&trace,api,0,__VA_ARGS__); \
+        int32_t result=name arguments; \
+        return runtime_save_trace_end(call,result,initialized); \
+    }
+TRACE_SAVE(save_initialize,"sceSaveDataInitialize[1/2/3]",(const void *p),(p),"param=%p",p)
+TRACE_SAVE(save_terminate,"sceSaveDataTerminate",(void),(),"%s","")
+TRACE_SAVE(save_mount,"sceSaveDataMount",(const Mount1 *m,MountResult *r),(m,r),
+           "param=%p result_ptr=%p default_title=%s",(const void *)m,(void *)r,title_id)
+TRACE_SAVE(save_mount2,"sceSaveDataMount2",(const Mount2 *m,MountResult *r),(m,r),
+           "param=%p result_ptr=%p default_title=%s",(const void *)m,(void *)r,title_id)
+TRACE_SAVE(save_umount,"sceSaveDataUmount",(const MountPoint *p),(p),"mount_ptr=%p",(const void *)p)
+TRACE_SAVE(save_set_param,"sceSaveDataSetParam",(const MountPoint *p,uint32_t type,const void *buffer,uint64_t size),
+           (p,type,buffer,size),"mount_ptr=%p type=%u buffer=%p bytes=%llu",(const void *)p,type,buffer,(unsigned long long)size)
+TRACE_SAVE(save_icon,"sceSaveDataSaveIcon",(const MountPoint *p,const Icon *icon),(p,icon),
+           "mount_ptr=%p icon_ptr=%p",(const void *)p,(const void *)icon)
+TRACE_SAVE(save_delete,"sceSaveDataDelete",(const Delete *d),(d),"param=%p",(const void *)d)
+TRACE_SAVE(save_search,"sceSaveDataDirNameSearch",(const SearchCond *c,SearchResult *r),(c,r),
+           "condition=%p result_ptr=%p default_title=%s",(const void *)c,(void *)r,title_id)
+TRACE_SAVE(memory_setup,"sceSaveDataSetupSaveDataMemory",(int32_t user,uint64_t size,const Param *p),
+           (user,size,p),"user=%d bytes=%llu param=%p default_title=%s",user,(unsigned long long)size,(const void *)p,title_id)
+TRACE_SAVE(memory_get,"sceSaveDataGetSaveDataMemory",(int32_t user,void *buffer,uint64_t size,int64_t offset),
+           (user,buffer,size,offset),"user=%d buffer=%p bytes=%llu offset=%lld",user,buffer,(unsigned long long)size,(long long)offset)
+TRACE_SAVE(memory_set,"sceSaveDataSetSaveDataMemory",(int32_t user,void *buffer,uint64_t size,int64_t offset),
+           (user,buffer,size,offset),"user=%d buffer=%p bytes=%llu offset=%lld",user,buffer,(unsigned long long)size,(long long)offset)
+#undef TRACE_SAVE
+
 static const RuntimeExport exports[]={
-    {"sceSaveDataInitialize",save_initialize}, {"sceSaveDataInitialize2",save_initialize},
-    {"sceSaveDataInitialize3",save_initialize}, {"sceSaveDataTerminate",save_terminate},
-    {"sceSaveDataMount",save_mount}, {"sceSaveDataMount2",save_mount2}, {"sceSaveDataUmount",save_umount},
-    {"sceSaveDataSetParam",save_set_param}, {"sceSaveDataSaveIcon",save_icon}, {"sceSaveDataDelete",save_delete},
-    {"sceSaveDataDirNameSearch",save_search},
-    {"sceSaveDataSetupSaveDataMemory",memory_setup}, {"sceSaveDataGetSaveDataMemory",memory_get},
-    {"sceSaveDataSetSaveDataMemory",memory_set},
+    {"sceSaveDataInitialize",trace_save_initialize}, {"sceSaveDataInitialize2",trace_save_initialize},
+    {"sceSaveDataInitialize3",trace_save_initialize}, {"sceSaveDataTerminate",trace_save_terminate},
+    {"sceSaveDataMount",trace_save_mount}, {"sceSaveDataMount2",trace_save_mount2}, {"sceSaveDataUmount",trace_save_umount},
+    {"sceSaveDataSetParam",trace_save_set_param}, {"sceSaveDataSaveIcon",trace_save_icon}, {"sceSaveDataDelete",trace_save_delete},
+    {"sceSaveDataDirNameSearch",trace_save_search},
+    {"sceSaveDataSetupSaveDataMemory",trace_memory_setup}, {"sceSaveDataGetSaveDataMemory",trace_memory_get},
+    {"sceSaveDataSetSaveDataMemory",trace_memory_set},
 };
 uintptr_t runtime_savedata_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }
 void runtime_savedata_report(void) { printf("Runtime: save data mounts=%zu, memory writes=%zu\n",mounts_done,memory_writes); }

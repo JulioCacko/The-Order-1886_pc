@@ -50,6 +50,7 @@ struct ImageSpecialization {
     bool is_cube = false;
     bool is_srgb = false;
     bool is_fmask = false;
+    bool is_inactive = false;
     AmdGpu::CompMapping dst_select{};
     AmdGpu::NumberConversion num_conversion{};
     // FIXME any pipeline cache changes needed?
@@ -188,12 +189,16 @@ struct StageSpecialization {
             if constexpr (requires { spec.num_bindings; desc.NumBindingsFromSharp(sharp); }) {
                 spec.num_bindings = desc.NumBindingsFromSharp(sharp);
             }
+            if constexpr (requires { spec.is_inactive; desc.uniform_guard; }) {
+                spec.is_inactive = desc.IsUniformlyInactive(*info);
+            }
             if constexpr (requires { spec.is_fmask; sharp.GetDataFmt(); }) {
                 spec.is_fmask = AmdGpu::IsFmask(sharp.GetDataFmt());
                 if (spec.is_fmask) spec.dst_select = sharp.DstSelect();
             }
             if constexpr (requires { spec.translation; desc.source; }) {
                 spec.translation = DescribeImage(desc.source, sharp);
+                spec.translation.is_inactive = desc.source.IsUniformlyInactive(*info);
                 spec.mapping = sharp.DstSelect();
                 spec.width = sharp.width;
                 spec.height = sharp.height;
@@ -220,7 +225,8 @@ struct StageSpecialization {
             return false;
         }
         for (u32 i = 0; i < images.size(); ++i) {
-            if (images[i].num_bindings != other.images[i].num_bindings ||
+            if (images[i].is_inactive != other.images[i].is_inactive ||
+                images[i].num_bindings != other.images[i].num_bindings ||
                 images[i].is_fmask != other.images[i].is_fmask ||
                 (images[i].is_fmask && images[i].dst_select != other.images[i].dst_select)) {
                 return false;

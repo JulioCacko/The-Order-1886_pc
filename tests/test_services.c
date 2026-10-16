@@ -20,6 +20,19 @@ int main(void) {
     unsigned char param[128]={0}, result[64]={0}; /* the game zeroes the pointers it does not want */
     uint32_t value;
 
+    /* The export wrappers retain progress state, errors and explicit close behavior. */
+    assert(trace_save_open(NULL)==DIALOG_ARG_NULL);
+    assert(trace_save_init()==0);
+    param[52]=5;
+    assert(trace_save_open(param)==0);
+    for (int i=0;i<10000;++i) assert(trace_save_status()==DIALOG_RUNNING);
+    assert(trace_save_result(result)==DIALOG_NOT_FINISHED);
+    assert(trace_save_progress(1,50)==DIALOG_PARAM_INVALID);
+    assert(trace_save_progress(0,100)==0 && trace_save_status()==DIALOG_RUNNING);
+    assert(trace_save_close()==0 && trace_save_status()==DIALOG_FINISHED);
+    assert(trace_save_result(result)==0 && trace_save_term()==0);
+    memset(param,0,sizeof(param)); memset(result,0,sizeof(result));
+
     /* Optional USB keyboard failure is explicit; no callback or device is fabricated. */
     ImeKeyboardParam keyboard={.handler=keyboard_event};
     assert(sizeof(keyboard)==32 && offsetof(ImeKeyboardParam,handler)==16);

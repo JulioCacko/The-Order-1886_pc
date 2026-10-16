@@ -7,6 +7,7 @@
 
 #include "shader_recompiler/ir/opcodes.h"
 #include "shader_recompiler/ir/value.h"
+#include "shader_recompiler/resource.h"
 
 namespace Shader {
 enum class SharpFetchPostOp : u8;
@@ -29,6 +30,7 @@ struct SharpReference {
 struct ResourceDiscovery {
     IR::Inst* user{};
     std::array<SharpReference, 2> sharps;
+    UniformResourceGuard uniform_guard{};
 };
 using ResourceDiscoveryList = boost::container::small_vector<ResourceDiscovery, 32>;
 

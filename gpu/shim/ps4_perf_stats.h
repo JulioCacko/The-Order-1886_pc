@@ -32,6 +32,7 @@ inline constexpr unsigned DefaultItems = Fps | FrameTime | Cpu | Ram;
 struct PresentationMetrics {
     float fps = -1.0f, interval_ms = -1.0f;
     bool loading = false;
+    bool stale = false;
 };
 
 // Successful host presentation intervals, including stalls. UI visibility does not
@@ -57,6 +58,13 @@ public:
     }
 
     PresentationMetrics Latest() const { return metrics; }
+    // Query age without inserting synthetic frames. Before the first event stays n/a.
+    PresentationMetrics Latest(uint64_t now_ns) const {
+        if (seen && now_ns >= last_ns && now_ns - last_ns >= 1'000'000'000) {
+            return {.fps = 0.0f, .interval_ms = -1.0f, .loading = metrics.loading, .stale = true};
+        }
+        return metrics;
+    }
 
 private:
     bool seen = false;
@@ -66,6 +74,8 @@ private:
 
 struct Sample {
     float fps = -1.0f, frame_ms = -1.0f;
+    float game_fps = -1.0f, game_frame_ms = -1.0f;
+    bool game_stale = false;
     std::string upscaler;
     std::string gpu_name;
     float gpu_percent = -1.0f, cpu_percent = -1.0f;
@@ -100,11 +110,19 @@ inline std::string Format(const Sample& s, unsigned mask, bool row) {
         }
     };
     if (mask & Fps) {
+        if (s.game_fps < 0.0f) std::snprintf(part, sizeof(part), "Game output FPS n/a");
+        else std::snprintf(part, sizeof(part), "Game output %.1f FPS%s", s.game_fps,
+                           s.game_stale ? " (stale)" : "");
+        add();
         if (s.fps < 0.0f) std::snprintf(part, sizeof(part), "Presentation FPS n/a");
         else std::snprintf(part, sizeof(part), "Presentation %.1f FPS", s.fps);
         add();
     }
     if (mask & FrameTime) {
+        if (s.game_stale) std::snprintf(part, sizeof(part), "Guest flip interval stale");
+        else if (s.game_frame_ms < 0.0f) std::snprintf(part, sizeof(part), "Guest flip interval n/a");
+        else std::snprintf(part, sizeof(part), "Guest flip interval %.1f ms", s.game_frame_ms);
+        add();
         if (s.frame_ms < 0.0f) std::snprintf(part, sizeof(part), "Present interval n/a");
         else std::snprintf(part, sizeof(part), "Present interval %.1f ms", s.frame_ms);
         add();
@@ -144,7 +162,9 @@ inline std::string Format(const Sample& s, unsigned mask, bool row) {
 
 /// Starts the sampling thread the first time; later calls do nothing.
 void Start(const Vulkan::Instance& instance, unsigned items = DefaultItems);
-/// The latest CPU, RAM, GPU and VRAM values (the caller fills FPS, frametime and upscaler).
+/// Completed guest flips, independently of overlay visibility or UI-only host presentations.
+void OnGuestFlip();
+/// Latest process and guest-output values (caller fills host presentation and upscaler).
 Sample Latest();
 
 } // namespace Ps4PerfStats

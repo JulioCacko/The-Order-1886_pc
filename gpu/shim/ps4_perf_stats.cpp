@@ -22,6 +22,7 @@ namespace {
 
 std::mutex mutex;
 Sample latest;
+PresentationCounter guest_output;
 std::once_flag started;
 std::atomic<unsigned> requested_items{DefaultItems};
 
@@ -148,9 +149,23 @@ void Start(const Vulkan::Instance& instance, unsigned items) {
     std::call_once(started, [&] { std::thread(Run, &instance).detach(); });
 }
 
+void OnGuestFlip() {
+    const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count();
+    std::scoped_lock lock{mutex};
+    guest_output.Present(uint64_t(now_ns), false);
+}
+
 Sample Latest() {
     std::scoped_lock lock{mutex};
-    return latest;
+    auto sample = latest;
+    const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count();
+    const auto timing = guest_output.Latest(uint64_t(now_ns));
+    sample.game_fps = timing.fps;
+    sample.game_frame_ms = timing.interval_ms;
+    sample.game_stale = timing.stale;
+    return sample;
 }
 
 } // namespace Ps4PerfStats

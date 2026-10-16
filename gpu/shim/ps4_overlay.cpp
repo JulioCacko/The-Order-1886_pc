@@ -417,7 +417,7 @@ void FpsCounter() {
                      ImGuiWindowFlags_NoFocusOnAppearing);
     ImGui::SetWindowFontScale(s.overlay_scale / 100.0f);
     ImGui::TextUnformatted("The Order: 1886");
-    ImGui::TextDisabled("Presentation metrics | F9 to hide");
+    ImGui::TextDisabled("Guest flips / host presents | F9 to hide");
     ImGui::Separator();
     ImGui::TextUnformatted(text.c_str());
     ImGui::End();

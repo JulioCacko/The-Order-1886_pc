@@ -6,6 +6,7 @@
  * Every entry here is an explicit contract; unknown functions still stop. */
 #define _GNU_SOURCE
 #include "runtime.h"
+#include "runtime_save_trace.h"
 #include "gpu/ps4gpu.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -355,6 +356,42 @@ static ABI int32_t save_result(unsigned char *out) {
     return 0;
 }
 static ABI int32_t save_ready(void) { return 1; }
+
+static uint32_t trace_dialog_mode(int i, const unsigned char *param, size_t offset) {
+    uint32_t mode=UINT32_MAX;
+    /* SaveDataDialogOpen returns before reading its parameter when uninitialized. */
+    if (param && (i!=2 || dialogs[i].initialized)) memcpy(&mode,param+offset,4);
+    return mode;
+}
+#define TRACE_DIALOG(name,api,index,poll,parameters,arguments,...) \
+    static ABI int32_t trace_##name parameters { \
+        if (!runtime_save_trace_enabled()) return name arguments; \
+        static RuntimeSaveTraceApi trace=RUNTIME_SAVE_TRACE_INIT; \
+        RuntimeSaveTraceCall call=runtime_save_trace_begin(&trace,api,poll,__VA_ARGS__); \
+        int32_t result=name arguments; \
+        return runtime_save_trace_end(call,result,dialogs[index].status); \
+    }
+TRACE_DIALOG(common_init,"sceCommonDialogInitialize",0,0,(void),(),"%s","")
+TRACE_DIALOG(msg_init,"sceMsgDialogInitialize",1,0,(void),(),"%s","")
+TRACE_DIALOG(msg_open,"sceMsgDialogOpen",1,0,(const unsigned char *p),(p),
+             "param=%p mode=%u",(const void *)p,trace_dialog_mode(1,p,56))
+TRACE_DIALOG(msg_status,"sceMsgDialogGet/UpdateStatus",1,1,(void),(),"%s","")
+TRACE_DIALOG(msg_term,"sceMsgDialogTerminate",1,0,(void),(),"%s","")
+TRACE_DIALOG(msg_close,"sceMsgDialogClose",1,0,(void),(),"%s","")
+TRACE_DIALOG(msg_progress,"sceMsgDialogProgressBarSetValue",1,1,(uint32_t target,uint32_t value),
+             (target,value),"target=%u value=%u",target,value)
+TRACE_DIALOG(msg_result,"sceMsgDialogGetResult",1,0,(unsigned char *out),(out),"result_ptr=%p",(void *)out)
+TRACE_DIALOG(save_init,"sceSaveDataDialogInitialize",2,0,(void),(),"%s","")
+TRACE_DIALOG(save_open,"sceSaveDataDialogOpen",2,0,(const unsigned char *p),(p),
+             "param=%p mode=%u",(const void *)p,trace_dialog_mode(2,p,52))
+TRACE_DIALOG(save_status,"sceSaveDataDialogGet/UpdateStatus",2,1,(void),(),"%s","")
+TRACE_DIALOG(save_term,"sceSaveDataDialogTerminate",2,0,(void),(),"%s","")
+TRACE_DIALOG(save_close,"sceSaveDataDialogClose",2,0,(void),(),"%s","")
+TRACE_DIALOG(save_progress,"sceSaveDataDialogProgressBarSetValue",2,1,(uint32_t target,uint32_t rate),
+             (target,rate),"target=%u rate=%u",target,rate)
+TRACE_DIALOG(save_result,"sceSaveDataDialogGetResult",2,0,(unsigned char *out),(out),"result_ptr=%p",(void *)out)
+TRACE_DIALOG(save_ready,"sceSaveDataDialogIsReadyToDisplay",2,1,(void),(),"%s","")
+#undef TRACE_DIALOG
 static ABI int32_t profile_result(void *result) { if (result) memset(result,0,4); return 0; }
 typedef struct {
     uint32_t option;
@@ -659,16 +696,16 @@ static const RuntimeExport exports[]={
     {"sceNpMatching2CreateContext",np_signed_out},
     {"sceNpSignalingInitialize",ok_void}, {"sceNpSignalingTerminate",ok_void},
     {"sceNpSignalingCreateContext",np_signed_out},
-    {"sceCommonDialogInitialize",common_init},
-    {"sceMsgDialogInitialize",msg_init}, {"sceMsgDialogOpen",msg_open},
-    {"sceMsgDialogUpdateStatus",msg_status}, {"sceMsgDialogTerminate",msg_term},
-    {"sceMsgDialogClose",msg_close}, {"sceMsgDialogProgressBarSetValue",msg_progress},
-    {"sceMsgDialogGetResult",msg_result}, {"sceMsgDialogGetStatus",msg_status},
-    {"sceSaveDataDialogInitialize",save_init}, {"sceSaveDataDialogOpen",save_open},
-    {"sceSaveDataDialogUpdateStatus",save_status}, {"sceSaveDataDialogTerminate",save_term},
-    {"sceSaveDataDialogGetStatus",save_status}, {"sceSaveDataDialogClose",save_close},
-    {"sceSaveDataDialogProgressBarSetValue",save_progress}, {"sceSaveDataDialogGetResult",save_result},
-    {"sceSaveDataDialogIsReadyToDisplay",save_ready},
+    {"sceCommonDialogInitialize",trace_common_init},
+    {"sceMsgDialogInitialize",trace_msg_init}, {"sceMsgDialogOpen",trace_msg_open},
+    {"sceMsgDialogUpdateStatus",trace_msg_status}, {"sceMsgDialogTerminate",trace_msg_term},
+    {"sceMsgDialogClose",trace_msg_close}, {"sceMsgDialogProgressBarSetValue",trace_msg_progress},
+    {"sceMsgDialogGetResult",trace_msg_result}, {"sceMsgDialogGetStatus",trace_msg_status},
+    {"sceSaveDataDialogInitialize",trace_save_init}, {"sceSaveDataDialogOpen",trace_save_open},
+    {"sceSaveDataDialogUpdateStatus",trace_save_status}, {"sceSaveDataDialogTerminate",trace_save_term},
+    {"sceSaveDataDialogGetStatus",trace_save_status}, {"sceSaveDataDialogClose",trace_save_close},
+    {"sceSaveDataDialogProgressBarSetValue",trace_save_progress}, {"sceSaveDataDialogGetResult",trace_save_result},
+    {"sceSaveDataDialogIsReadyToDisplay",trace_save_ready},
     {"sceNpProfileDialogInitialize",profile_init}, {"sceNpProfileDialogOpen",profile_open},
     {"sceNpProfileDialogUpdateStatus",profile_status}, {"sceNpProfileDialogTerminate",profile_term},
     {"sceNpProfileDialogGetResult",profile_result},
