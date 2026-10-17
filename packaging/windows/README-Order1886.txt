@@ -1,14 +1,16 @@
 THE ORDER: 1886 - EXPERIMENTAL PC COMPATIBILITY BUILD
 
-The current real-game boot displays an intro title card, then stops during
-graphics processing. A working main menu and gameplay have not been established.
-This archive is a development preview.
+The supplied October 17 recording shows logos and later 3D cinematics.
+Interactive gameplay, checkpoint progression and sustained performance remain
+unverified. The supplied boot log stops on an invalid image-layer count.
+This archive is a development preview; it does not fix that runtime failure.
 
 Extract the entire archive to a writable folder. Open The Order 1886.exe,
-choose Settings and select your existing extracted CUSA00076 game folder.
+select your existing extracted CUSA00076 game folder in the launch bar.
 Game content is not included. No Python installation or compiler is required.
-The backdrop and game window icon are read from your selected game folder.
-An original black-and-gold launcher icon is supplied for the portable build.
+The launcher uses the user-supplied wallpaper and official horizontal/stacked
+game logos. The supplied official emblem is used for the launcher, runtime
+window and packaged executable icons. Image rights remain with their owners.
 The bundled runtime is selected automatically. Runtime override is intended
 for explicitly selected comparison builds; leave it blank for this package.
 
@@ -18,6 +20,14 @@ View logs records the actual runtime, command, settings and exit details.
 Stop session requests runtime shutdown and waits for process cleanup. Do not
 interrupt a save operation. Forced shutdown, when needed, is identified in logs.
 Exit waits for an active backend to finish stopping before closing the launcher.
+
+The sidebar has Home, Graphics, Performance, Game and Advanced pages.
+Play/Stop and quick settings remain visible on each page. Use Save settings
+after editing; starting from a settings page saves its values before launch.
+Game lists save backups and offers backup/restore. Restore asks for confirmation
+and backs up the current saves first. Save changes are blocked during a session.
+Advanced holds runtime selection, logs, folders and GitHub release/support links.
+The original launcher remains available with the --classic command-line option.
 
 Title-specific settings, prepared images, logs, caches and saves belong in
 user/order1886 beside the launcher. The original game files are preserved.

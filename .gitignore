@@ -8,8 +8,12 @@ pgo/
 *.png
 !launcher/order1886/launcher-art.png
 !launcher/order1886/play-brass.png
+!launcher/order1886/logo-horizontal.png
+!launcher/order1886/logo-stacked.png
+!launcher/order1886/app-icon.png
 !docs/images/order1886-launcher.png
 !docs/images/order1886-launcher-minimum.png
+!docs/images/order1886-desktop.png
 !.impeccable/mocks/concept-*.png
 !.impeccable/mocks/reference/launcher-before.png
 .impeccable/build/

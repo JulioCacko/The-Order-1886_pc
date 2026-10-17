@@ -399,10 +399,11 @@ def main(argv=None):
             if args.prepare_only:
                 return 0
             write_runtime_config(user, vars(args))
-            # Format conversion only, using the dump's unmodified icon.
+            # Use the supplied official emblem for the runtime window as well.
             try:
                 from PIL import Image
-                with Image.open(game / 'sce_sys/icon0.png') as icon:
+                bundled_icon = Path(getattr(sys, '_MEIPASS', ROOT)) / 'launcher/order1886/app-icon.png'
+                with Image.open(bundled_icon if bundled_icon.is_file() else game / 'sce_sys/icon0.png') as icon:
                     icon.convert('RGB').save(user / 'window_icon.bmp')
             except (ImportError, OSError):
                 pass

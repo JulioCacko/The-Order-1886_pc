@@ -1,14 +1,30 @@
 # The Order: 1886 para PC — runtime experimental de compatibilidade com PS4
 
+<p align="center"><img src="launcher/order1886/logo-horizontal.png" width="720" alt="Logo oficial de The Order: 1886"></p>
+
 [English](README.md) · **Português (Brasil)** · [Español](README.es.md)
 
 Projeto comunitário para executar o binário original de **The Order: 1886**, edição PS4 **CUSA00076**, com launcher nativo para Windows e renderização Vulkan. Reutiliza infraestrutura de carregamento PS4 e trabalho de gráficos/APIs do [shadPS4](https://github.com/shadps4-emu/shadPS4).
 
-**Prévia de desenvolvimento: a jogabilidade ainda não foi verificada.** A introdução, a inicialização do save e sua reabertura foram observadas. Gameplay 3D representativo, progressão por checkpoints, estabilidade por 30 minutos e saída 4K a 60 FPS continuam pendentes. Não é um lançamento oficial para PC nem um port confirmado como jogável.
+**Em desenvolvimento.** O jogo inicia e renderiza cinemáticas 3D, como mostra a gravação de 17 de outubro. A inicialização do save e sua reabertura também foram observadas. Jogabilidade interativa, progressão por checkpoints, estabilidade por 30 minutos e saída 4K a 60 FPS continuam pendentes. O log enviado termina em uma asserção Vulkan: a imagem solicita 8.029 camadas, acima do limite de 2.048. Não é um lançamento oficial para PC nem um port confirmado como jogável.
 
-![Launcher Windows de The Order: 1886 com pasta do jogo, modo de exibição, FSR 1, seleção de FPS e botão Play](docs/images/order1886-launcher.png)
+![Launcher Windows de The Order: 1886 com navegação lateral e barra de início permanente](docs/images/order1886-desktop.png)
 
-*Captura real do launcher em 16 de outubro de 2026. O fundo é uma ilustração gerada; não é gameplay. “30 FPS” é o limite selecionado, não uma medição.*
+*Captura real do launcher de cinco páginas com a imagem fornecida pelo usuário em 17 de outubro. Não é gameplay. “30 FPS” é o limite selecionado, não uma medição.*
+
+## O launcher
+
+Estrutura adaptada de [mateussmeneses/theorder1886-port](https://github.com/mateussmeneses/theorder1886-port), preservando nosso backend e os saves de CUSA00076. A apresentação do README segue a organização de [HayatoG/iss_pc](https://github.com/HayatoG/iss_pc).
+
+| Página | Função |
+| --- | --- |
+| Home | Pasta do jogo, opções rápidas e Play/Stop |
+| Graphics | Tela, proporção, FSR 1/Linear e VSync |
+| Performance | 30 FPS, 60 FPS experimental e overlay F9 |
+| Game | Verificação de arquivos, pasta de dados, backup e restauração de saves |
+| Advanced | Runtime opcional, logs, pastas, releases e suporte |
+
+Use **Save settings** para gravar as opções. Iniciar por uma página de opções também grava os valores antes de abrir o jogo. A restauração pede confirmação e cria um backup do save substituído; fica bloqueada durante uma sessão. O launcher anterior continua disponível com `python launcher/order1886_launcher.py --classic`. Opções de GPU, mods e atualizador do projeto de referência ainda exigem adaptação; veja a [análise de reaproveitamento](docs/order1886-reference-reuse.md).
 
 ## Iniciar
 
@@ -17,7 +33,7 @@ Use sua própria cópia extraída de CUSA00076, contendo `eboot.bin`, `sce_sys` 
 1. Extraia o pacote portátil completo para uma pasta com permissão de escrita.
 2. Abra **The Order 1886.exe** e escolha **Game folder** na barra inferior.
 3. Comece com **30 FPS**; selecione o modo de exibição e FSR 1 ou Linear.
-4. Use **Play**, **View logs** e **Stop session** para iniciar, acompanhar ou encerrar a sessão.
+4. Use **Play**, **Advanced → View session log** e **Stop session** para iniciar, acompanhar ou encerrar a sessão.
 
 No código-fonte, execute `Launch The Order 1886.cmd` ou `python launcher/order1886_launcher.py` após seguir as [instruções de build para Windows](docs/order1886-build.md). Usuários do pacote não precisam de Python ou MSYS2. Não há pacote Linux verificado para este alvo específico.
 
@@ -29,6 +45,6 @@ Leia o [relatório completo do estado atual, em inglês](docs/STATUS.md), a [evi
 
 ## Problemas e licença
 
-Abra **View logs → Open log folder**. Ao [relatar um problema](https://github.com/JulioCacko/The-Order-1886_pc/issues), inclua os logs e `last-run.json` correspondentes de `user/order1886/logs`, SHA256 do runtime, metadados do jogo e GPU/driver. Remova dados privados; não envie arquivos do jogo ou saves.
+Abra **Advanced → Open log folder**. Ao [relatar um problema](https://github.com/JulioCacko/The-Order-1886_pc/issues), inclua os logs e `last-run.json` correspondentes de `user/order1886/logs`, SHA256 do runtime, metadados do jogo e GPU/driver. Remova dados privados; não envie arquivos do jogo ou saves.
 
 [GPL-2.0-or-later](LICENSE). Infraestrutura reutilizada de [FelipePrado0/gow3_pc](https://github.com/FelipePrado0/gow3_pc) e [shadPS4](https://github.com/shadps4-emu/shadPS4), com atribuição e licenças preservadas. The Order usa outro motor; patches e desempenho de outro título não comprovam compatibilidade. Sem afiliação ou endosso de Ready at Dawn ou Sony.

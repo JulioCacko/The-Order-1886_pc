@@ -1,0 +1,16 @@
+Official The Order: 1886 branding images supplied by the user on 2026-10-17.
+Source PNGs are copied byte-for-byte. The launcher scales them at render time;
+the Windows ICO and runtime BMP are format conversions of app-icon.png.
+Images and trademarks retain the rights of their respective owners.
+
+logo-horizontal.png
+Source: codex-clipboard-41602bdd-8ec5-4977-a924-cdaaeeb56d1c.png
+SHA256: 3be214a80fad4e9b676d4e115963352fb5500665e3e2932f7b5c7a0e72a8b869
+
+logo-stacked.png
+Source: codex-clipboard-c86dd326-f334-4eb9-a0f9-0371c2cf70c9.png
+SHA256: 787548b2124251cbf32367b2089980bd82eeed5cd324cb11f4fd898e0c291872
+
+app-icon.png
+Source: codex-clipboard-92a886e9-9421-4700-9113-da3b5974cc33.png
+SHA256: 4b9b67039e288aec9941c52b100e0fb79131b015085f41b61a213f320f4dfd79

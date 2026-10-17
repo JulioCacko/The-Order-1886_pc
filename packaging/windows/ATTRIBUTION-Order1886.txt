@@ -8,7 +8,21 @@ and the applicable source and dependency notices when redistributing.
 
 These credits identify the origin of reused software. They do not establish
 compatibility, endorsement, or ownership of The Order: 1886 game content.
-The portable package excludes extracted game artwork and game archives.
+The portable package excludes game executables, archives and player saves.
+It includes the launcher wallpaper supplied by the user on 2026-10-17 as
+2354440.jpg (launcher-art.jpg); its rights remain with the respective owners.
+The asset provenance and SHA256 are in launcher/order1886/launcher-art.txt.
+Official horizontal/stacked game logos and the app emblem were supplied by
+the user on the same date. Their unmodified PNG hashes and source filenames
+are in launcher/order1886/BRANDING.txt. Executable/window icons are format
+conversions of the supplied emblem. These images retain their owners' rights.
+
+The five-page desktop launcher structure (Home, Graphics, Performance, Game,
+Advanced), sidebar navigation, scrollable pages and persistent launch controls
+are adapted from mateussmeneses/theorder1886-port, launcher/port_launcher_win.py,
+commit 7822ee56c2169f15ecde5d80f39e96143a252464 (GPL-2.0-or-later):
+https://github.com/mateussmeneses/theorder1886-port
+The adaptation uses this project's own settings, session worker and runtime ABI.
 
 The optional experimental timing recipe derives from illusion's published
 The Order 1886 patch in PS-Game-Patch, commit

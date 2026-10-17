@@ -28,6 +28,10 @@ DISPLAY = {"Windowed": "windowed", "Borderless": "borderless", "Fullscreen": "fu
 UPSCALING = {"FSR 1": "fsr1", "Linear": "linear"}
 FRAME_RATE = {"30 FPS": 30, "60 FPS (experimental)": 60}
 ASPECT_RATIO = {"Full screen 16:9 (experimental)": "16:9", "Original cinematic aspect": "original"}
+# Page order adapted from mateussmeneses/theorder1886-port, GPL-2.0-or-later.
+# Reference: 7822ee56c2169f15ecde5d80f39e96143a252464, launcher/port_launcher_win.py.
+PAGES = ("home", "graphics", "performance", "game", "advanced")
+PAGE_TITLES = dict(zip(PAGES, ("Home", "Graphics", "Performance", "Game", "Advanced")))
 
 
 def read_settings(path: Path) -> dict:
@@ -216,7 +220,7 @@ class Launcher:
         root.geometry("1160x760")
         root.minsize(940, 620)
         try:
-            root.iconbitmap(str(ASSETS / "order1886.ico"))
+            root.iconbitmap(str(ASSETS / ("order1886.ico" if FROZEN else "native/order1886.ico")))
         except tk.TclError:
             pass
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -379,23 +383,33 @@ class Launcher:
             self.run("play")
 
     def load_artwork(self):
-        """Use the generated launcher plate; original game files remain read-only."""
+        """Use the supplied wallpaper; original game files remain read-only."""
         artwork = Path(self.values["game_dir"]) / "sce_sys"
         self.backdrop = None
         self.artwork_size = None
-        for path in (ASSETS / "launcher-art.png", artwork / "pic0.png", ASSETS / "background.png"):
+        for path in (ASSETS / "launcher-art.jpg", ASSETS / "launcher-art.png",
+                     artwork / "pic0.png", ASSETS / "background.png"):
             try:
                 with self.Image.open(path) as image:
                     self.backdrop = image.convert("RGB")
                 break
             except OSError:
                 continue
+        self.brand_logo, self.logo_photo, self.logo_size = None, None, None
         try:
-            with self.Image.open(artwork / "icon0.png") as icon:
-                self.icon_photo = self.ImageTk.PhotoImage(icon.copy())
-            self.root.iconphoto(True, self.icon_photo)
-        except (OSError, self.tk.TclError):
+            with self.Image.open(ASSETS / "logo-horizontal.png") as logo:
+                rgba = logo.convert("RGBA")
+                self.brand_logo = rgba.crop(rgba.getbbox())
+        except OSError:
             pass
+        for path in (ASSETS / "app-icon.png", artwork / "icon0.png"):
+            try:
+                with self.Image.open(path) as icon:
+                    self.icon_photo = self.ImageTk.PhotoImage(icon.convert("RGBA"))
+                self.root.iconphoto(True, self.icon_photo)
+                break
+            except (OSError, self.tk.TclError):
+                continue
 
     def refresh_status(self):
         import order1886
@@ -433,17 +447,17 @@ class Launcher:
                 self.artwork_size = (w, h)
             c.create_image(0, 0, image=self.background_photo, anchor="nw")
         from tkinter import font as tkfont
-        size = min(67, max(36, int(w * .0436)))
-        for text, y, pixels, width in (("THEORDER", h * .09, size, w * .38),
-                ("1886", h * .09 + size * 1.04, int(size * .78), w * .13)):
-            face = tkfont.Font(family="Georgia", size=-pixels)
-            gap = (width - sum(face.measure(letter) for letter in text)) / (len(text) - 1)
-            x = w * .037
-            for letter in text:
-                c.create_text(x, y, text=letter, font=("Georgia", -pixels), fill=GOLD, anchor="nw")
-                x += face.measure(letter) + gap
-        c.create_line(w * .038, h * .09 + size * 2.05,
-                      w * .245, h * .09 + size * 2.05, fill=GOLD)
+        if self.brand_logo is not None:
+            from PIL import ImageOps
+            logo_size = (int(w * .72), int(h * .22))
+            if self.logo_size != logo_size:
+                logo = ImageOps.contain(self.brand_logo, logo_size, self.Image.Resampling.LANCZOS)
+                self.logo_photo = self.ImageTk.PhotoImage(logo)
+                self.logo_size = logo_size
+            c.create_image(w * .037, h * .07, image=self.logo_photo, anchor="nw")
+        else:
+            c.create_text(w * .037, h * .09, text="The Order: 1886", font=("Georgia", 32),
+                          fill=GOLD, anchor="nw")
         self.readiness.configure(text=self.status.replace("CUSA00076  /  ", ""),
                                  fg="#aec58f" if "Game files found" in self.status else MUTED,
                                  wraplength=210, justify="left")
@@ -775,6 +789,348 @@ class Launcher:
             self.root.destroy()
 
 
+class DesktopLauncher(Launcher):
+    """Reference launcher navigation, backed by the title-isolated Order runtime.
+
+    Keep the classic cinematic home and its session worker. Settings on these
+    pages use the same JSON and backend arguments; reference-specific INI keys,
+    executable patches and update downloads do not belong to this runtime ABI.
+    """
+
+    def __init__(self, root, state: Path = STATE):
+        super().__init__(root, state)
+        root.geometry("1240x800")
+        root.minsize(1120, 700)
+        self.current_page = "home"
+        self.page_controls = []
+        self.page_fields = {
+            key: (self.tk.BooleanVar(value=value) if isinstance(value, bool) else
+                  self.tk.IntVar(value=value) if isinstance(value, int) else
+                  self.tk.StringVar(value=value))
+            for key, value in self.values.items()
+        }
+        self.page_host = self.tk.Frame(root, bg=BLACK)
+        self.page_host.grid(row=0, column=1, sticky="nsew")
+        self.pages, self.scrollers = {}, {}
+        self.build_graphics()
+        self.build_performance()
+        self.build_game()
+        self.build_advanced()
+        self.show_page("home")
+        root.bind("<MouseWheel>", self.page_wheel)
+        root.bind("<FocusIn>", self.page_focus)
+
+    def build_home(self):
+        super().build_home()
+        self.navigation.place_forget()
+        # The launch bar remains accessible from every page, as in the reference.
+        self.root.columnconfigure(0, weight=0)
+        self.root.columnconfigure(1, weight=1)
+        self.canvas.grid_configure(column=1)
+        self.console.grid_configure(column=1)
+        side = self.tk.Frame(self.root, bg="#10110f", width=180)
+        side.grid(row=0, column=0, rowspan=2, sticky="nsew")
+        side.grid_propagate(False)
+        side.columnconfigure(0, weight=1)
+        side.rowconfigure(7, weight=1)
+        self.sidebar_logo = None
+        try:
+            from PIL import ImageOps
+            with self.Image.open(ASSETS / "logo-stacked.png") as logo:
+                self.sidebar_logo = self.ImageTk.PhotoImage(ImageOps.contain(
+                    logo.convert("RGBA"), (140, 100), self.Image.Resampling.LANCZOS))
+        except OSError:
+            pass
+        self.tk.Label(side, image=self.sidebar_logo, text="" if self.sidebar_logo else "The Order: 1886",
+                      bg="#10110f", fg=GOLD, font=("Georgia", 12), anchor="w").grid(
+                          row=0, column=0, sticky="w", padx=20, pady=(24, 26))
+        self.page_buttons = {}
+        for index, name in enumerate(PAGES, 1):
+            button = self.button(side, PAGE_TITLES[name], lambda n=name: self.show_page(n))
+            button.configure(anchor="w", bg="#10110f", highlightbackground="#10110f")
+            button.grid(row=index, column=0, sticky="ew", padx=10, pady=3)
+            self.page_buttons[name] = button
+        self.tk.Label(side, text="CUSA00076\nDevelopment preview", bg="#10110f", fg=MUTED,
+                      font=("Segoe UI", 9), justify="left").grid(
+                          row=8, column=0, sticky="sw", padx=22, pady=24)
+
+    def scrolled_page(self, name, subtitle):
+        tk = self.tk
+        outer = tk.Frame(self.page_host, bg=BLACK)
+        self.pages[name] = outer
+        tk.Label(outer, text=PAGE_TITLES[name].upper(), bg=BLACK, fg=GOLD,
+                 font=("Georgia", 23)).pack(anchor="w", padx=30, pady=(26, 8))
+        tk.Label(outer, text=subtitle, bg=BLACK, fg=MUTED, font=("Segoe UI", 10),
+                 wraplength=660, justify="left").pack(anchor="w", padx=30, pady=(0, 16))
+        bar = tk.Scrollbar(outer, orient="vertical")
+        bar.pack(side="right", fill="y")
+        canvas = tk.Canvas(outer, bg=BLACK, highlightthickness=0, yscrollcommand=bar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        bar.configure(command=canvas.yview)
+        body = tk.Frame(canvas, bg=BLACK, padx=30, pady=8)
+        window = canvas.create_window(0, 0, anchor="nw", window=body)
+        body.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(window, width=e.width))
+        self.scrollers[name] = (canvas, body)
+        return body
+
+    def section(self, frame, title, detail=""):
+        self.tk.Label(frame, text=title, bg=BLACK, fg=PAPER,
+                      font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(16, 8))
+        self.tk.Frame(frame, bg="#34352f", height=1).pack(fill="x", pady=(0, 8))
+        if detail:
+            self.note(frame, detail)
+
+    def note(self, frame, text):
+        self.tk.Label(frame, text=text, bg=BLACK, fg=MUTED, wraplength=650,
+                      justify="left", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 10))
+
+    def choices(self, frame, key, choices):
+        for label, value in choices.items():
+            button = self.tk.Radiobutton(frame, text=label, value=value,
+                variable=self.page_fields[key], bg=BLACK, fg=PAPER, selectcolor="#26251f",
+                activebackground=BLACK, activeforeground=GOLD, font=("Segoe UI", 10))
+            button.pack(anchor="w", pady=3)
+            self.page_controls.append(button)
+
+    def check(self, frame, key, label):
+        button = self.tk.Checkbutton(frame, text=label, variable=self.page_fields[key],
+            bg=BLACK, fg=PAPER, selectcolor="#26251f", activebackground=BLACK,
+            activeforeground=GOLD, font=("Segoe UI", 10))
+        button.pack(anchor="w", pady=5)
+        self.page_controls.append(button)
+
+    def page_button(self, frame, label, command, changes=False):
+        button = self.button(frame, label, command)
+        button.pack(anchor="w", pady=6)
+        if changes:
+            self.page_controls.append(button)
+        return button
+
+    def save_button(self, frame):
+        self.note(frame, "Changes apply to the next session.")
+        self.page_button(frame, "Save settings", self.save_page_settings, changes=True)
+
+    def build_graphics(self):
+        frame = self.scrolled_page("graphics", "Display, aspect ratio and output scaling.")
+        self.section(frame, "Display mode")
+        self.choices(frame, "display_mode", DISPLAY)
+        self.section(frame, "Aspect ratio", "Aspect changes require restarting the game.")
+        self.choices(frame, "aspect_ratio", ASPECT_RATIO)
+        self.section(frame, "Output scaling", "FSR 1 is spatial upscaling. Temporal FSR and DLSS are not available in this build.")
+        self.choices(frame, "presentation_filter", UPSCALING)
+        self.check(frame, "vsync", "Vertical sync")
+        self.save_button(frame)
+
+    def build_performance(self):
+        import order1886
+        frame = self.scrolled_page("performance", "Frame timing and the performance overlay.")
+        self.section(frame, "Frame rate", order1886.timing.WARNING)
+        self.choices(frame, "frame_rate", FRAME_RATE)
+        self.section(frame, "Monitoring", "F9 toggles the overlay in the runtime. A selected limit is not a measured frame rate.")
+        self.check(frame, "show_fps", "Performance overlay (F9)")
+        self.section(frame, "Shader and GPU options",
+            "Pipeline binaries, parallel warmup and background warmup stay disabled in the current "
+            "compatibility profile. The reference port's GPU readback and memory switches require "
+            "separate runtime validation. See the reuse assessment in the documentation.")
+        self.save_button(frame)
+
+    def path_field(self, frame, key, is_folder=True):
+        from tkinter import filedialog
+        row = self.tk.Frame(frame, bg=BLACK)
+        row.pack(fill="x", pady=(0, 8))
+        entry = self.tk.Entry(row, textvariable=self.page_fields[key], bg="#20201c", fg=PAPER,
+            insertbackground=GOLD, relief="flat", font=("Segoe UI", 10), highlightthickness=1,
+            highlightbackground="#514932", highlightcolor=GOLD)
+        entry.pack(side="left", fill="x", expand=True, ipady=9)
+        def browse():
+            value = (filedialog.askdirectory(parent=self.root, title="Choose extracted CUSA00076 folder")
+                     if is_folder else filedialog.askopenfilename(parent=self.root,
+                         title="Choose Order runtime", filetypes=[("Executable", "*.exe")]))
+            if value:
+                self.page_fields[key].set(value)
+        button = self.button(row, "Browse", browse)
+        button.pack(side="right", padx=(8, 0))
+        self.page_controls.extend((entry, button))
+
+    def build_game(self):
+        frame = self.scrolled_page("game", "Your game files, save backups and controls.")
+        self.section(frame, "Game folder", "Use your own extracted CUSA00076 dump, including eboot.bin, sce_sys, sce_module, _data and archivemap.bin.")
+        self.path_field(frame, "game_dir")
+        self.save_button(frame)
+        self.page_button(frame, "Verify files", lambda: self.run("verify"), changes=True)
+        self.section(frame, "Saves and data", f"Data folder: {self.state}\nA backup is created before each game session. Restoring first backs up the current saves.")
+        self.page_button(frame, "Open data folder", lambda: self.open_directory(self.state))
+        self.backup_list = self.tk.Listbox(frame, height=4, bg="#20201c", fg=PAPER,
+            selectbackground=GOLD, selectforeground=BLACK, exportselection=False,
+            font=("Consolas", 10), highlightcolor=GOLD)
+        self.backup_list.pack(fill="x", pady=8)
+        self.page_button(frame, "Back up saves now", self.backup_saves, changes=True)
+        self.page_button(frame, "Restore selected backup", self.restore_saves, changes=True)
+        self.section(frame, "Game patches and mods",
+            "The 60 FPS and aspect-ratio recipes use hash-checked prepared copies; original game files "
+            "stay unchanged. Configure them in Performance and Graphics. External patch, update and "
+            "mod formats from the reference port are not supported by this backend.")
+        self.section(frame, "Controls", "Connect your controller before starting. Use the game's own control prompts. Controller remapping, motion simulation and touchpad guides from other ports still need validation for this runtime.")
+
+    def build_advanced(self):
+        frame = self.scrolled_page("advanced", "Runtime selection, files, logs and support.")
+        self.section(frame, "Runtime executable (optional)", "Leave blank to use this installation's runtime. Build identity is checked before launch.")
+        self.path_field(frame, "runtime", is_folder=False)
+        self.save_button(frame)
+        self.section(frame, "Files and diagnostics")
+        self.page_button(frame, "Open installation folder", lambda: self.open_directory(ROOT))
+        self.page_button(frame, "View session log", self.show_logs)
+        self.page_button(frame, "Open log folder", self.open_log_folder)
+        self.note(frame, "Include last-run.json, the matching boot log, runtime SHA256 and reproduction steps in a report. Review logs for personal paths before sharing.")
+        self.section(frame, "Updates and support", "Release availability is shown on GitHub. Downloads are installed manually; your saves and settings remain in the data folder.")
+        import webbrowser
+        self.page_button(frame, "Releases", lambda: webbrowser.open("https://github.com/JulioCacko/The-Order-1886_pc/releases"))
+        self.page_button(frame, "Report a problem", lambda: webbrowser.open("https://github.com/JulioCacko/The-Order-1886_pc/issues"))
+
+    def sync_page_fields(self):
+        for key, value in self.values.items():
+            self.page_fields[key].set(value)
+
+    def save_page_settings(self):
+        from tkinter import messagebox
+        if self.busy:
+            return False
+        values = {key: variable.get() for key, variable in self.page_fields.items()}
+        values["game_dir"], values["runtime"] = values["game_dir"].strip(), values["runtime"].strip()
+        if not values["game_dir"]:
+            messagebox.showerror("Choose a game folder", "Select an extracted CUSA00076 folder.", parent=self.root)
+            return False
+        try:
+            save_settings(self.state / "settings.json", values)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Settings could not be saved", str(exc), parent=self.root)
+            return False
+        self.values = values
+        self.sync_home()
+        self.load_artwork()
+        self.refresh_status()
+        self.draw()
+        return True
+
+    def show_page(self, name):
+        if name not in PAGES:
+            raise ValueError(f"Unknown launcher page: {name}")
+        if not hasattr(self, "pages"):
+            return
+        # Navigation never writes settings. Unsaved edits stay until Save or a launch-bar change.
+        for page in self.pages.values():
+            page.pack_forget()
+        self.current_page = name
+        if name == "home":
+            self.page_host.grid_remove()
+        else:
+            self.page_host.grid()
+            self.page_host.tkraise()
+            self.pages[name].pack(fill="both", expand=True)
+        for key, button in self.page_buttons.items():
+            button.configure(bg="#29271e" if key == name else "#10110f",
+                             fg=GOLD if key == name else PAPER)
+        if name == "game":
+            self.refresh_backups()
+        self.draw()
+
+    def commit_home(self):
+        result = super().commit_home()
+        if result and hasattr(self, "page_fields"):
+            self.sync_page_fields()
+        return result
+
+    def settings(self):
+        self.show_page("graphics")
+
+    def run(self, mode="play"):
+        if not self.busy and self.current_page != "home" and not self.save_page_settings():
+            return
+        super().run(mode)
+
+    def back(self, event=None):
+        self.show_page("home")
+        self.page_buttons["home"].focus_set()
+
+    def activate(self, event=None):
+        if event and event.widget.winfo_class() in ("Button", "TButton"):
+            event.widget.invoke()
+            return "break"
+        if getattr(self, "current_page", "home") == "home":
+            return super().activate(event)
+
+    def draw(self):
+        super().draw()
+        for widget in getattr(self, "page_controls", ()):
+            widget.configure(state="disabled" if self.busy else "normal")
+
+    def page_wheel(self, event):
+        if self.current_page in self.scrollers and event.widget.winfo_toplevel() == self.root:
+            canvas, _ = self.scrollers[self.current_page]
+            canvas.yview_scroll(-int(event.delta / 120), "units")
+
+    def page_focus(self, event):
+        if self.current_page not in self.scrollers:
+            return
+        canvas, body = self.scrollers[self.current_page]
+        if str(event.widget).startswith(str(body) + "."):
+            top = event.widget.winfo_rooty() - body.winfo_rooty()
+            visible = canvas.canvasy(0)
+            if top < visible or top + event.widget.winfo_height() > visible + canvas.winfo_height():
+                canvas.yview_moveto(max(0, top - 20) / max(1, body.winfo_height()))
+
+    def open_directory(self, directory):
+        from tkinter import messagebox
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            if os.name == "nt":
+                os.startfile(str(directory))
+            else:
+                subprocess.Popen(["xdg-open", str(directory)])
+        except OSError as exc:
+            messagebox.showerror("Could not open folder", str(exc), parent=self.root)
+
+    def refresh_backups(self):
+        import order1886
+        self.backup_list.delete(0, "end")
+        for name in order1886.save_backup.list_backups(self.state):
+            self.backup_list.insert("end", name)
+
+    def save_action(self, restore=False):
+        from tkinter import messagebox
+        import order1886
+        if self.busy:
+            return
+        try:
+            # Apply the same original-file boundary as a normal launcher settings write.
+            game = Path(self.values["game_dir"]).resolve()
+            state = self.state.resolve()
+            if state == game or game in state.parents:
+                raise ValueError("Launcher state must be outside the selected game folder.")
+            if restore:
+                selected = self.backup_list.curselection()
+                if not selected:
+                    return
+                name = self.backup_list.get(selected[0])
+                if not messagebox.askyesno("Restore save backup?",
+                        f"Restore {name}? Current saves will be backed up first.", parent=self.root):
+                    return
+                order1886.save_backup.restore(self.state, name)
+            else:
+                if order1886.save_backup.backup(self.state) is None:
+                    messagebox.showinfo("No saves yet", "There are no saves to back up.", parent=self.root)
+            self.refresh_backups()
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Save operation failed", str(exc), parent=self.root)
+
+    def backup_saves(self):
+        self.save_action()
+
+    def restore_saves(self):
+        self.save_action(restore=True)
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "--run-backend":
@@ -784,6 +1140,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="The Order: 1886 launcher")
     parser.add_argument("--state-dir", type=Path, default=STATE)
     parser.add_argument("--smoke-test", action="store_true", help="Open, render, check settings and close")
+    parser.add_argument("--classic", action="store_true", help="Open the original cinematic launcher")
     args = parser.parse_args(argv)
     if args.smoke_test:
         attach_stdio()
@@ -797,7 +1154,8 @@ def main(argv=None):
     import tkinter as tk
     root = tk.Tk()
     smoke_state = tempfile.TemporaryDirectory(prefix="order1886-launcher-smoke-") if args.smoke_test else None
-    app = Launcher(root, Path(smoke_state.name) if smoke_state else args.state_dir.resolve())
+    launcher_type = Launcher if args.classic else DesktopLauncher
+    app = launcher_type(root, Path(smoke_state.name) if smoke_state else args.state_dir.resolve())
     smoke_errors = []
     if args.smoke_test:
         def descendants(widget):
@@ -806,6 +1164,30 @@ def main(argv=None):
                 yield from descendants(child)
         def smoke():
             try:
+                if isinstance(app, DesktopLauncher):
+                    for page in PAGES:
+                        app.show_page(page)
+                        root.update()
+                        if app.current_page != page:
+                            raise RuntimeError(f"Navigation failed for {page}")
+                    app.page_fields["display_mode"].set("windowed")
+                    app.page_fields["presentation_filter"].set("linear")
+                    app.page_fields["frame_rate"].set(60)
+                    app.page_fields["show_fps"].set(False)
+                    if not app.save_page_settings():
+                        raise RuntimeError("Page settings did not save")
+                    saved = read_settings(app.state / "settings.json")
+                    command = backend_command(saved, state=app.state)
+                    for key, expected in (("--display-mode", "windowed"),
+                            ("--presentation-filter", "linear"), ("--frame-rate", "60"), ("--show-fps", "0")):
+                        if command[command.index(key) + 1] != expected:
+                            raise RuntimeError(f"Page setting did not affect {key}")
+                    app.back()
+                    root.update()
+                    if app.page_host.winfo_ismapped():
+                        raise RuntimeError("Home did not hide the settings pages")
+                    root.destroy()
+                    return
                 if app.values["show_fps"] is not True:
                     raise RuntimeError("A fresh launcher must enable the performance overlay")
                 if app.values["presentation_filter"] != "fsr1":
