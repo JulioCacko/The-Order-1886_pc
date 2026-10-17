@@ -354,6 +354,10 @@ set_source_files_properties(../tests/test_scene_resolution.cpp PROPERTIES
 target_link_libraries(scene-resolution-test PRIVATE ps4gpu)
 
 
+add_executable(frame-trace-test EXCLUDE_FROM_ALL ../tests/test_frame_trace.cpp)
+target_include_directories(frame-trace-test PRIVATE shim)
+target_compile_options(frame-trace-test PRIVATE -UNDEBUG)
+
 add_executable(perf-overlay-test EXCLUDE_FROM_ALL ../tests/test_perf_overlay.cpp
     shim/ps4_settings.cpp)
 target_include_directories(perf-overlay-test PRIVATE shim)

@@ -163,7 +163,9 @@ inline std::string Format(const Sample& s, unsigned mask, bool row) {
 /// Starts the sampling thread the first time; later calls do nothing.
 void Start(const Vulkan::Instance& instance, unsigned items = DefaultItems);
 /// Completed guest flips, independently of overlay visibility or UI-only host presentations.
-void OnGuestFlip();
+void OnGuestFlip(uint64_t render_serial = 0, uint64_t buffer_address = 0, bool blank = false);
+/// Successful host presents, including UI-only loading frames, in the optional raw trace.
+void OnHostPresented(uint64_t timestamp_ns, bool loading);
 /// Latest process and guest-output values (caller fills host presentation and upscaler).
 Sample Latest();
 

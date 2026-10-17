@@ -25,6 +25,8 @@ TARGET_GLOBAL_RVA = 0x15c0d54
 EXPECTED_INSTRUCTION = bytes.fromhex('c7058c05170102000000')
 PUBLIC_PATCH_URL = ('https://github.com/illusionyy/PS-Game-Patch/blob/'
                     '3ad781ad8748139d2ca5e6c3b018d0063b8aa1a3/patches/xml/TheOrder1886-Orbis.xml')
+PUBLIC_PATCH_XML_SHA256 = 'ff7411479fc32d0075be7e9ad19ef7a68f108e988ec39332227913eb38c2cfb3'
+PUBLIC_IMAGE_BASE = 0x400000
 WARNING = ('Experimental 60 FPS is unverified for gameplay stability. The published patch warns of '
            'QTE softlocks in Chapters 6 and 9. To recover, stop the session, select 30 FPS, '
            'and relaunch. Original game files are not patched.')
@@ -49,6 +51,10 @@ def recipe(frame_rate):
                       replacement_instruction=(EXPECTED_INSTRUCTION[:6] + b'\x01\0\0\0').hex(),
                       target_global_rva=hex(TARGET_GLOBAL_RVA), author='illusion; current-hash verification by this project',
                       public_patch_url=PUBLIC_PATCH_URL, public_patch_app_ver='01.02',
+                      public_patch_file='patches/TheOrder1886-Orbis.xml',
+                      public_patch_xml_sha256_lf=PUBLIC_PATCH_XML_SHA256,
+                      public_patch_entry='60 FPS Unlock',
+                      public_patch_address=f'0x{PUBLIC_IMAGE_BASE + INSTRUCTION_RVA + 6:08x}',
                       warning=WARNING)
     return result
 
@@ -58,27 +64,33 @@ def recipe_sha256(frame_rate):
                                      separators=(',', ':')).encode('utf-8')).hexdigest()
 
 
+def verify_source_identity(eboot, metadata, *, feature, recovery):
+    """Exact identity shared by independent derived patches, with accurate recovery guidance."""
+    source = Path(eboot).resolve()
+    data = source.read_bytes()
+    actual_self = hashlib.sha256(data).hexdigest()
+    if actual_self != EXPECTED_SELF_SHA256:
+        raise ValueError(f'{feature} unsupported SELF SHA256 {actual_self}; '
+                         f'expected {EXPECTED_SELF_SHA256}. {recovery}')
+    elf = prepare.parse_self(data)[0]
+    actual_elf = hashlib.sha256(elf).hexdigest()
+    if actual_elf != EXPECTED_ELF_SHA256:
+        raise ValueError(f'{feature} reconstructed ELF SHA256 mismatch: {actual_elf}. {recovery}')
+    for name, expected in EXPECTED_METADATA.items():
+        if metadata.get(name) != expected:
+            raise ValueError(f'{feature} metadata mismatch for {name}: '
+                             f'expected {expected}, found {metadata.get(name)}. {recovery}')
+    return dict(source_verified=True, source_eboot=str(source))
+
+
 def validate_source(eboot, frame_rate, metadata):
     rate = validate_frame_rate(frame_rate)
     profile = {**recipe(rate), 'recipe_sha256': recipe_sha256(rate), 'applied': False,
                'source_verified': False, 'gameplay_verified': False}
     if rate == 30:
         return profile
-    source = Path(eboot).resolve()
-    data = source.read_bytes()
-    actual_self = hashlib.sha256(data).hexdigest()
-    if actual_self != EXPECTED_SELF_SHA256:
-        raise ValueError(f'Experimental 60 FPS unsupported SELF SHA256 {actual_self}; '
-                         f'expected {EXPECTED_SELF_SHA256}. Select 30 FPS to use the native baseline.')
-    elf = prepare.parse_self(data)[0]
-    actual_elf = hashlib.sha256(elf).hexdigest()
-    if actual_elf != EXPECTED_ELF_SHA256:
-        raise ValueError(f'Experimental 60 FPS reconstructed ELF SHA256 mismatch: {actual_elf}')
-    for name, expected in EXPECTED_METADATA.items():
-        if metadata.get(name) != expected:
-            raise ValueError(f'Experimental 60 FPS metadata mismatch for {name}: '
-                             f'expected {expected}, found {metadata.get(name)}')
-    profile.update(source_verified=True, source_eboot=str(source))
+    profile.update(verify_source_identity(eboot, metadata, feature='Experimental 60 FPS',
+                                         recovery='Select 30 FPS to use the native baseline.'))
     return profile
 
 

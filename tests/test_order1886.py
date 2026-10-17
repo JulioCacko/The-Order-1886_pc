@@ -97,6 +97,7 @@ class OrderBackendTests(unittest.TestCase):
         inherited = {'PATH': 'original-path', 'SystemRoot': os.environ.get('SystemRoot', ''),
                      'ORDER1886_PATCHES': 'obsolete-patches.bin', 'UNRELATED_APP_SETTING': '1',
                      'ORDER1886_UNKNOWN': 'stale', 'ORDER1886_UPSCALER': 'fsr31',
+                     'ORDER1886_PREP_WORKERS': '8',
                      'ORDER1886_USER_DIR': 'obsolete-save-directory'}
         before = dict(inherited)
         runtime = self.base / 'runtime binaries' / 'probe.exe'
@@ -113,6 +114,7 @@ class OrderBackendTests(unittest.TestCase):
                         'JITTER', 'REACTIVE', 'STALE_READBACK'):
             self.assertNotIn('ORDER1886_' + retired, env)
         self.assertEqual(env['ORDER1886_FPS_LIMIT'], '30')
+        self.assertEqual(env['ORDER1886_PREP_WORKERS'], '0')
         self.assertEqual(env['PATH'], str(runtime.parent.resolve()) + os.pathsep + 'original-path')
 
     def test_frame_rate_host_cap_and_config_match_without_changing_vblank(self):
@@ -135,7 +137,8 @@ class OrderBackendTests(unittest.TestCase):
                     return_value={'image_sha256': 'fixture', 'frame_rate_profile': profile}) as prepare:
                 self.assertEqual(order1886.main(['--game-dir', str(self.game), '--state-dir', str(self.user),
                                                  '--prepare-only', '--frame-rate', '60']), expected)
-                prepare.assert_called_once_with(self.game.resolve(), self.user / 'prepared', frame_rate=60)
+                prepare.assert_called_once_with(self.game.resolve(), self.user / 'prepared', frame_rate=60,
+                                                aspect_ratio='original')
 
     def test_frame_rate_60_unknown_hash_does_not_change_existing_cache(self):
         out = self.user / 'prepared'
@@ -146,6 +149,17 @@ class OrderBackendTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'SELF SHA256'):
             order1886.prepare_game(self.game, out, frame_rate=60)
         self.assertEqual({p.name: p.read_bytes() for p in out.iterdir()}, before)
+
+    def test_fullscreen_cli_requires_matching_verified_aspect_receipt(self):
+        good = {**order1886.display.recipe('16:9'), 'recipe_sha256': order1886.display.recipe_sha256('16:9'),
+                'applied': True, 'source_verified': True}
+        for profile, expected in (({}, 2), ({**good, 'source_verified': False}, 2), (good, 0)):
+            with self.subTest(profile=profile), patch.object(order1886, 'prepare_game',
+                    return_value={'image_sha256': 'fixture', 'display_profile': profile}) as prepare:
+                self.assertEqual(order1886.main(['--game-dir', str(self.game), '--state-dir', str(self.user),
+                                                 '--prepare-only', '--aspect-ratio', '16:9']), expected)
+                prepare.assert_called_once_with(self.game.resolve(), self.user / 'prepared', frame_rate=30,
+                                                aspect_ratio='16:9')
 
     def test_frame_rate_cache_30_60_30_rebuilds_and_preserves_source(self):
         import shutil

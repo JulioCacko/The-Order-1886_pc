@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ps4_perf_stats.h"
+#include "ps4_frame_trace.h"
 
 #include <chrono>
 #include <atomic>
@@ -25,6 +26,11 @@ Sample latest;
 PresentationCounter guest_output;
 std::once_flag started;
 std::atomic<unsigned> requested_items{DefaultItems};
+
+FrameTrace& Trace() {
+    static FrameTrace trace(std::getenv("ORDER1886_FRAME_TRACE"));
+    return trace;
+}
 
 #ifdef _WIN32
 uint64_t Ticks(const FILETIME& time) {
@@ -149,11 +155,16 @@ void Start(const Vulkan::Instance& instance, unsigned items) {
     std::call_once(started, [&] { std::thread(Run, &instance).detach(); });
 }
 
-void OnGuestFlip() {
+void OnGuestFlip(uint64_t render_serial, uint64_t buffer_address, bool blank) {
     const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                             std::chrono::steady_clock::now().time_since_epoch()).count();
     std::scoped_lock lock{mutex};
     guest_output.Present(uint64_t(now_ns), false);
+    Trace().Record("guest_flip", uint64_t(now_ns), render_serial, buffer_address, blank);
+}
+
+void OnHostPresented(uint64_t timestamp_ns, bool loading) {
+    Trace().Record("host_present", timestamp_ns, 0, 0, loading);
 }
 
 Sample Latest() {

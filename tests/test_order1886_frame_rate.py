@@ -6,6 +6,7 @@ import struct
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from unittest.mock import patch
 from paths import ROOT
 
@@ -43,6 +44,28 @@ def verified_fixture_source(source):
 
 
 class FrameRateRecipeTests(unittest.TestCase):
+    def test_supplied_xml_unlock_matches_guarded_recipe_without_other_patches(self):
+        source = ROOT / 'patches/TheOrder1886-Orbis.xml'
+        content = source.read_bytes().replace(b'\r\n', b'\n')
+        self.assertEqual(hashlib.sha256(content).hexdigest(), timing.PUBLIC_PATCH_XML_SHA256)
+        document = ET.fromstring(content)
+        self.assertIn(timing.EXPECTED_METADATA['TITLE_ID'], [node.text for node in document.findall('./TitleID/ID')])
+        unlock = next(node for node in document.findall('Metadata') if node.get('Name') == '60 FPS Unlock')
+        lines = unlock.findall('./PatchList/Line')
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(unlock.get('AppVer'), '01.02')
+        self.assertEqual(unlock.get('AppElf'), 'eboot.bin')
+        self.assertEqual(unlock.get('Author'), 'illusion')
+        self.assertEqual(lines[0].get('Type'), 'byte')
+        self.assertEqual(int(lines[0].get('Value'), 16), 1)
+        profile = timing.recipe(60)
+        self.assertEqual(int(lines[0].get('Address'), 16),
+                         timing.PUBLIC_IMAGE_BASE + timing.INSTRUCTION_RVA + 6)
+        self.assertEqual(profile['public_patch_xml_sha256_lf'], timing.PUBLIC_PATCH_XML_SHA256)
+        self.assertEqual(profile['public_patch_entry'], '60 FPS Unlock')
+        self.assertEqual(profile['public_patch_address'], lines[0].get('Address'))
+        self.assertNotEqual(unlock.get('AppVer'), timing.EXPECTED_METADATA['APP_VER'])
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

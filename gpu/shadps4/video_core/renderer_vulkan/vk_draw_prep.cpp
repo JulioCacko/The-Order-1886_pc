@@ -51,9 +51,10 @@ u32 DefaultWorkerCount() {
     if (const char* env = std::getenv("ORDER1886_PREP_WORKERS")) {
         return static_cast<u32>(std::clamp(std::atoi(env), 0, 16));
     }
-    // Workers are SCHED_IDLE and claim whole buffers, so more of them only use more idle
-    // cores: half the hardware threads (Steam Deck 4, 16-thread desktop 8).
-    return std::clamp<u32>(Ps4Threads::Available() / 2, 1, 8);
+    // The Order baseline prepares resources on the executing GPU thread. Speculative
+    // SRT snapshots remain unverified; controlled runs with workers enabled hit malformed
+    // descriptors. Positive overrides remain available for diagnostic comparisons.
+    return 0;
 }
 
 /// Flattened user data of one submission: chunks never move, so the GPU thread can read a

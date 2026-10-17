@@ -29,7 +29,7 @@ MINGW*|MSYS*)
     fi
     cp out/gpu/order1886-runtime.exe out/gpu/ps4-gpu-capabilities.exe out/
     if [[ ${1:-} == --test ]]; then
-        ninja -C out/gpu runtime-keys-test event-flag-test memory-hooks-test services-test content-test order-render-baseline-test srt-descriptor-validation-test pad-test
+        ninja -C out/gpu runtime-keys-test event-flag-test memory-hooks-test services-test content-test order-render-baseline-test srt-descriptor-validation-test pad-test frame-trace-test perf-overlay-test
         out/gpu/runtime-keys-test.exe
         out/gpu/event-flag-test.exe
         out/gpu/memory-hooks-test.exe
@@ -38,6 +38,8 @@ MINGW*|MSYS*)
         out/gpu/order-render-baseline-test.exe
         out/gpu/srt-descriptor-validation-test.exe
         out/gpu/pad-test.exe
+        out/gpu/frame-trace-test.exe "out/frame-trace-test-$$.csv"
+        out/gpu/perf-overlay-test.exe
     fi
     python scripts/runtime_build_identity.py out/order1886-runtime.exe
     echo "Built $PWD/out/order1886-runtime.exe"

@@ -302,11 +302,17 @@ int VideoOutDriver::ChangeBufferAttribute(VideoOutPort* port, s32 attributeIndex
 }
 
 void VideoOutDriver::Flip(const Request& req) {
+    // Capture work identity before enqueueing presentation; later GPU work must not
+    // make a repeated guest buffer look newly rendered when the swap thread catches up.
+    const auto render_serial = Ps4Stats::draws.load(std::memory_order_relaxed) +
+                               Ps4Stats::dispatches.load(std::memory_order_relaxed);
+    const auto address = req.index >= 0 ? req.port->buffer_slots[req.index].address_left : 0;
+    const bool blank = req.index < 0;
     // Update HDR status before presenting, then present the frame (on the swap thread).
-    RunPresenter([this, frame = req.frame, hdr = req.port->is_hdr] {
+    RunPresenter([this, frame = req.frame, hdr = req.port->is_hdr, render_serial, address, blank] {
         presenter->SetHDR(hdr);
         presenter->Present(frame);
-        Ps4PerfStats::OnGuestFlip();
+        Ps4PerfStats::OnGuestFlip(render_serial, address, blank);
     });
     Vulkan::FrameCapture::OnFlip(req.index >= 0 ? req.port->buffer_slots[req.index].address_left
                                                 : 0);

@@ -82,6 +82,7 @@ class LauncherTests(unittest.TestCase):
                     self.assertIs(app.values['show_fps'], expected)
                     self.assertEqual(app.values['presentation_filter'], filter_expected)
                     self.assertEqual(app.values['frame_rate'], initial_rate)
+                    self.assertEqual(app.values['aspect_ratio'], '16:9')
                     app.settings()
                     pending, labels, widgets = [app.settings_frame], [], []
                     while pending:
@@ -97,15 +98,19 @@ class LauncherTests(unittest.TestCase):
                          and w.cget('text') == choose_label).invoke()
                     next(w for w in widgets if w.winfo_class() == 'Radiobutton'
                          and w.cget('text') == rate_label).invoke()
+                    next(w for w in widgets if w.winfo_class() == 'Radiobutton'
+                         and w.cget('text') == 'Original cinematic aspect').invoke()
                     next(w for w in widgets if w.winfo_class() == 'Button'
                          and w.cget('text') == 'Save settings').invoke()
                     persisted = launcher.read_settings(state / 'settings.json')
                     self.assertEqual(persisted['presentation_filter'], saved_filter)
                     self.assertIs(persisted['show_fps'], expected)
                     self.assertEqual(persisted['frame_rate'], final_rate)
+                    self.assertEqual(persisted['aspect_ratio'], 'original')
                     command = launcher.backend_command(persisted, state=state)
                     self.assertEqual(command[command.index('--presentation-filter') + 1], saved_filter)
                     self.assertEqual(command[command.index('--frame-rate') + 1], str(final_rate))
+                    self.assertEqual(command[command.index('--aspect-ratio') + 1], 'original')
                 finally:
                     root.destroy()
 

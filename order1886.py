@@ -30,6 +30,7 @@ import prepare
 import link_modules
 import save_backup
 import order1886_frame_rate as timing
+import order1886_display as display
 
 TITLE_ID = 'CUSA00076'
 RUNTIME_ABI = 'order1886-native-1'
@@ -139,19 +140,21 @@ def write_json(path, value):
     temporary.replace(path)
 
 
-def prepare_game(game, out, frame_rate=30):
+def prepare_game(game, out, frame_rate=30, aspect_ratio='original'):
     game, out = Path(game).resolve(), Path(out).resolve()
     metadata = inspect_game(game)
     # Prevent accidental writes to the extracted game, even with custom CLI arguments.
     if out == game or game in out.parents:
         raise ValueError('Prepared images must be stored outside the game folder.')
     profile = timing.validate_source(game / 'eboot.bin', frame_rate, metadata)
+    display_profile = display.validate_source(game / 'eboot.bin', aspect_ratio, metadata)
     fingerprint = {name: sha256(game / name) for name in REQUIRED_FILES}
-    for name in ('prepare.py', 'link_modules.py', 'link_libc.py', 'order1886_frame_rate.py'):
+    for name in ('prepare.py', 'link_modules.py', 'link_libc.py', 'order1886_frame_rate.py', 'order1886_display.py'):
         fingerprint['tool/' + name] = sha256(SCRIPTS / name)
     fingerprint.update(frame_rate=profile['engine_fps'], host_fps_limit=profile['host_fps_limit'],
                        frame_rate_recipe_sha256=profile['recipe_sha256'], runtime_abi=RUNTIME_ABI,
-                       preparation_schema=2)
+                       preparation_schema=3, aspect_ratio=aspect_ratio,
+                       display_recipe_sha256=display_profile['recipe_sha256'])
     manifest = out / 'prepared.json'
     try:
         previous = json.loads(manifest.read_text(encoding='utf-8'))
@@ -160,7 +163,8 @@ def prepare_game(game, out, frame_rate=30):
     image = out / 'boot-linked.bin'
     if (previous.get('inputs') == fingerprint and previous.get('game') == str(game)
             and image.is_file() and previous.get('image_sha256') == sha256(image)
-            and (frame_rate == 30 or previous.get('frame_rate_profile', {}).get('applied') is True)):
+            and (frame_rate == 30 or previous.get('frame_rate_profile', {}).get('applied') is True)
+            and (aspect_ratio == 'original' or previous.get('display_profile', {}).get('applied') is True)):
         emit_status('Prepared image verified; reusing cached image.', fallback=out.parent / 'logs/backend.log')
         return previous
     out.mkdir(parents=True, exist_ok=True)
@@ -168,9 +172,11 @@ def prepare_game(game, out, frame_rate=30):
     manifest.unlink(missing_ok=True)
     prepare.prepare(game, out)
     profile = timing.apply_prepared(out / 'boot.bin', profile)
+    display_profile = display.apply_prepared(out / 'boot.bin', display_profile)
     link_modules.link(game, out)
     result = {'game': str(game), 'title_id': metadata['TITLE_ID'], 'inputs': fingerprint,
               'frame_rate_profile': profile,
+              'display_profile': display_profile,
               'image_sha256': sha256(image), 'status': 'prepared; gameplay unverified'}
     write_json(manifest, result)
     return result
@@ -189,6 +195,8 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
         # Reuse validated cached pipelines before playback rather than compiling during it.
         'ORDER1886_PIPELINE_BINARIES': '0', 'ORDER1886_BACKGROUND_WARMUP': '0',
         'ORDER1886_PARALLEL_WARMUP': '0',
+        # Keep unverified speculative SRT work off the normal Order launch path.
+        'ORDER1886_PREP_WORKERS': '0',
         'ORDER1886_SETTINGS_MENU': '0',
         'ORDER1886_VBLANK_HZ': '60',
         'ORDER1886_STREAM_MEMORY': 'cached', 'PYTHONIOENCODING': 'utf-8',
@@ -350,6 +358,8 @@ def main(argv=None):
                         help='Output scaling filter; game rendering and timing stay native')
     parser.add_argument('--frame-rate', type=int, choices=[30, 60], default=30,
                         help='30 is the native baseline; 60 is experimental with known QTE risks')
+    parser.add_argument('--aspect-ratio', choices=['original', '16:9'], default='original',
+                        help='Experimental full-screen 16:9 or original cinematic aspect; requires restart')
     parser.add_argument('--vsync', type=int, choices=[0, 1], default=1)
     parser.add_argument('--show-fps', type=int, choices=[0, 1], default=0)
     args = parser.parse_args(argv)
@@ -373,7 +383,13 @@ def main(argv=None):
                 raise ValueError('Order runtime not found in this installation. Build build.sh or explicitly select a runtime in Settings.')
             if args.frame_rate == 60:
                 emit_status(timing.WARNING, fallback=diagnostic_log)
-            prepared = prepare_game(game, user / 'prepared', frame_rate=args.frame_rate)
+            if args.aspect_ratio == '16:9':
+                emit_status(display.WARNING, fallback=diagnostic_log)
+            prepared = prepare_game(game, user / 'prepared', frame_rate=args.frame_rate, aspect_ratio=args.aspect_ratio)
+            if args.aspect_ratio == '16:9' and not (prepared.get('display_profile', {}).get('applied') is True
+                    and prepared['display_profile'].get('source_verified') is True
+                    and prepared['display_profile'].get('recipe_sha256') == display.recipe_sha256('16:9')):
+                raise ValueError('Full-screen 16:9 requires a verified prepared aspect recipe')
             if args.frame_rate == 60 and not (prepared.get('frame_rate_profile', {}).get('applied') is True
                     and prepared['frame_rate_profile'].get('source_verified') is True
                     and prepared['frame_rate_profile'].get('engine_fps') == 60
@@ -408,9 +424,11 @@ def main(argv=None):
                       'command': command, 'config_sha256': sha256(user / 'runtime.ini'),
                       'runtime_environment': {k: v for k, v in env.items() if k.startswith('ORDER1886_')},
                        'frame_rate_profile': prepared.get('frame_rate_profile'),
+                       'display_profile': prepared.get('display_profile'),
                        'settings': {'display_mode': args.display_mode, 'vsync': args.vsync,
                                     'show_fps': args.show_fps, 'presentation_filter': args.presentation_filter,
-                                    'frame_rate': args.frame_rate, 'fps_limit': args.frame_rate}}
+                                    'frame_rate': args.frame_rate, 'fps_limit': args.frame_rate,
+                                    'aspect_ratio': args.aspect_ratio}}
             write_json(logs / 'last-run.json', report)
             emit_status(f'Log: {log}', fallback=diagnostic_log)
             emit_status(f'Runtime: {report["runtime"]} | SHA256 {report["runtime_sha256"]}', fallback=diagnostic_log)

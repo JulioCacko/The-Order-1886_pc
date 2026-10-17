@@ -27,6 +27,7 @@ GOLD, PAPER, MUTED, BLACK = "#d4bd75", "#e9e5d8", "#a8a497", "#0b0b0a"
 DISPLAY = {"Windowed": "windowed", "Borderless": "borderless", "Fullscreen": "fullscreen"}
 UPSCALING = {"FSR 1": "fsr1", "Linear": "linear"}
 FRAME_RATE = {"30 FPS": 30, "60 FPS (experimental)": 60}
+ASPECT_RATIO = {"Full screen 16:9 (experimental)": "16:9", "Original cinematic aspect": "original"}
 
 
 def read_settings(path: Path) -> dict:
@@ -57,7 +58,8 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                 "--vsync", str(int(values["vsync"])),
                  "--show-fps", str(int(values["show_fps"])),
                  "--presentation-filter", values.get("presentation_filter", "fsr1"),
-                 "--frame-rate", str(values.get("frame_rate", 30))]
+                 "--frame-rate", str(values.get("frame_rate", 30)),
+                 "--aspect-ratio", values.get("aspect_ratio", "16:9")]
     if values.get("runtime"):
         command += ["--runtime", values["runtime"]]
     if mode == "verify":
@@ -199,6 +201,7 @@ class Launcher:
             "show_fps": bool(saved.get("show_fps", True)),
             "presentation_filter": saved.get("presentation_filter", "fsr1"),
             "frame_rate": saved.get("frame_rate", 30),
+            "aspect_ratio": saved.get("aspect_ratio", "16:9"),
         }
         if self.values["display_mode"] not in ("windowed", "borderless", "fullscreen"):
             self.values["display_mode"] = "borderless"
@@ -206,6 +209,8 @@ class Launcher:
             self.values["presentation_filter"] = "fsr1"
         if type(self.values["frame_rate"]) is not int or self.values["frame_rate"] not in (30, 60):
             self.values["frame_rate"] = 30
+        if self.values["aspect_ratio"] not in ("original", "16:9"):
+            self.values["aspect_ratio"] = "16:9"
         root.title("The Order: 1886")
         root.configure(bg=BLACK)
         root.geometry("1160x760")
@@ -559,6 +564,15 @@ class Launcher:
             tk.Radiobutton(frame, text=mode.capitalize(), variable=display, value=mode,
                            bg=BLACK, fg=PAPER, selectcolor="#26251f", activebackground=BLACK,
                            activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+        tk.Label(frame, text="Aspect ratio", fg=PAPER, bg=BLACK,
+                 font=("Segoe UI", 10)).pack(anchor="w", pady=(18, 8))
+        aspect = tk.StringVar(value=self.values["aspect_ratio"])
+        for label, value in ASPECT_RATIO.items():
+            tk.Radiobutton(frame, text=label, variable=aspect, value=value,
+                           bg=BLACK, fg=PAPER, selectcolor="#26251f", activebackground=BLACK,
+                           activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+        tk.Label(frame, text="Aspect changes apply after restarting the game.", fg=MUTED, bg=BLACK,
+                 font=("Segoe UI", 9)).pack(anchor="w", pady=(5, 0))
         tk.Label(frame, text="Output scaling", fg=PAPER, bg=BLACK,
                  font=("Segoe UI", 10)).pack(anchor="w", pady=(18, 8))
         presentation = tk.StringVar(value=self.values["presentation_filter"])
@@ -588,7 +602,8 @@ class Launcher:
         def save():
             values = {key: v.get().strip() for key, v in fields.items()}
             values.update(display_mode=display.get(), vsync=vsync.get(), show_fps=fps.get(),
-                          presentation_filter=presentation.get(), frame_rate=frame_rate.get())
+                          presentation_filter=presentation.get(), frame_rate=frame_rate.get(),
+                          aspect_ratio=aspect.get())
             try:
                 save_settings(self.state / "settings.json", values)
             except (OSError, ValueError) as exc:

@@ -476,6 +476,7 @@ void OnPresented(bool loading_frame) {
                             std::chrono::steady_clock::now().time_since_epoch()).count();
     std::scoped_lock lock{presentation_mutex};
     presentation_counter.Present(u64(now_ns), loading_frame);
+    Ps4PerfStats::OnHostPresented(u64(now_ns), loading_frame);
 }
 
 void ShowNotice(const std::string& text, int milliseconds) {
