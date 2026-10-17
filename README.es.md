@@ -12,6 +12,12 @@ Proyecto comunitario para ejecutar el binario original de **The Order: 1886**, e
 
 *Captura real del launcher de cinco páginas con la imagen proporcionada por el usuario el 17 de octubre. No es gameplay. “30 FPS” es el límite seleccionado, no una medición.*
 
+## Demostración en vídeo
+
+[![Mira The Order: 1886 ejecutándose en PC](https://i.ytimg.com/vi/wpNkwih0cxI/hqdefault.jpg)](https://youtu.be/wpNkwih0cxI)
+
+[**Mira la demostración en YouTube**](https://youtu.be/wpNkwih0cxI) — grabación del proyecto ejecutándose en PC, publicada por **Julio Cacko**. Haz clic en la miniatura para verla.
+
 ## El launcher
 
 Estructura adaptada de [mateussmeneses/theorder1886-port](https://github.com/mateussmeneses/theorder1886-port), conservando nuestro backend y los guardados de CUSA00076. La presentación del README sigue la organización de [HayatoG/iss_pc](https://github.com/HayatoG/iss_pc).

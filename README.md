@@ -26,6 +26,12 @@ GPU commands and shaders to Vulkan. The current target is **CUSA00076 on Windows
 > **No game files are included.** You need your own extracted copy. This is an
 > unofficial community project, not an official PC release.
 
+## Video demonstration
+
+[![Watch The Order: 1886 running on PC](https://i.ytimg.com/vi/wpNkwih0cxI/hqdefault.jpg)](https://youtu.be/wpNkwih0cxI)
+
+[**Watch the demonstration on YouTube**](https://youtu.be/wpNkwih0cxI) — video evidence of the project running on PC, published by **Julio Cacko**. Click the thumbnail to watch.
+
 ![A rendered cinematic from the supplied October 17 recording](docs/images/order1886-cinematic-20261017.jpg)
 
 <sub>Actual capture at 15:00 in the supplied October 17 recording, reduced from 1920×1080. This is a cinematic, not proof of interactive gameplay or a performance benchmark.</sub>
