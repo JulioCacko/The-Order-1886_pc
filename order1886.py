@@ -187,7 +187,8 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     settings = settings or {}
     frame_rate = timing.validate_frame_rate(settings.get('frame_rate', 30))
     source = os.environ if inherited is None else inherited
-    env = {k: v for k, v in source.items() if not k.upper().startswith('ORDER1886_')}
+    env = {k: v for k, v in source.items()
+           if not k.upper().startswith('ORDER1886_') or k == 'ORDER1886_DIAG_RESOURCE_SHARPS'}
     env.update({
         'ORDER1886_CONFIG': str(user / 'runtime.ini'), 'ORDER1886_USER_DIR': str(user),
         'ORDER1886_GPU_USER_DIR': str(user / 'gpu' / SHADER_CACHE_ABI), 'ORDER1886_GAME_PROFILE': 'order1886',

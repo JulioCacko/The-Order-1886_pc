@@ -14,6 +14,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ImageBoundsTests(unittest.TestCase):
+    def test_runtime_image_upload_rejects_bad_footprints_before_recording_or_cleaning(self):
+        runtime = (ROOT / "gpu/shadps4/video_core/renderer_vulkan/vk_runtime.cpp").read_text()
+        upload = function_body(runtime, "void Runtime::UploadImage(")
+        check = upload.index("BufferImageCopyFits(copy, copy_size, src->SizeBytes())")
+        self.assertLess(check, upload.index("scheduler.Record("))
+        self.assertLess(check, upload.index("dst->flags &= ~VideoCore::ImageFlagBits::Dirty"))
+        self.assertIn("Image upload exceeds source buffer", upload)
+
     def test_checked_layout_device_limits_and_upload_footprints(self):
         source = (ROOT / "gpu/shadps4/video_core/texture_cache/image_info.cpp").read_text()
         update_size = function_body(source, "void ImageInfo::UpdateSize(")

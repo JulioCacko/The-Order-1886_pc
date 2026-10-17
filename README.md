@@ -6,7 +6,7 @@
 <p align="center">
   <a href="README.pt-BR.md"><b>Português (Brasil)</b></a> ·
   <a href="README.es.md">Español</a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.1/order1886-windows.zip"><b>Download Windows ZIP</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.2/order1886-windows.zip"><b>Download Windows ZIP</b></a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases">Releases</a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
 </p>
@@ -42,6 +42,8 @@ GPU commands and shaders to Vulkan. The current target is **CUSA00076 on Windows
 - **Five-page launcher:** Home, Graphics, Performance, Game and Advanced, with sidebar navigation and Play/Stop always available. Adapted from [mateussmeneses/theorder1886-port](https://github.com/mateussmeneses/theorder1886-port), using this project's runtime and settings.
 - **Save management:** browse backups, create a backup and restore one from the Game page. Restoring first backs up the current saves. Save operations are disabled while a session is running.
 - **Graphics and timing:** window modes, FSR 1 or Linear presentation, aspect-ratio selection, VSync, F9 overlay and an opt-in experimental 60 FPS recipe.
+- **Runtime hardening:** speculative SRT faults no longer rewrite shared walkers, identical walkers reuse generated code, and mapped-range snapshots refresh after map/unmap. These changes have not yet been measured in gameplay.
+- **Descriptor diagnostics:** ORDER1886_DIAG_RESOURCE_SHARPS=1 now reaches the runtime through the source launcher for raw image descriptor logging.
 - **Clearer evidence:** the supplied recording shows later 3D cinematics; the boot log identifies a concrete image-array-layer failure. The [reuse assessment](docs/order1886-reference-reuse.md) records what was adapted and which runtime changes need investigation.
 
 ## Status
@@ -64,9 +66,9 @@ additional evidence, not a claim that all previous gates have passed.
 
 ## Download and start
 
-**[Download the Windows launcher ZIP](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.1/order1886-windows.zip)** ·
-[Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.1) ·
-[English/Portuguese setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.1/QUICKSTART.txt)
+**[Download the Windows launcher ZIP](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.2/order1886-windows.zip)** ·
+[Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.2) ·
+[English/Portuguese setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.2/QUICKSTART.txt)
 
 The preview includes the launcher, dedicated runtime, required libraries and
 **`QUICKSTART.txt`**. No Python, MSYS2 or compiler is required. Download

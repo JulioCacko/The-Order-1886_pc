@@ -5,7 +5,6 @@
 #include <limits>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <boost/container/flat_map.hpp>
 #include <queue>
 #include <xbyak/xbyak.h>
@@ -18,10 +17,12 @@
 #include "common/signal_context.h"
 #include "core/emulator_settings.h"
 #include "core/signals.h"
+#include "ps4_toggles.h"
 #include "shader_recompiler/info.h"
 #include "shader_recompiler/ir/ir_emitter.h"
 #include "shader_recompiler/ir/opcodes.h"
 #include "shader_recompiler/ir/passes/srt.h"
+#include "shader_recompiler/ir/passes/srt_walker_cache.h"
 #include "shader_recompiler/ir/program.h"
 #include "shader_recompiler/ir/reg.h"
 #include "shader_recompiler/ir/srt_gvn_table.h"
@@ -29,10 +30,14 @@
 
 #ifdef ARCH_X86_64
 
+static_assert(std::atomic<u64>::is_always_lock_free,
+              "SRT fault invalidation must remain safe in a signal handler");
+
 using namespace Xbyak::util;
 
 static Xbyak::CodeGenerator g_srt_codegen(32_MB);
 static const u8* g_srt_codegen_start = nullptr;
+static Shader::SrtWalkerCache<> g_srt_walker_cache;
 // the shader compiler and the background cache warm-up append walkers from different
 // threads.
 static std::mutex g_srt_codegen_mutex;
@@ -41,9 +46,13 @@ namespace Shader {
 
 PFN_SrtWalker RegisterWalkerCode(const u8* ptr, size_t size) {
     std::scoped_lock lock{g_srt_codegen_mutex};
+    if (const u8* existing = g_srt_walker_cache.Find(ptr, size)) {
+        return reinterpret_cast<PFN_SrtWalker>(const_cast<u8*>(existing));
+    }
     const auto func_addr = (PFN_SrtWalker)g_srt_codegen.getCurr();
     g_srt_codegen.db(ptr, size);
     g_srt_codegen.ready();
+    g_srt_walker_cache.Store(reinterpret_cast<const u8*>(func_addr), size);
     return func_addr;
 }
 
@@ -77,6 +86,12 @@ static void DumpSrtProgram(const Shader::Info& info, const u8* code, size_t code
 }
 
 static bool SrtWalkerSignalHandler(void* context, void* fault_address) {
+    // The draw-preparation thread may be probing a speculative resource-table
+    // path. Let its recovery point handle the fault instead of making this
+    // shared walker permanently read zero in later draws.
+    if (runtime_fault_recover) {
+        return false;
+    }
     // Only handle if the fault address is within the SRT code range
     const u8* code_start = g_srt_codegen_start;
     const u8* code_end = code_start + g_srt_codegen.getSize();
@@ -98,6 +113,7 @@ static bool SrtWalkerSignalHandler(void* context, void* fault_address) {
     size_t len = instruction.length;
     const size_t patch_size = 3;
     u8* code_patch = const_cast<u8*>(reinterpret_cast<const u8*>(code));
+    g_srt_walker_cache.NotePatch();
 
     // We can only encounter rdi or r10d as the first operand in a
     // fault memory access for SRT walker.
@@ -744,6 +760,7 @@ static void GenerateSrtProgram(Info& info, PassInfo& pass_info) {
         signals->RegisterAccessViolationHandler(SrtWalkerSignalHandler, priority);
     }
 
+    const size_t walker_start = c.getSize();
     info.srt_info.walker_func = c.getCurr<PFN_SrtWalker>();
     pass_info.dst_off_dw = NUM_USER_DATA_REGS;
     ASSERT(pass_info.dst_off_dw == info.srt_info.flattened_bufsize_dw);
@@ -757,6 +774,15 @@ static void GenerateSrtProgram(Info& info, PassInfo& pass_info) {
 
     info.srt_info.walker_func_size =
         c.getCurr() - reinterpret_cast<const u8*>(info.srt_info.walker_func);
+
+    const auto* walker_code = reinterpret_cast<const u8*>(info.srt_info.walker_func);
+    if (const u8* existing =
+            g_srt_walker_cache.Find(walker_code, info.srt_info.walker_func_size)) {
+        c.setSize(walker_start);
+        info.srt_info.walker_func = reinterpret_cast<PFN_SrtWalker>(const_cast<u8*>(existing));
+    } else {
+        g_srt_walker_cache.Store(walker_code, info.srt_info.walker_func_size);
+    }
 
     if (EmulatorSettings.IsDumpShaders()) {
         DumpSrtProgram(info, reinterpret_cast<const u8*>(info.srt_info.walker_func),

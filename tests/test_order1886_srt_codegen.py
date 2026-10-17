@@ -261,6 +261,18 @@ int main(int argc, char**) {
 
 
 class SrtCodegenTests(unittest.TestCase):
+    def test_recoverable_speculative_fault_does_not_patch_shared_walker(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        handler = function_body(source, "static bool SrtWalkerSignalHandler(")
+        self.assertRegex(handler, r"if\s*\(\s*runtime_fault_recover\s*\)\s*\{\s*return false;")
+
+    def test_generated_and_loaded_walkers_share_only_byte_identical_code(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("g_srt_walker_cache.Find(ptr, size)", source)
+        self.assertIn("g_srt_walker_cache.Find(walker_code", source)
+        self.assertIn("g_srt_walker_cache.Store(walker_code", source)
+        self.assertIn("g_srt_walker_cache.NotePatch()", source)
+
     def test_bounded_dynamic_readconst_and_pointer_refresh(self):
         compiler = shutil.which(os.environ.get("CXX", "clang++"))
         environment = os.environ.copy()

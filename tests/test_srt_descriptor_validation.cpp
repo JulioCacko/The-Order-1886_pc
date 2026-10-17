@@ -26,6 +26,8 @@
 #pragma GCC diagnostic pop
 #include "video_core/renderer_vulkan/vk_image_binding_contract.h"
 #include "video_core/renderer_vulkan/vk_permutation_info.h"
+#include "shader_recompiler/ir/passes/srt_walker_cache.h"
+#include "video_core/renderer_vulkan/vk_mapped_range_snapshot.h"
 
 namespace Common::Log {
 bool ShouldLog(Level) { return false; }
@@ -127,6 +129,54 @@ static int SpawnCase(const char* executable, const char* name) {
 static bool Check(bool passed, const char* name) {
     if (!passed) std::fprintf(stderr, "descriptor fixture failed: %s\n", name);
     return passed;
+}
+
+struct ForcedSrtHashCollision {
+    size_t operator()(std::string_view) const noexcept { return 1; }
+};
+
+static bool CheckRuntimeCaches() {
+    const std::array<u8, 4> walker_a{0x48, 0x8b, 0x07, 0xc3};
+    const std::array<u8, 4> walker_a_copy{0x48, 0x8b, 0x07, 0xc3};
+    const std::array<u8, 4> walker_b{0x48, 0x8b, 0x47, 0xc3};
+    Shader::SrtWalkerCache<ForcedSrtHashCollision> walkers;
+    if (!Check(walkers.Store(walker_a.data(), walker_a.size()), "SRT walker stored")) return false;
+    if (!Check(walkers.Find(walker_a_copy.data(), walker_a_copy.size()) == walker_a.data(),
+               "identical SRT walker reused")) return false;
+    if (!Check(walkers.Find(walker_b.data(), walker_b.size()) == nullptr,
+               "SRT hash collision requires byte equality")) return false;
+    if (!Check(walkers.Store(walker_b.data(), walker_b.size()), "colliding SRT walker stored")) {
+        return false;
+    }
+    if (!Check(walkers.Find(walker_b.data(), walker_b.size()) == walker_b.data(),
+               "colliding SRT walker resolves to its own code")) return false;
+    walkers.NotePatch();
+    if (!Check(walkers.Find(walker_a_copy.data(), walker_a_copy.size()) == nullptr,
+               "patched walker generation invalidates cached code")) return false;
+    if (!Check(walkers.Store(walker_a_copy.data(), walker_a_copy.size()),
+               "walker can be registered after patch invalidation")) return false;
+
+    using Ranges = Vulkan::MappedRangeSnapshot::RangeSet;
+    Vulkan::MappedRangeSnapshot snapshot;
+    Ranges first;
+    first += Ranges::interval_type::right_open(0x1000, 0x2000);
+    if (!Check(!snapshot.IsCurrent(7, 0), "mapped cache begins unowned")) return false;
+    snapshot.Refresh(7, 0, first);
+    if (!Check(snapshot.Contains(0x1000, 16) && !snapshot.Contains(0x2000, 1),
+               "mapped snapshot checks right-open ranges")) return false;
+
+    Ranges second;
+    second += Ranges::interval_type::right_open(0x3000, 0x4000);
+    if (!Check(!snapshot.IsCurrent(7, 1), "map generation invalidates snapshot")) return false;
+    snapshot.Refresh(7, 1, second);
+    if (!Check(!snapshot.Contains(0x1000, 16) && snapshot.Contains(0x3000, 16),
+               "refreshed snapshot sees map changes")) return false;
+    if (!Check(!snapshot.IsCurrent(8, 1), "rasterizer identity invalidates snapshot")) return false;
+    snapshot.Refresh(8, 1, first);
+    if (!Check(snapshot.Contains(0x1000, 16) && !snapshot.Contains(0x3000, 16),
+               "new rasterizer cannot inherit old ranges")) return false;
+    return Check(!snapshot.Contains(std::numeric_limits<VAddr>::max() - 1, 4),
+                 "overflowing mapped range is rejected");
 }
 
 static bool CheckImageLayerCounts() {
@@ -409,6 +459,7 @@ static bool CheckUnmappedImagePolicy() {
 
 int main(int argc, char** argv) {
     if (argc > 1) return ChildCase(argv[1]);
+    if (!CheckRuntimeCaches()) return 1;
     if (!CheckImageLayerCounts()) return 1;
     if (!CheckImageBindingContracts()) return 1;
     if (!CheckPermutationMetadata()) return 1;

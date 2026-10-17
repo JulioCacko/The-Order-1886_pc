@@ -98,6 +98,7 @@ class OrderBackendTests(unittest.TestCase):
                      'ORDER1886_PATCHES': 'obsolete-patches.bin', 'UNRELATED_APP_SETTING': '1',
                      'ORDER1886_UNKNOWN': 'stale', 'ORDER1886_UPSCALER': 'fsr31',
                      'ORDER1886_PREP_WORKERS': '8',
+                     'ORDER1886_DIAG_RESOURCE_SHARPS': '1',
                      'ORDER1886_USER_DIR': 'obsolete-save-directory'}
         before = dict(inherited)
         runtime = self.base / 'runtime binaries' / 'probe.exe'
@@ -106,6 +107,7 @@ class OrderBackendTests(unittest.TestCase):
         self.assertNotIn('ORDER1886_PATCHES', env)
         self.assertEqual(env['UNRELATED_APP_SETTING'], '1')
         self.assertNotIn('ORDER1886_UNKNOWN', env)
+        self.assertEqual(env['ORDER1886_DIAG_RESOURCE_SHARPS'], '1')
         self.assertEqual(env['ORDER1886_GAME_PROFILE'], 'order1886')
         self.assertEqual(env['ORDER1886_USER_DIR'], str(self.user.resolve()))
         self.assertEqual(env['ORDER1886_GPU_USER_DIR'], str(self.user.resolve() / 'gpu' / order1886.SHADER_CACHE_ABI))

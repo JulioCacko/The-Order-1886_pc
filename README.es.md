@@ -20,7 +20,7 @@ Proyecto comunitario para ejecutar el binario original de **The Order: 1886**, e
 
 ## Descargar
 
-**[Descargar el ZIP del launcher para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.1/order1886-windows.zip)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.1) · [Guía en inglés y portugués](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.1/QUICKSTART.txt)
+**[Descargar el ZIP del launcher para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.2/order1886-windows.zip)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.2) · [Guía en inglés y portugués](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.2/QUICKSTART.txt)
 
 Extrae el ZIP completo y lee **QUICKSTART.txt**, incluido en el paquete. No requiere Python, MSYS2 ni compilador. Descarga `order1886-windows.zip`; los archivos “Source code” son para desarrolladores. El juego no está incluido: usa tu propio dump CUSA00076. Esta versión preliminar conserva las limitaciones de compatibilidad indicadas arriba.
 

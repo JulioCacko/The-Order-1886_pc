@@ -31,6 +31,8 @@
 
 namespace Vulkan {
 
+static std::atomic<u64> next_mapped_ranges_identity{1};
+
 static Shader::PushData MakeUserData(const AmdGpu::Regs& regs) {
     // TODO(roamic): Add support for multiple viewports and geometry shaders when ViewportIndex
     // is encountered and implemented in the recompiler.
@@ -48,6 +50,7 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
       buffer_cache{instance, scheduler, runtime, liverpool_, texture_cache, page_manager},
       texture_cache{instance, scheduler, runtime, liverpool_, buffer_cache, page_manager},
       liverpool{liverpool_}, memory{Core::Memory::Instance()},
+      mapped_ranges_identity{next_mapped_ranges_identity.fetch_add(1, std::memory_order_relaxed)},
       pipeline_cache{instance, scheduler, liverpool, buffer_cache.GetSparsePageShift()},
       host_markers_enabled{EmulatorSettings.IsVkHostMarkersEnabled()},
       guest_markers_enabled{EmulatorSettings.IsVkGuestMarkersEnabled()} {
@@ -3161,16 +3164,21 @@ bool Rasterizer::IsMapped(VAddr addr, u64 size) {
         // Memory range wrapped the address space, cannot be mapped.
         return false;
     }
-    const auto range = decltype(mapped_ranges)::interval_type::right_open(addr, addr + size);
-
-    Common::RecursiveSharedLock lock{mapped_ranges_mutex};
-    return boost::icl::contains(mapped_ranges, range);
+    thread_local MappedRangeSnapshot snapshot;
+    if (!snapshot.IsCurrent(mapped_ranges_identity,
+                            mapped_ranges_generation.load(std::memory_order_acquire))) {
+        Common::RecursiveSharedLock lock{mapped_ranges_mutex};
+        snapshot.Refresh(mapped_ranges_identity,
+                         mapped_ranges_generation.load(std::memory_order_relaxed), mapped_ranges);
+    }
+    return snapshot.Contains(addr, size);
 }
 
 void Rasterizer::MapMemory(VAddr addr, u64 size) {
     {
         std::scoped_lock lock{mapped_ranges_mutex};
         mapped_ranges += decltype(mapped_ranges)::interval_type::right_open(addr, addr + size);
+        mapped_ranges_generation.fetch_add(1, std::memory_order_release);
     }
 }
 
@@ -3185,6 +3193,7 @@ void Rasterizer::UnmapMemory(VAddr addr, u64 size) {
     {
         std::scoped_lock lock{mapped_ranges_mutex};
         mapped_ranges -= decltype(mapped_ranges)::interval_type::right_open(addr, addr + size);
+        mapped_ranges_generation.fetch_add(1, std::memory_order_release);
     }
 }
 
