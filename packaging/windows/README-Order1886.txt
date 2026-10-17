@@ -1,5 +1,8 @@
 THE ORDER: 1886 - EXPERIMENTAL PC COMPATIBILITY BUILD
 
+Read QUICKSTART.txt for step-by-step setup, the required game-folder structure,
+settings, saves, updates and troubleshooting in English and Portuguese.
+
 The supplied October 17 recording shows logos and later 3D cinematics.
 Interactive gameplay, checkpoint progression and sustained performance remain
 unverified. The supplied boot log stops on an invalid image-layer count.

@@ -139,6 +139,7 @@ VSVersionInfo(ffi=FixedFileInfo(filevers=(0,1,0,0), prodvers=(0,1,0,0), mask=0x3
     Copy-Item -LiteralPath $runtimeIdentityPath -Destination (Join-Path $runtimeBin 'runtime-build.json')
     Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination $packageRoot
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README-Order1886.txt') -Destination $packageRoot
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'QUICKSTART-Order1886.txt') -Destination (Join-Path $packageRoot 'QUICKSTART.txt')
     $noticeRoot = Join-Path $packageRoot 'notices'
     New-Item -ItemType Directory -Force -Path $noticeRoot | Out-Null
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ATTRIBUTION-Order1886.txt') -Destination (Join-Path $noticeRoot 'ATTRIBUTION.txt')

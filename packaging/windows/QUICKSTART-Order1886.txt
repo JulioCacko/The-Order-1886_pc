@@ -1,0 +1,195 @@
+THE ORDER: 1886 - WINDOWS LAUNCHER PREVIEW 0.1.0
+Quick start / Guia rapido
+
+ENGLISH
+-------
+
+WHAT THIS DOWNLOAD INCLUDES
+
+A portable Windows launcher, its dedicated compatibility runtime, required
+host libraries, artwork and license notices. You do not need Python, MSYS2 or
+a compiler to use the ZIP. This is an unofficial development preview.
+
+No game executable, game archives, firmware or player saves are included.
+Use your own extracted PS4 copy of The Order: 1886, title ID CUSA00076.
+Other title IDs are not accepted by this build.
+
+BEFORE STARTING
+
+- Use 64-bit Windows 10 or Windows 11 and a Vulkan-capable graphics card with
+  an up-to-date driver. Performance and compatibility vary by hardware.
+- Extract the complete ZIP to a writable folder. For example:
+  C:\Games\The Order 1886 Preview\
+- Do not run the EXE from inside the ZIP. Keep The Order 1886.exe, bin and
+  _internal together. The automatically offered GitHub "Source code" archives
+  are for developers; download order1886-windows.zip to use the launcher.
+
+YOUR GAME FOLDER
+
+Choose the folder that directly contains these items, not its parent:
+
+  CUSA00076\
+    eboot.bin
+    archivemap.bin
+    _data\
+    sce_sys\
+      param.sfo
+    sce_module\
+      libc.prx
+      libSceFios2.prx
+
+Keep the complete extracted game folder, including files not shown above.
+Encrypted PKG files and an eboot.bin copied by itself are not sufficient.
+The launcher reads the original files and prepares a separate working copy.
+This guide does not provide or download a game dump.
+
+FIRST SESSION
+
+1. Open The Order 1886.exe from the extracted launcher folder.
+2. Click Change beside Game folder and select your CUSA00076 folder.
+3. Open Graphics. Select Original cinematic aspect for a first attempt,
+   choose a window mode and FSR 1 or Linear output, then Save settings.
+4. Open Performance. Start with 30 FPS, then Save settings.
+5. On Game, Verify files can prepare the working image and audit imports.
+   A successful audit confirms that check, not full game compatibility.
+6. Press Play. Initial preparation and shader work can take time. Use
+   Advanced > View session log to see progress. F9 toggles the runtime overlay.
+7. Use Stop session to finish. Keep the launcher open while it waits for the
+   runtime to close. Avoid interrupting an active save operation.
+
+PAGES AND SETTINGS
+
+Home: quick game-folder, display, scaling and frame-rate choices; Play/Stop.
+Graphics: window mode, aspect ratio, FSR 1/Linear and VSync.
+Performance: 30 FPS, experimental 60 FPS and the F9 overlay.
+Game: file/import verification, data folder, save backups and restore.
+Advanced: optional runtime override, logs, folders, releases and support.
+
+Use Save settings after editing a page. Starting from a settings page also
+saves its values. Leave Runtime executable blank to use the bundled runtime.
+Do not substitute a runtime from a different game or an unrelated build.
+Press Escape to return Home. Controls also support keyboard navigation.
+
+SAVES, BACKUPS AND UPDATES
+
+Settings, prepared files, caches, logs and saves are kept in:
+  <launcher folder>\user\order1886\
+
+The runtime makes a save backup before each game session. On Game, use
+Back up saves now or select a backup and Restore selected backup. Restoring
+asks for confirmation and first backs up the saves it replaces. Save changes
+are disabled while a session runs. Checkpoint save/load still needs gameplay
+validation; these tools do not establish that every in-game save works.
+
+Before updating, stop the game and close the launcher. Keep a separate copy
+of the entire user folder. Extract the new ZIP to a new folder, then copy
+your existing user folder beside the new EXE to retain settings and saves.
+Do not replace your game dump with files from the launcher ZIP.
+
+CURRENT LIMITATIONS
+
+The October 17 recording shows boot and later 3D cinematics. Interactive
+gameplay, checkpoint progression, a full campaign and sustained 4K/60 FPS
+have not been verified. This ZIP does not fix the observed Vulkan assertion
+"Image exceeds device format limits" with layers=8029/2048. A session may stop.
+
+60 FPS and 16:9 are experimental, hash-checked preparation recipes. The
+60 FPS patch warns of possible QTE softlocks in Chapters 6 and 9. Use 30 FPS
+and Original cinematic aspect for the baseline. Selected FPS is a setting,
+not a performance guarantee. Temporal FSR and DLSS are not launcher options.
+
+TROUBLESHOOTING
+
+- Game files need attention: select the folder directly containing eboot.bin
+  and check the complete structure above, including the CUSA00076 metadata.
+- Runtime or DLL missing: extract the whole ZIP again; retain bin and
+  _internal. Packaged users do not need to install developer dependencies.
+- Black screen, slow startup or session failed: open Advanced > View session
+  log and preserve the matching boot log. Do not assume the game is loading
+  successfully just because its window is open.
+- Image-layer assertion: this is a known runtime blocker, not an installation
+  step solved by copying DLLs or deleting saves. Include the log in a report.
+- Timing or image problems with experimental settings: stop the session,
+  return to 30 FPS and Original cinematic aspect, save and relaunch.
+
+REPORTING A PROBLEM
+
+Open Advanced > Open log folder. Include last-run.json, the matching boot/
+session log, runtime SHA256, game version/title ID, GPU/driver, settings and
+reproduction steps. Review logs for personal paths before sharing. Do not
+upload game binaries or saves. Zip large logs before attaching them.
+
+Releases: https://github.com/JulioCacko/The-Order-1886_pc/releases
+Support:  https://github.com/JulioCacko/The-Order-1886_pc/issues
+Video:    https://youtu.be/wpNkwih0cxI
+Source:   https://github.com/JulioCacko/The-Order-1886_pc
+
+The release includes a SHA256 file for the ZIP. In PowerShell:
+  Get-FileHash .\order1886-windows.zip -Algorithm SHA256
+Compare the result with order1886-windows.zip.sha256 from the same release.
+
+Code license: GPL-2.0-or-later; see LICENSE and notices in the ZIP. Game images
+and trademarks retain their owners' rights. No affiliation or endorsement by
+Sony or Ready at Dawn is implied.
+
+
+PORTUGUES (BRASIL)
+==================
+
+Este ZIP contem o launcher portatil para Windows, o runtime e as bibliotecas
+necessarias. Nao precisa de Python, MSYS2 ou compilador. E uma previa de
+desenvolvimento nao oficial. Nao inclui jogo, firmware ou saves do jogador.
+Use sua propria copia PS4 extraida de The Order: 1886, titulo CUSA00076.
+
+COMO INICIAR
+
+1. Baixe order1886-windows.zip em Releases, nao os arquivos "Source code".
+2. Extraia o ZIP inteiro para uma pasta com permissao de escrita. Nao abra
+   o EXE dentro do ZIP. Mantenha o EXE, bin e _internal juntos.
+3. Abra The Order 1886.exe. Em Game folder, clique Change e escolha a pasta
+   que contem diretamente eboot.bin, archivemap.bin, _data, sce_sys e
+   sce_module. Dentro de sce_sys deve existir param.sfo; dentro de sce_module,
+   libc.prx e libSceFios2.prx. Mantenha todos os demais arquivos do dump.
+   Um PKG criptografado ou apenas eboot.bin nao sao suficientes.
+4. Em Graphics, comece com Original cinematic aspect e grave em Save settings.
+5. Em Performance, selecione 30 FPS e grave em Save settings.
+6. Em Game, Verify files prepara a copia de trabalho e verifica imports.
+   Passar nessa verificacao nao comprova compatibilidade do jogo inteiro.
+7. Clique Play. A primeira preparacao pode demorar. Acompanhe por
+   Advanced > View session log. F9 alterna o overlay de desempenho.
+8. Para sair, use Stop session e aguarde o runtime encerrar. Nao interrompa
+   uma operacao de save. Deixe Runtime executable vazio para usar o runtime
+   incluido no pacote. Nao use o runtime de outro jogo.
+
+DADOS E ATUALIZACOES
+
+Configuracao, saves, backups, caches e logs ficam em user\order1886 ao lado
+do launcher. Em Game, Back up saves now cria um backup. Para restaurar,
+selecione um backup e use Restore selected backup; o save atual e copiado
+antes de ser substituido. Alteracoes de saves ficam bloqueadas durante a
+sessao. Saves por checkpoint ainda precisam de validacao em gameplay.
+
+Ao atualizar, encerre tudo e guarde uma copia da pasta user inteira. Extraia
+o novo ZIP em outra pasta e copie a pasta user antiga para junto do novo EXE.
+O launcher nao altera os arquivos originais do jogo.
+
+LIMITACOES E SUPORTE
+
+A gravacao de 17 de outubro mostra boot e cinematicas 3D. Jogabilidade
+interativa, checkpoints, campanha completa e 4K/60 sustentados ainda nao
+foram verificados. O erro Vulkan layers=8029/2048 continua sem correcao neste
+pacote e pode encerrar a sessao. 60 FPS e 16:9 sao experimentais; o patch de
+60 FPS alerta para possiveis travamentos em QTEs dos capitulos 6 e 9.
+
+Se faltarem DLLs, extraia o ZIP inteiro novamente, mantendo bin e _internal.
+Se faltarem arquivos do jogo, confira o dump e o titulo CUSA00076. Para erros
+graficos, preserve os logs; apagar saves nao corrige o limite de camadas.
+
+Abra Advanced > Open log folder e envie last-run.json, o log correspondente,
+SHA256 do runtime, versao do jogo, GPU/driver, opcoes e passos para reproduzir.
+Remova caminhos pessoais dos logs. Nao envie jogo nem saves. Use o link
+Support acima para abrir um relato; o link Video mostra a demonstracao.
+
+Use Windows 10/11 de 64 bits e driver atual com suporte a Vulkan. Nao ha
+promessa de desempenho para qualquer configuracao. Consulte LICENSE e
+notices para licencas e creditos; imagens e marcas pertencem aos seus donos.
