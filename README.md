@@ -6,6 +6,7 @@
 <p align="center">
   <a href="README.pt-BR.md"><b>Português (Brasil)</b></a> ·
   <a href="README.es.md">Español</a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.1/order1886-windows.zip"><b>Download Windows ZIP</b></a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases">Releases</a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
 </p>
@@ -63,15 +64,20 @@ additional evidence, not a claim that all previous gates have passed.
 
 ## Download and start
 
-Check [Releases](https://github.com/JulioCacko/The-Order-1886_pc/releases) for
-published packages and [Actions](https://github.com/JulioCacko/The-Order-1886_pc/actions)
-for build artifacts. Availability follows the actual GitHub results; local
-checks do not establish a published or successful CI build.
+**[Download the Windows launcher ZIP](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.1/order1886-windows.zip)** ·
+[Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.1) ·
+[English/Portuguese setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.1/QUICKSTART.txt)
+
+The preview includes the launcher, dedicated runtime, required libraries and
+**`QUICKSTART.txt`**. No Python, MSYS2 or compiler is required. Download
+`order1886-windows.zip`; GitHub's “Source code” archives are for developers.
+The release also provides a ZIP checksum. Game files are supplied separately
+by you; this preview retains the [known compatibility limitations](#status).
 
 For a portable Windows package:
 
 1. Extract the entire ZIP to a writable folder. Keep the executable, `bin` and `_internal` together.
-2. Open **The Order 1886.exe**.
+2. Read **QUICKSTART.txt**, then open **The Order 1886.exe**.
 3. Choose your extracted **CUSA00076** folder. It must contain `eboot.bin`, `sce_sys`, `sce_module`, `_data` and `archivemap.bin`.
 4. Start with **30 FPS**, choose a display mode and press **Play**.
 5. Use **Advanced → View session log** for progress, or **Stop session** to end the session.
