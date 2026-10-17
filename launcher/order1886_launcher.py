@@ -205,7 +205,7 @@ class Launcher:
             "show_fps": bool(saved.get("show_fps", True)),
             "presentation_filter": saved.get("presentation_filter", "fsr1"),
             "frame_rate": saved.get("frame_rate", 30),
-            "aspect_ratio": saved.get("aspect_ratio", "16:9"),
+            "aspect_ratio": saved.get("aspect_ratio", "original"),
         }
         if self.values["display_mode"] not in ("windowed", "borderless", "fullscreen"):
             self.values["display_mode"] = "borderless"
@@ -214,7 +214,7 @@ class Launcher:
         if type(self.values["frame_rate"]) is not int or self.values["frame_rate"] not in (30, 60):
             self.values["frame_rate"] = 30
         if self.values["aspect_ratio"] not in ("original", "16:9"):
-            self.values["aspect_ratio"] = "16:9"
+            self.values["aspect_ratio"] = "original"
         root.title("The Order: 1886")
         root.configure(bg=BLACK)
         root.geometry("1160x760")

@@ -33,12 +33,14 @@
 
 namespace Serialization {
 /* You should increment versions below once corresponding serialization scheme is changed. */
-static constexpr u32 ShaderBinaryVersion = 13u; // uniform-guarded sampled-image permutations
+static constexpr u32 ShaderBinaryVersion = 14u; // GCN legacy/clamp math and user-data binding keys
 static constexpr u32 ShaderMetaVersion = 10u; // persisted uniform image guard recipes
 static constexpr u32 PipelineKeyVersion = 8u; // explicit inactive/active image specialization state
 } // namespace Serialization
 
 namespace Vulkan {
+
+extern std::atomic<u64> g_ps4_pipeline_driver_ns;
 
 namespace {
 // Shader extension selection changes emitted SPIR-V.
@@ -260,20 +262,22 @@ void ReportPipelineBinaryCache() {
                 binary_compile_ns.load() / 1e6 / std::max(u64{1}, binary_compile_calls.load()));
 }
 
-vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
-    vk::Device device, vk::PipelineCache cache, const vk::GraphicsPipelineCreateInfo& info,
-    const GraphicsPipelineKey& key, const vk::PipelineBinaryKeyKHR& global_key,
-    const std::filesystem::path& directory) {
+// Shared graphics/compute binary path adapted from theorder1886-port 6108e95.
+namespace {
+template <typename PipelineCreateInfo, typename KeyType, typename Creator>
+vk::ResultValue<vk::UniquePipeline> CreateCachedPipelineImpl(
+    vk::Device device, vk::PipelineCache cache, const PipelineCreateInfo& info,
+    const KeyType& key, const vk::PipelineBinaryKeyKHR& global_key,
+    const std::filesystem::path& directory, Creator&& creator) {
     using namespace PipelineBinaryCache;
     const auto& dispatch = VULKAN_HPP_DEFAULT_DISPATCHER;
     const bool enabled = global_key.keySize && EmulatorSettings.IsPipelineCacheEnabled();
     const auto create = [&](vk::PipelineCache used_cache, const auto& used_info, bool restored) {
         const auto started = std::chrono::steady_clock::now();
-        auto result = device.createGraphicsPipelineUnique(used_cache, used_info);
+        auto result = creator(used_cache, used_info);
         const auto ns = u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                 std::chrono::steady_clock::now() - started)
                                 .count());
-        extern std::atomic<u64> g_ps4_pipeline_driver_ns;
         g_ps4_pipeline_driver_ns += ns;
         if (enabled) {
             (restored ? binary_restore_ns : binary_compile_ns) += ns;
@@ -452,6 +456,28 @@ vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
         ++binary_errors;
     }
     return result;
+}
+
+} // namespace
+
+vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
+    vk::Device device, vk::PipelineCache cache, const vk::GraphicsPipelineCreateInfo& info,
+    const GraphicsPipelineKey& key, const vk::PipelineBinaryKeyKHR& global_key,
+    const std::filesystem::path& directory) {
+    return CreateCachedPipelineImpl(device, cache, info, key, global_key, directory,
+        [&](vk::PipelineCache c, const vk::GraphicsPipelineCreateInfo& i) {
+            return device.createGraphicsPipelineUnique(c, i);
+        });
+}
+
+vk::ResultValue<vk::UniquePipeline> CreateCachedComputePipeline(
+    vk::Device device, vk::PipelineCache cache, const vk::ComputePipelineCreateInfo& info,
+    const ComputePipelineKey& key, const vk::PipelineBinaryKeyKHR& global_key,
+    const std::filesystem::path& directory) {
+    return CreateCachedPipelineImpl(device, cache, info, key, global_key, directory,
+        [&](vk::PipelineCache c, const vk::ComputePipelineCreateInfo& i) {
+            return device.createComputePipelineUnique(c, i);
+        });
 }
 
 // ORDER1886_PARALLEL_WARMUP=1. The cache store is still read and the shader modules created in

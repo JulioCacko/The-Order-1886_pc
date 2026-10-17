@@ -307,6 +307,16 @@ static bool CheckPermutationMetadata() {
 
 static bool CheckSpecializationLayoutKeys() {
     Shader::Info info;
+    Shader::StageSpecialization empty;
+    empty.info = &info;
+    auto shifted = empty;
+    shifted.start.user_data = 2;
+    info.ud_mask.mask = 1;
+    if (!Check(!(empty == shifted) && !(shifted == empty),
+               "resource-free shader must keep its user-data push-constant offset")) return false;
+    info.ud_mask.mask = 0;
+    if (!Check(empty == shifted && shifted == empty,
+               "shader with no user-data reads may share resource-free permutations")) return false;
     Shader::StageSpecialization first;
     first.info = &info;
     first.images.emplace_back().num_bindings = 1;

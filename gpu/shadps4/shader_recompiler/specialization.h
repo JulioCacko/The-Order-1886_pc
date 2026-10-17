@@ -254,7 +254,10 @@ struct StageSpecialization {
         // handles this case and prevents generation of redundant permutations. This is also safe
         // for other types of shaders with no bindings.
         if (bitset.none() && other.bitset.none()) {
-            return true;
+            // Resource-free shaders can still read SGPRs from push constants. The Order's
+            // fullscreen clear must not reuse a variant with a different user-data offset.
+            // Adapted from theorder1886-port 91aa3ac (GPL-2.0-or-later).
+            return start.user_data == other.start.user_data || !info->ud_mask.mask;
         }
 
         if (start != other.start) {

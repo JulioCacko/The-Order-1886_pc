@@ -8,10 +8,19 @@
 #include <string>
 
 #include "video_core/renderer_vulkan/vk_amd_paths.h"
+#include "video_core/renderer_vulkan/vk_vertex_input_policy.h"
 
 using namespace Vulkan;
 
 int main() {
+    using Vulkan::UseVertexInputDynamicState;
+    assert(!UseVertexInputDynamicState(0x8086, nullptr));
+    assert(!UseVertexInputDynamicState(0x8086, ""));
+    assert(UseVertexInputDynamicState(0x10de, nullptr));
+    assert(UseVertexInputDynamicState(0x1002, nullptr));
+    assert(UseVertexInputDynamicState(0x8086, "1"));
+    assert(!UseVertexInputDynamicState(0x10de, "0"));
+    assert(!UseVertexInputDynamicState(0x1002, "0"));
 #ifdef _WIN32
     _set_error_mode(_OUT_TO_STDERR);
 #endif

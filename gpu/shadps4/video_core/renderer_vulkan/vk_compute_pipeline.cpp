@@ -3,9 +3,13 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "common/elf_info.h"
+#include "common/path_util.h"
+
 #include "shader_recompiler/info.h"
 #include "video_core/renderer_vulkan/vk_compute_pipeline.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
+#include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 
 namespace Vulkan {
@@ -106,8 +110,11 @@ ComputePipeline::ComputePipeline(const Instance& instance, Scheduler& scheduler,
         .stage = shader_ci,
         .layout = *pipeline_layout,
     };
+    const auto binary_directory = Common::FS::GetUserPath(Common::FS::PathType::CacheDir) /
+        Common::ElfInfo::Instance().GameSerial() / "pipeline-binaries";
     auto [pipeline_result, pipe] =
-        instance.GetDevice().createComputePipelineUnique(pipeline_cache, compute_pipeline_ci);
+        CreateCachedComputePipeline(device, pipeline_cache, compute_pipeline_ci, compute_key_,
+                                     instance.GetPipelineBinaryGlobalKey(), binary_directory);
     ASSERT_MSG(pipeline_result == vk::Result::eSuccess, "Failed to create compute pipeline: {}",
                vk::to_string(pipeline_result));
     pipeline = std::move(pipe);

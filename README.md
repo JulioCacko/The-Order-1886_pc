@@ -6,7 +6,7 @@
 <p align="center">
   <a href="README.pt-BR.md"><b>Português (Brasil)</b></a> ·
   <a href="README.es.md">Español</a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.2/order1886-windows.zip"><b>Download Windows ZIP</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.3/order1886-windows.zip"><b>Download Windows ZIP</b></a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases">Releases</a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
 </p>
@@ -66,9 +66,9 @@ additional evidence, not a claim that all previous gates have passed.
 
 ## Download and start
 
-**[Download the Windows launcher ZIP](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.2/order1886-windows.zip)** ·
-[Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.2) ·
-[English/Portuguese setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.2/QUICKSTART.txt)
+**[Download the Windows launcher ZIP](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.3/order1886-windows.zip)** ·
+[Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.3) ·
+[English/Portuguese setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.3/QUICKSTART.txt)
 
 The preview includes the launcher, dedicated runtime, required libraries and
 **`QUICKSTART.txt`**. No Python, MSYS2 or compiler is required. Download

@@ -36,6 +36,10 @@ vk::ResultValue<vk::UniquePipeline> CreateCachedGraphicsPipeline(
     const GraphicsPipelineKey& key, const vk::PipelineBinaryKeyKHR& global_key,
     const std::filesystem::path& directory);
 void ReportPipelineBinaryCache();
+vk::ResultValue<vk::UniquePipeline> CreateCachedComputePipeline(
+    vk::Device device, vk::PipelineCache cache, const vk::ComputePipelineCreateInfo& info,
+    const ComputePipelineKey& key, const vk::PipelineBinaryKeyKHR& global_key,
+    const std::filesystem::path& directory);
 
 void RegisterPipelineData(const ComputePipelineKey& key,
                           ComputePipeline::SerializationSupport& sdata);

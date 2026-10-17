@@ -29,7 +29,7 @@ MINGW*|MSYS*)
     fi
     cp out/gpu/order1886-runtime.exe out/gpu/ps4-gpu-capabilities.exe out/
     if [[ ${1:-} == --test ]]; then
-        ninja -C out/gpu runtime-keys-test event-flag-test memory-hooks-test services-test content-test order-render-baseline-test srt-descriptor-validation-test pad-test frame-trace-test perf-overlay-test
+    ninja -C out/gpu runtime-keys-test event-flag-test memory-hooks-test services-test content-test order-render-baseline-test srt-descriptor-validation-test pad-test frame-trace-test perf-overlay-test order-shader-math-test pipeline-binary-cache-test amd-paths-test
         out/gpu/runtime-keys-test.exe
         out/gpu/event-flag-test.exe
         out/gpu/memory-hooks-test.exe
@@ -40,6 +40,9 @@ MINGW*|MSYS*)
         out/gpu/pad-test.exe
         out/gpu/frame-trace-test.exe "out/frame-trace-test-$$.csv"
         out/gpu/perf-overlay-test.exe
+    out/gpu/order-shader-math-test.exe
+    out/gpu/pipeline-binary-cache-test.exe
+    out/gpu/amd-paths-test.exe
     fi
     python scripts/runtime_build_identity.py out/order1886-runtime.exe
     echo "Built $PWD/out/order1886-runtime.exe"
@@ -102,6 +105,10 @@ echo "Built $PWD/out/order1886-runtime"
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -Igpu/shadps4 tools/gpu_capabilities.c "${libraries[@]}" -o out/ps4-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
+    cmake --build out/gpu --target order-shader-math-test pipeline-binary-cache-test amd-paths-test
+    out/gpu/order-shader-math-test
+    out/gpu/pipeline-binary-cache-test
+    out/gpu/amd-paths-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_runtime.c "${runtime[@]}" out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/runtime-test

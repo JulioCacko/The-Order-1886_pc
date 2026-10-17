@@ -267,6 +267,19 @@ add_executable(pipeline-binary-cache-test EXCLUDE_FROM_ALL ../tests/test_pipelin
 target_compile_definitions(pipeline-binary-cache-test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_include_directories(pipeline-binary-cache-test PRIVATE shim shadps4 third_party/gcn/include)
 target_link_libraries(pipeline-binary-cache-test PRIVATE ps4gpu)
+
+add_executable(order-shader-math-test EXCLUDE_FROM_ALL
+    ../tests/test_order1886_shader_math.cpp ../tests/test_gpu_runtime_stubs.cpp)
+target_include_directories(order-shader-math-test PRIVATE shim shadps4 third_party/gcn/include)
+target_compile_definitions(order-shader-math-test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(order-shader-math-test PRIVATE ps4gpu)
+if(WIN32)
+    target_sources(order-shader-math-test PRIVATE ../src/compat_win.c)
+    target_compile_definitions(order-shader-math-test PRIVATE sigjmp_buf=ps4_jmp_buf)
+    target_compile_options(order-shader-math-test PRIVATE
+        -include ${CMAKE_CURRENT_SOURCE_DIR}/../src/compat_win.h)
+    target_link_libraries(order-shader-math-test PRIVATE onecore)
+endif()
 target_compile_options(pipeline-binary-cache-test PRIVATE -fPIC)
 if (WIN32)
     target_sources(pipeline-binary-cache-test PRIVATE ../src/compat_win.c)

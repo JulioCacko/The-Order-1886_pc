@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <chrono>
 #include <fstream>
+#include <set>
 #include <xxhash.h>
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
@@ -98,6 +99,54 @@ VKAPI_ATTR VkResult VKAPI_CALL CreatePipeline(VkDevice, VkPipelineCache cache, u
 }
 VKAPI_ATTR void VKAPI_CALL DestroyPipeline(VkDevice, VkPipeline, const VkAllocationCallbacks*) {}
 
+VKAPI_ATTR VkResult VKAPI_CALL CreateComputePipeline(
+    VkDevice device, VkPipelineCache cache, uint32_t count,
+    const VkComputePipelineCreateInfo* info, const VkAllocationCallbacks* allocator,
+    VkPipeline* pipeline) {
+    assert(info->sType == VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO);
+    VkGraphicsPipelineCreateInfo chain{};
+    chain.pNext = info->pNext;
+    return CreatePipeline(device, cache, count, &chain, allocator, pipeline);
+}
+
+void TestComputeDriverFallback(const std::filesystem::path& root) {
+    auto& dispatch = VULKAN_HPP_DEFAULT_DISPATCHER;
+    const auto original = dispatch;
+    dispatch.vkGetPipelineKeyKHR = GetKey;
+    dispatch.vkCreatePipelineBinariesKHR = CreateBinaries;
+    dispatch.vkDestroyPipelineBinaryKHR = DestroyBinary;
+    dispatch.vkGetPipelineBinaryDataKHR = GetData;
+    dispatch.vkReleaseCapturedPipelineDataKHR = ReleaseData;
+    dispatch.vkCreateComputePipelines = CreateComputePipeline;
+    dispatch.vkDestroyPipeline = DestroyPipeline;
+    compiled = restored = destroyed = released = 0;
+    reject_binary = reject_pipeline = fail_capture = fail_compile = false;
+    const vk::Device device{reinterpret_cast<VkDevice>(uintptr_t{1})};
+    const vk::PipelineCache cache{reinterpret_cast<VkPipelineCache>(uintptr_t{2})};
+    const vk::ComputePipelineCreateInfo info{};
+    const Vulkan::ComputePipelineKey key{};
+    const vk::PipelineBinaryKeyKHR global{.keySize = 2, .key = std::array<u8, 32>{1, 2}};
+    const auto create = [&](const vk::PipelineBinaryKeyKHR& driver_key) {
+        auto result = Vulkan::CreateCachedComputePipeline(device, cache, info, key, driver_key, root);
+        assert(result.result == vk::Result::eSuccess && result.value);
+    };
+    create(global);
+    assert(compiled == 1 && restored == 0 && destroyed == 2 && released == 1);
+    create(global);
+    assert(compiled == 1 && restored == 1 && destroyed == 4 && released == 1);
+    reject_binary = true;
+    create(global);
+    assert(compiled == 2 && restored == 1 && destroyed == 7 && released == 2);
+    reject_binary = false;
+    reject_pipeline = true;
+    create(global);
+    assert(compiled == 3 && restored == 2 && destroyed == 11 && released == 3);
+    reject_pipeline = false;
+    create({});
+    assert(compiled == 4 && released == 3);
+    dispatch = original;
+}
+
 void TestDriverFallback(const std::filesystem::path& root) {
     auto& dispatch = VULKAN_HPP_DEFAULT_DISPATCHER;
     const auto original = dispatch;
@@ -181,6 +230,24 @@ void TestDriverFallback(const std::filesystem::path& root) {
     dispatch = original;
 }
 
+template <typename CreateInfo>
+std::string DriverBinaryName(vk::Device device, const CreateInfo& info) {
+    vk::PipelineCreateFlags2CreateInfoKHR flags{
+        .pNext = info.pNext,
+        .flags = vk::PipelineCreateFlags2{static_cast<VkPipelineCreateFlags>(info.flags)} |
+                 vk::PipelineCreateFlagBits2::eCaptureDataKHR,
+    };
+    auto captured = info;
+    captured.pNext = &flags;
+    vk::PipelineCreateInfoKHR query{.pNext = &captured};
+    vk::PipelineBinaryKeyKHR key;
+    assert(device.getPipelineKeyKHR(&query, &key) == vk::Result::eSuccess);
+    assert(key.keySize > 0 && key.keySize <= key.key.size());
+    std::string name;
+    for (u32 i = 0; i < key.keySize; ++i) name += fmt::format("{:02x}", key.key[i]);
+    return name + ".bin";
+}
+
 void TestRealDriver(const std::filesystem::path& directory) {
     Vulkan::Instance instance(0, false);
     static vk::detail::DynamicLoader loader;
@@ -246,9 +313,11 @@ void TestRealDriver(const std::filesystem::path& directory) {
                                               .pMultisampleState = &samples,
                                               .layout = *layout.value};
     const Vulkan::GraphicsPipelineKey key;
+    std::set<std::string> expected_files;
     for (int variant = 0; variant < 2; ++variant) {
         assembly.topology =
             variant ? vk::PrimitiveTopology::eLineList : vk::PrimitiveTopology::eTriangleList;
+        expected_files.insert(DriverBinaryName(device, info));
         for (int run = 0; run < 2; ++run) {
             const auto started = std::chrono::steady_clock::now();
             auto pipeline =
@@ -264,12 +333,43 @@ void TestRealDriver(const std::filesystem::path& directory) {
     for (const auto& entry : std::filesystem::directory_iterator(directory)) {
         files += entry.path().extension() == ".bin";
     }
-    assert(files == 2);
+    // Rasterizer discard can make topology irrelevant to a driver. The driver key,
+    // rather than the number of emulator variants, determines the stored binaries.
+    assert(files == expected_files.size());
+    for (const auto& name : expected_files) assert(std::filesystem::is_regular_file(directory / name));
+
+    // Minimal SPIR-V compute shader: layout(local_size_x=1) in; void main() {}.
+    const u32 compute_code[]{
+        0x07230203, 0x00010000, 0, 6, 0,
+        0x00020011, 1, 0x0003000e, 0, 1,
+        0x0005000f, 5, 4, 0x6e69616d, 0,
+        0x00060010, 4, 17, 1, 1, 1,
+        0x00020013, 1, 0x00030021, 2, 1,
+        0x00050036, 1, 4, 0, 2, 0x000200f8, 5, 0x000100fd, 0x00010038,
+    };
+    auto compute_shader = device.createShaderModuleUnique(
+        {.codeSize = sizeof(compute_code), .pCode = compute_code});
+    assert(compute_shader.result == vk::Result::eSuccess);
+    const vk::ComputePipelineCreateInfo compute_info{
+        .stage = {.stage = vk::ShaderStageFlagBits::eCompute,
+                  .module = *compute_shader.value, .pName = "main"},
+        .layout = *layout.value,
+    };
+    const auto compute_directory = directory / "compute";
+    const auto compute_file = compute_directory / DriverBinaryName(device, compute_info);
+    for (int run = 0; run < 2; ++run) {
+        auto pipeline = Vulkan::CreateCachedComputePipeline(
+            device, {}, compute_info, Vulkan::ComputePipelineKey{}, global, compute_directory);
+        assert(pipeline.result == vk::Result::eSuccess && pipeline.value);
+        assert(std::filesystem::is_regular_file(compute_file));
+    }
+    std::puts("Real driver: graphics and compute binary cache passed");
     Vulkan::ReportPipelineBinaryCache();
 }
 } // namespace
 
 int main(int argc, char** argv) {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
 #ifdef _WIN32
     _set_error_mode(_OUT_TO_STDERR);
 #endif
@@ -335,6 +435,7 @@ int main(int argc, char** argv) {
     }
     assert(!Load(file, global, pipeline, 42));
     TestDriverFallback(root / "driver");
+    TestComputeDriverFallback(root / "compute");
     std::filesystem::remove_all(root);
     std::puts("pipeline-binary-cache-test: passed");
 }

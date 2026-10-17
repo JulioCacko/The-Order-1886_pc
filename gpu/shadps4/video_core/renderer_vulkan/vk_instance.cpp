@@ -17,6 +17,7 @@
 #include "video_core/renderer_vulkan/vk_amd_paths.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_platform.h"
+#include "video_core/renderer_vulkan/vk_vertex_input_policy.h"
 
 #include <vk_mem_alloc.h>
 
@@ -353,7 +354,14 @@ bool Instance::CreateDevice() {
     custom_border_color = add_extension(VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME);
     depth_clip_control = add_extension(VK_EXT_DEPTH_CLIP_CONTROL_EXTENSION_NAME);
     depth_clip_enable = add_extension(VK_EXT_DEPTH_CLIP_ENABLE_EXTENSION_NAME);
-    vertex_input_dynamic_state = add_extension(VK_EXT_VERTEX_INPUT_DYNAMIC_STATE_EXTENSION_NAME);
+    const bool dynamic_vertex_input = UseVertexInputDynamicState(
+        properties.vendorID, std::getenv("ORDER1886_VERTEX_INPUT_DYNAMIC_STATE"));
+    vertex_input_dynamic_state = dynamic_vertex_input &&
+        add_extension(VK_EXT_VERTEX_INPUT_DYNAMIC_STATE_EXTENSION_NAME);
+    if (!dynamic_vertex_input) {
+        std::printf("GPU: static vertex input selected for vendor 0x%04x "
+                    "(ORDER1886_VERTEX_INPUT_DYNAMIC_STATE=1 overrides)\n", properties.vendorID);
+    }
     list_restart = add_extension(VK_EXT_PRIMITIVE_TOPOLOGY_LIST_RESTART_EXTENSION_NAME);
     if (list_restart) {
         list_restart_features =

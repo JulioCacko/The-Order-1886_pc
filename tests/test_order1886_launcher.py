@@ -82,7 +82,7 @@ class LauncherTests(unittest.TestCase):
                     self.assertIs(app.values['show_fps'], expected)
                     self.assertEqual(app.values['presentation_filter'], filter_expected)
                     self.assertEqual(app.values['frame_rate'], initial_rate)
-                    self.assertEqual(app.values['aspect_ratio'], '16:9')
+                    self.assertEqual(app.values['aspect_ratio'], saved.get('aspect_ratio', 'original'))
                     app.settings()
                     pending, labels, widgets = [app.settings_frame], [], []
                     while pending:

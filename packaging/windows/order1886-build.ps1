@@ -119,7 +119,7 @@ try {
     }
     $versionFile = Join-Path $stage 'version-info.txt'
     @'
-VSVersionInfo(ffi=FixedFileInfo(filevers=(0,1,0,0), prodvers=(0,1,0,0), mask=0x3f, flags=0, OS=0x40004, fileType=1, subtype=0, date=(0,0)), kids=[StringFileInfo([StringTable('040904B0', [StringStruct('CompanyName','The Order 1886 PC compatibility project'), StringStruct('FileDescription','The Order: 1886 Launcher'), StringStruct('FileVersion','0.1.0'), StringStruct('InternalName','Order1886Launcher'), StringStruct('OriginalFilename','The Order 1886.exe'), StringStruct('ProductName','The Order: 1886'), StringStruct('ProductVersion','0.1.0 - experimental'), StringStruct('LegalCopyright','Community compatibility software. See LICENSE and notices.')])]), VarFileInfo([VarStruct('Translation',[1033,1200])])])
+VSVersionInfo(ffi=FixedFileInfo(filevers=(0,1,2,0), prodvers=(0,1,2,0), mask=0x3f, flags=0, OS=0x40004, fileType=1, subtype=0, date=(0,0)), kids=[StringFileInfo([StringTable('040904B0', [StringStruct('CompanyName','The Order 1886 PC compatibility project'), StringStruct('FileDescription','The Order: 1886 Launcher'), StringStruct('FileVersion','0.1.2'), StringStruct('InternalName','Order1886Launcher'), StringStruct('OriginalFilename','The Order 1886.exe'), StringStruct('ProductName','The Order: 1886'), StringStruct('ProductVersion','0.1.2 - experimental'), StringStruct('LegalCopyright','Community compatibility software. See LICENSE and notices.')])]), VarFileInfo([VarStruct('Translation',[1033,1200])])])
 '@ | Set-Content -LiteralPath $versionFile -Encoding UTF8
     & $buildPython -m PyInstaller --noconfirm --clean --windowed --log-level WARN `
         --name 'The Order 1886' --icon "$artwork/order1886.ico" `
@@ -166,7 +166,7 @@ VSVersionInfo(ffi=FixedFileInfo(filevers=(0,1,0,0), prodvers=(0,1,0,0), mask=0x3
         [ordered]@{ path=$_.FullName.Substring($packageRoot.Length + 1).Replace('\','/'); bytes=$_.Length;
                     sha256=(Get-SHA256 $_.FullName) }
     })
-    [ordered]@{ product='The Order: 1886'; package_version='0.1.0'; built_utc=(Get-Date).ToUniversalTime().ToString('o');
+    [ordered]@{ product='The Order: 1886'; package_version='0.1.2'; built_utc=(Get-Date).ToUniversalTime().ToString('o');
                 runtime_sha256=$runtimeHash; runtime_build=$runtimeIdentity; python_sources=$pythonSources; files=$files } |
         ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $packageRoot 'package-manifest.json') -Encoding UTF8
     $archive = Join-Path $destination 'order1886-windows.zip'
