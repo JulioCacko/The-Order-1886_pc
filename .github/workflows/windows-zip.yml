@@ -80,6 +80,11 @@ jobs:
       - name: Run Order backend and launcher Python regressions
         shell: pwsh
         run: |
+          $clangBin = $env:ORDER_RUNTIME_DLL_ROOT
+          $env:PATH = "$clangBin;$env:PATH"
+          $env:CXX = Join-Path $clangBin 'clang++.exe'
+          $env:CC = Join-Path $clangBin 'clang.exe'
+          $env:MSYS2_ROOT = Split-Path (Split-Path $clangBin)
           & ./out/order1886-pyenv/Scripts/python.exe -m unittest discover -s tests -p 'test_order1886*.py' -v 2>&1 |
             Tee-Object -FilePath out/order1886-python-tests.log
           if ($LASTEXITCODE) { throw 'Order Python regression checks failed.' }
