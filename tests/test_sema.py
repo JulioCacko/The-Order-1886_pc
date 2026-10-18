@@ -1,14 +1,14 @@
-from paths import ROOT
-from pathlib import Path
+from paths import native_binary, native_environment
 import subprocess
 import unittest
 
-EXE=ROOT/'out/sema-test'
+EXE=native_binary('sema-test')
 
 @unittest.skipUnless(EXE.exists(),'run bash build.sh --test first')
 class SemaphoreTests(unittest.TestCase):
     def run_case(self,*args):
-        return subprocess.run([str(EXE.resolve()),*args],capture_output=True,text=True,timeout=10)
+        return subprocess.run([str(EXE.resolve()),*args],capture_output=True,text=True,timeout=10,
+                              env=native_environment())
 
     def test_counts_errors_timeout_and_stale_ids(self):
         r=self.run_case()

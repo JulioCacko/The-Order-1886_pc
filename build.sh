@@ -29,7 +29,9 @@ MINGW*|MSYS*)
     fi
     cp out/gpu/order1886-runtime.exe out/gpu/ps4-gpu-capabilities.exe out/
     if [[ ${1:-} == --test ]]; then
-    ninja -C out/gpu runtime-keys-test event-flag-test memory-hooks-test services-test content-test order-render-baseline-test srt-descriptor-validation-test pad-test pad-map-test frame-trace-test perf-overlay-test order-shader-math-test pipeline-binary-cache-test amd-paths-test mouse-look-test
+    ninja -C out/gpu runtime-test sema-test runtime-keys-test event-flag-test memory-hooks-test services-test content-test order-render-baseline-test srt-descriptor-validation-test pad-test pad-map-test frame-trace-test perf-overlay-test order-shader-math-test pipeline-binary-cache-test amd-paths-test mouse-look-test
+        out/gpu/runtime-test.exe
+        out/gpu/sema-test.exe
         out/gpu/runtime-keys-test.exe
         out/gpu/event-flag-test.exe
         out/gpu/memory-hooks-test.exe

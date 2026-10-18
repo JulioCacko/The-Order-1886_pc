@@ -1,4 +1,4 @@
-/* Linux pthread-backed opaque PS4 mutex handles. No guest threads yet. */
+/* Host pthread-backed opaque PS4 mutex and condition-variable handles. */
 #define _GNU_SOURCE
 #include "runtime.h"
 #include <stdio.h>
@@ -8,7 +8,7 @@
 #include <errno.h>
 #include <time.h>
 typedef struct { int type; } GuestAttr;
-typedef struct { pthread_mutex_t native; } GuestMutex;
+typedef struct { pthread_mutex_t native; unsigned users; } GuestMutex;
 static size_t created, locks, unlocks;
 static int32_t orbis_error(int e) {
     if (!e) return 0;
@@ -48,7 +48,7 @@ static ABI int32_t mutex_init(GuestMutex **out, GuestAttr **attr, const char *na
     if (!out || (attr && !*attr)) return orbis_error(EINVAL);
     int type = attr ? (*attr)->type : 1;
     if (type < 1 || type > 4) return orbis_error(EINVAL);
-    GuestMutex *mutex = malloc(sizeof(*mutex));
+    GuestMutex *mutex = calloc(1,sizeof(*mutex));
     if (!mutex) return orbis_error(ENOMEM);
     pthread_mutexattr_t native_attr;
     int e = pthread_mutexattr_init(&native_attr);
@@ -80,27 +80,40 @@ static int32_t ensure_mutex(GuestMutex **mutex) {
 static ABI int32_t mutex_lock(GuestMutex **mutex) {
     int32_t e = ensure_mutex(mutex);
     if (e) return e;
-    e = orbis_error(pthread_mutex_lock(&(*mutex)->native));
+    GuestMutex *value=*mutex;
+    __atomic_add_fetch(&value->users,1,__ATOMIC_ACQ_REL);
+    e = orbis_error(pthread_mutex_lock(&value->native));
+    if (e) __atomic_sub_fetch(&value->users,1,__ATOMIC_RELEASE);
     if (!e) ++locks;
     return e;
 }
 static ABI int32_t mutex_trylock(GuestMutex **mutex) {
     int32_t e = ensure_mutex(mutex);
     if (e) return e;
-    e = orbis_error(pthread_mutex_trylock(&(*mutex)->native));
+    GuestMutex *value=*mutex;
+    __atomic_add_fetch(&value->users,1,__ATOMIC_ACQ_REL);
+    e = orbis_error(pthread_mutex_trylock(&value->native));
+    if (e) __atomic_sub_fetch(&value->users,1,__ATOMIC_RELEASE);
     if (!e) ++locks;
     return e;
 }
 static ABI int32_t mutex_unlock(GuestMutex **mutex) {
     if (!mutex || (uintptr_t)*mutex == 2) return orbis_error(EINVAL);
     if ((uintptr_t)*mutex < 2) return orbis_error(EPERM);
-    int32_t e = orbis_error(pthread_mutex_unlock(&(*mutex)->native));
-    if (!e) ++unlocks;
+    GuestMutex *value=*mutex;
+    if (!__atomic_load_n(&value->users,__ATOMIC_ACQUIRE)) return orbis_error(EPERM);
+    int32_t e = orbis_error(pthread_mutex_unlock(&value->native));
+    if (!e) {
+        __atomic_sub_fetch(&value->users,1,__ATOMIC_RELEASE);
+        ++unlocks;
+    }
     return e;
 }
 static ABI int32_t mutex_destroy(GuestMutex **mutex) {
     if (!mutex || (uintptr_t)*mutex == 2) return orbis_error(EINVAL);
     if ((uintptr_t)*mutex < 2) return 0;
+    /* Winpthreads permits destroying locked mutexes; retain owners and waiters. */
+    if (__atomic_load_n(&(*mutex)->users,__ATOMIC_ACQUIRE)) return orbis_error(EBUSY);
     int e = pthread_mutex_destroy(&(*mutex)->native);
     if (!e) { free(*mutex); *mutex = (GuestMutex *)(uintptr_t)2; }
     return orbis_error(e);
@@ -118,7 +131,10 @@ static ABI int32_t mutex_timedlock(GuestMutex **mutex, uint32_t usec) {
     if (e) return e;
     struct timespec end;
     if (deadline_after(&end, usec)) return orbis_error(EINVAL);
-    e = timed_error(pthread_mutex_timedlock(&(*mutex)->native, &end));
+    GuestMutex *value=*mutex;
+    __atomic_add_fetch(&value->users,1,__ATOMIC_ACQ_REL);
+    e = timed_error(pthread_mutex_timedlock(&value->native, &end));
+    if (e) __atomic_sub_fetch(&value->users,1,__ATOMIC_RELEASE);
     if (!e) ++locks;
     return e;
 }

@@ -195,6 +195,15 @@ if (WIN32)
     # The PS4 range (64 GiB - 1 TiB) must stay free: no high-entropy ASLR for heaps and stacks.
     # The guest main thread runs on the process stack: 16 MiB, committed (no stack probes).
     target_link_options(order1886-runtime PRIVATE -Wl,--disable-high-entropy-va "SHELL:-Xlinker --stack -Xlinker 16777216,16777216")
+    foreach(test runtime sema)
+        add_executable(${test}-test EXCLUDE_FROM_ALL ../tests/test_${test}.c ${PS4_RUNTIME} ../src/compat_win.c)
+        set_target_properties(${test}-test PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
+        target_compile_options(${test}-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+        target_compile_definitions(${test}-test PRIVATE ORDER1886_RUNTIME=1)
+        target_include_directories(${test}-test PRIVATE .. ../src)
+        target_link_libraries(${test}-test PRIVATE ps4gpu atrac9 onecore bcrypt ws2_32 -pthread)
+        target_link_options(${test}-test PRIVATE -Wl,--disable-high-entropy-va "SHELL:-Xlinker --stack -Xlinker 16777216,16777216")
+    endforeach()
     # Port: runtime unit tests (ninja -C out/gpu mp3-test videodec-test services-test).
     add_executable(mp3-test EXCLUDE_FROM_ALL ../tests/test_mp3.c ../src/runtime_mp3.c ../src/compat_win.c)
     add_executable(videodec-test EXCLUDE_FROM_ALL ../tests/test_videodec.c ../src/compat_win.c)
