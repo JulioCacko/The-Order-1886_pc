@@ -132,6 +132,58 @@ class OrderBackendTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '30 or 60'):
             order1886.write_runtime_config(self.user, {'frame_rate': 120})
 
+    def test_launcher_language_codes_use_orbis_system_language_ids(self):
+        self.assertEqual(order1886.SYSTEM_LANGUAGES,
+                         {'en': 1, 'ru': 8, 'ar': 21, 'es': 3, 'pt': 17, 'fr': 2,
+                          'de': 4, 'it': 5, 'pl': 16, 'tr': 19, 'zh': 11, 'ja': 0, 'ko': 9})
+
+    def test_system_language_is_explicit_and_does_not_inherit_stale_tuning(self):
+        inherited = {'ORDER1886_LANGUAGE': '8', 'PATH': ''}
+        runtime = self.base / 'runtime.exe'
+        self.assertEqual(order1886.runtime_environment(runtime, self.user, inherited=inherited)
+                         ['ORDER1886_LANGUAGE'], '1')
+        for language in range(30):
+            with self.subTest(language=language):
+                env = order1886.runtime_environment(runtime, self.user,
+                                                   {'system_language': language}, inherited)
+                self.assertEqual(env['ORDER1886_LANGUAGE'], str(language))
+        self.assertEqual(inherited['ORDER1886_LANGUAGE'], '8')
+        for language in (-1, 30, True, 8.0, '8', None):
+            with self.subTest(language=language), self.assertRaisesRegex(ValueError, 'language'):
+                order1886.runtime_environment(runtime, self.user, {'system_language': language})
+
+    def test_system_language_cli_rejects_invalid_ids_before_preparation(self):
+        for language in ('-1', '30', '8oops'):
+            with self.subTest(language=language), patch.object(order1886, 'prepare_game') as prepare, \
+                    self.assertRaises(SystemExit) as stopped:
+                order1886.main(['--system-language', language])
+            self.assertEqual(stopped.exception.code, 2)
+            prepare.assert_not_called()
+
+    def test_system_language_cli_reaches_runtime_and_diagnostics(self):
+        runtime = self.base / 'runtime.exe'
+        runtime.write_bytes(b'identified fixture')
+
+        def finish(command, env, log, *args):
+            Path(log).write_text('CPU-only fixture\n')
+            self.assertEqual(env['ORDER1886_LANGUAGE'], str(expected))
+            return {'exit_code': 0, 'runtime_exit_code': 0, 'timed_out': False,
+                    'stop_requested': False, 'forced_stop': False, 'elapsed_seconds': 0}
+
+        for choice, expected in ((None, 1), (8, 8), (0, 0), (17, 17)):
+            with self.subTest(choice=choice), \
+                    patch.object(order1886, 'find_runtime', return_value=runtime), \
+                    patch.object(order1886, 'prepare_game', return_value={'image_sha256': 'fixture'}), \
+                    patch.object(order1886.save_backup, 'backup'), \
+                    patch.object(order1886, 'run_process', side_effect=finish):
+                args = ['--game-dir', str(self.game), '--state-dir', str(self.user)]
+                if choice is not None:
+                    args += ['--system-language', str(choice)]
+                self.assertEqual(order1886.main(args), 0)
+                report = json.loads((self.user / 'logs/last-run.json').read_text())
+                self.assertEqual(report['settings']['system_language'], expected)
+                self.assertEqual(report['runtime_environment']['ORDER1886_LANGUAGE'], str(expected))
+
     def test_frame_rate_cli_requires_a_verified_matching_60_receipt(self):
         good = {**order1886.timing.recipe(60), 'recipe_sha256': order1886.timing.recipe_sha256(60),
                 'applied': True, 'source_verified': True}
@@ -313,14 +365,15 @@ class OrderBackendTests(unittest.TestCase):
         released_log.unlink()
 
     def test_default_runtime_stays_inside_selected_installation(self):
+        runtime_name = 'order1886-runtime.exe' if os.name == 'nt' else 'order1886-runtime'
         install = self.base / 'portable package'
         source = self.base / 'source'
-        reference = self.base / 'foreign runtime' / 'unrelated-build' / 'bin' / 'order1886-runtime.exe'
+        reference = self.base / 'foreign runtime' / 'unrelated-build' / 'bin' / runtime_name
         reference.parent.mkdir(parents=True)
         reference.write_bytes(b'reference')
         with patch.object(order1886, 'INSTALL_ROOT', install), patch.object(order1886, 'ROOT', source):
             self.assertIsNone(order1886.find_runtime())
-            packaged = install / 'bin' / 'order1886-runtime.exe'
+            packaged = install / 'bin' / runtime_name
             packaged.parent.mkdir(parents=True)
             packaged.write_bytes(b'packaged')
             order1886.write_json(packaged.with_name('runtime-build.json'), {

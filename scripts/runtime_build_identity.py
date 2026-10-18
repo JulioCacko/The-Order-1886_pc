@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -41,8 +42,10 @@ def main():
         'source_dirty': bool(command('git', 'status', '--porcelain', '--untracked-files=normal')),
         'source_files_sha256': sources.hexdigest(),
         'submodules': command('git', 'submodule', 'status', '--recursive').splitlines(),
-        'compiler': command('clang', '--version').splitlines()[0],
-        'build_command': ['C:/msys64/usr/bin/bash.exe', 'build.sh'],
+        'compiler': command('clang' if sys.platform == 'win32' else os.environ.get('CC', 'cc'),
+                            '--version').splitlines()[0],
+        'build_command': ['C:/msys64/usr/bin/bash.exe' if sys.platform == 'win32' else 'bash',
+                          'build.sh'],
         'built_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
     }
     output = runtime.with_name('runtime-build.json')

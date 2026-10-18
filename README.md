@@ -6,7 +6,7 @@
 <p align="center">
   <a href="README.pt-BR.md"><b>Português (Brasil)</b></a> ·
   <a href="README.es.md">Español</a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.3/order1886-windows.zip"><b>Download Windows ZIP</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/order1886-windows.zip"><b>Download Windows ZIP</b></a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases">Releases</a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
 </p>
@@ -22,7 +22,7 @@
 compatibility runtime. The original x86-64 executable runs on the host CPU,
 PS4 system interfaces are reimplemented, and a
 [shadPS4-derived video core](https://github.com/shadps4-emu/shadPS4) translates
-GPU commands and shaders to Vulkan. The current target is **CUSA00076 on Windows**.
+GPU commands and shaders to Vulkan. The current target is **CUSA00076 on Windows**, with an experimental Linux x86-64 package.
 
 > **No game files are included.** You need your own extracted copy. This is an
 > unofficial community project, not an official PC release.
@@ -39,13 +39,13 @@ GPU commands and shaders to Vulkan. The current target is **CUSA00076 on Windows
 
 ## What's new
 
-**Development on `main` — 18 October 2026.** The public preview.3 download predates these changes.
+**Preview.4 — 18 October 2026.** Windows and experimental Linux packages include these changes.
 
 - **Input and direct play:** configurable mouse-to-stick camera input, sensitivity and inverted Y; **Play The Order 1886.exe** uses saved settings and the shared session/log lifecycle. Game includes desktop-shortcut and Add to Steam actions.
 - **Saves and asset mods:** original-preserving `_data` overlays with explicit enable/order/conflict controls; save backup/restore now keeps the newest backup even when many are created in the same second. External executable patches remain unsupported.
-- **Launcher utilities:** 13 selectable UI languages with English fallback and safe shader-cache clearing. Arabic/CJK visual acceptance is still pending; game text and voice selection are separate work.
+- **Launcher utilities:** 13 selectable UI languages with English fallback and safe shader-cache clearing. The selection also requests the same PS4 game language at next launch; matching assets are required. Arabic/CJK visual acceptance and independent text/voice selection remain open.
 - **Shader and runtime fixes:** unordered NaN comparisons, legacy reciprocal square root, exclusive float atomic fallbacks, byte-preserving pipeline keys, mapped-range probe caching and busy-mutex lifetime protection. Preparation also accepts validated unpacked x86-64 ELF dumps.
-- **Verification:** **321 Python tests, zero skips; 41 native checks; three SPIR-V modules validated for Vulkan 1.3; RTX 3070 graphics/compute cache smoke; all 15 relocated portable checks.** [Donor integration receipt](docs/verification/2026-10-18-donor-060.md).
+- **Verification:** **340 Windows Python tests, zero skips; Linux suite: 340 run, 21 skips; Windows 41 native checks and Linux native subset pass; Windows 15 and Linux 10 relocated package checks.** [Release verification](docs/verification/2026-10-18-preview4-release.md).
 
 See [implementation and issue status](docs/order1886-issue-status.md). These checks do not certify gameplay or frame rate.
 
@@ -67,17 +67,19 @@ See [current status](docs/STATUS.md), [issue tracking](docs/order1886-issue-stat
 
 ## Download and start
 
-**Published download: preview.3 (October 17).** The October 18 fixes and screenshots describe current source on `main`; they do not imply a new release asset was published. Build from source for those changes.
+**Published download: preview.4 (October 18).** Windows and experimental Linux x86-64 packages are available. Preserve your `user` folder when upgrading.
 
-**[Download the Windows launcher ZIP](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.3/order1886-windows.zip)** ·
-[Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.3) ·
-[English/Portuguese setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.3/QUICKSTART.txt)
+**[Download the Windows launcher ZIP](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/order1886-windows.zip)** ·
+[Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.4) ·
+[English/Portuguese setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/QUICKSTART.txt)
 
 The preview includes the launcher, dedicated runtime, required libraries and
 **`QUICKSTART.txt`**. No Python, MSYS2 or compiler is required. Download
 `order1886-windows.zip`; GitHub's “Source code” archives are for developers.
 The release also provides a ZIP checksum. Game files are supplied separately
 by you; this preview retains the [known compatibility limitations](#status).
+
+**[Download experimental Linux x86-64](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/order1886-linux-x86_64.tar.gz)** · [Linux setup guide](packaging/linux/README.md). Requires Ubuntu 26.04 / glibc 2.43+, X11/XWayland and a Vulkan-capable driver. Older distributions and SteamOS are unqualified; Linux gameplay/GPU acceptance remains pending.
 
 For a portable Windows package:
 
@@ -122,6 +124,10 @@ python launcher/order1886_launcher.py
 </details>
 
 Use **Save settings** after editing; launching from a settings page saves its values. Navigation keeps unsaved edits, and **Escape** returns Home. The launch bar stays available on every page.
+
+**Saves:** on Game, select a backup and press Play to confirm restoration before launch, or use Restore selected backup. Current saves are backed up first; then choose Continue/Load in the game. Older snapshots may lack Profile or progress. Saves use the SFO’s `INSTALL_DIR_SAVEDATA=CUSA00035`; do not rename that folder to CUSA00076.
+
+**Language:** save the choice on Advanced and restart the launcher. The next game launch requests that PS4 system language, including Brazilian Portuguese. Matching game language assets must be installed; independent text/voice controls remain open.
 
 For mouse look, open **Game → Controls**: sensitivity and inverted Y persist. In the game window **Esc** releases the cursor and **F6** toggles capture; focus loss releases it automatically. This supplies the PS4 right stick; a direct 1:1 camera hook and remapping UI remain open. See the [input/direct-play guide](docs/order1886-input.md).
 

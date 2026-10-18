@@ -72,7 +72,13 @@ static ABI int32_t user_event(int32_t *event) {
 }
 
 /* ---- SystemService ---- */
-static int language(void) { const char *v=getenv("ORDER1886_LANGUAGE"); return v ? atoi(v) : 1; }
+static int language(void) {
+    const char *v=getenv("ORDER1886_LANGUAGE");
+    if (!v || *v<'0' || *v>'9') return 1;
+    char *end;
+    long value=strtol(v,&end,10);
+    return !*end && value>=0 && value<=29 ? (int)value : 1;
+}
 static ABI int32_t system_param(int32_t id,int32_t *value) {
     if (!value) return SYSTEM_PARAMETER;
     switch (id) {
