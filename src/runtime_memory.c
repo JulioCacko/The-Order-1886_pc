@@ -772,6 +772,9 @@ int runtime_memory_write_backing(uintptr_t address, const void *data, uint64_t s
 typedef struct { uint64_t generation; uintptr_t start, end; int kind; } CachedRegion;
 static __thread CachedRegion region_cache[8];
 static __thread unsigned region_cache_next;
+/* Image-base probes revisit more regions than the small interval cache holds. */
+typedef struct { uint64_t generation; uintptr_t address; unsigned result; } CachedPoint;
+static __thread CachedPoint point_cache[128]; /* result: 0 empty, 1 unmapped, 2 mapped */
 static const CachedRegion *cached_region(uintptr_t address) {
     uint64_t generation=__atomic_load_n(&table_generation,__ATOMIC_ACQUIRE);
     if (generation & 1) return NULL;
@@ -789,17 +792,33 @@ static void cache_region(size_t i) {
 }
 /* Mapped length from address, up to size, across adjacent mappings. */
 uint64_t runtime_memory_clamp(uintptr_t address, uint64_t size) {
+    CachedPoint *point=NULL;
+    if (size==1 && !(runtime_disabled_optimizations & 1)) {
+        point=&point_cache[((uint64_t)(address>>8)*UINT64_C(0x9e3779b97f4a7c15))>>57];
+        uint64_t generation=__atomic_load_n(&table_generation,__ATOMIC_ACQUIRE);
+        if (!(generation & 1) && point->result && point->generation==generation && point->address==address)
+            return point->result-1;
+    }
     const CachedRegion *c=(runtime_disabled_optimizations & 1) ? NULL : cached_region(address);
-    if (c && c->kind!=KIND_RESERVED && size<=c->end-address) return size;
+    if (c && c->kind!=KIND_RESERVED && size<=c->end-address) {
+        if (point) *point=(CachedPoint){c->generation,address,2};
+        return size;
+    }
     read_lock();
-    { size_t i=vma_index(address); if (i<vma_count && vmas[i].start<=address) cache_region(i); }
+    size_t i=vma_index(address);
+    if (i<vma_count && vmas[i].start<=address) cache_region(i);
     uint64_t length=0;
-    for (size_t i=vma_index(address); i<vma_count && length<size; ++i) {
+    for (; i<vma_count && length<size; ++i) {
         if (vmas[i].start>address+length || vmas[i].kind==KIND_RESERVED) break;
         length=vmas[i].end-address;
     }
+    uint64_t result=length<size ? length : size;
+    if (point) {
+        uint64_t generation=__atomic_load_n(&table_generation,__ATOMIC_ACQUIRE);
+        if (!(generation & 1)) *point=(CachedPoint){generation,address,(unsigned)result+1};
+    }
     read_unlock();
-    return length<size ? length : size;
+    return result;
 }
 /* Region around address: [start,end) mapped or a gap; 0 past the last mapping. */
 int runtime_memory_region(uintptr_t address, uintptr_t *start, uintptr_t *end, int *mapped) {
