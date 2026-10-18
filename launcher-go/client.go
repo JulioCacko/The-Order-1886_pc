@@ -24,16 +24,17 @@ type response struct {
 }
 
 type workerClient struct {
-	cmd       *exec.Cmd
-	input     io.WriteCloser
-	writeMu   sync.Mutex
-	mu        sync.Mutex
-	pending   map[int64]chan response
-	nextID    atomic.Int64
-	done      chan struct{}
-	failure   error
-	event     func(string, json.RawMessage)
-	closeOnce sync.Once
+	cmd           *exec.Cmd
+	input         io.WriteCloser
+	writeMu       sync.Mutex
+	mu            sync.Mutex
+	pending       map[int64]chan response
+	nextID        atomic.Int64
+	done          chan struct{}
+	failure       error
+	event         func(string, json.RawMessage)
+	closeOnce     sync.Once
+	expectedClose atomic.Bool
 }
 
 func startWorker(command *exec.Cmd, event func(string, json.RawMessage)) (*workerClient, error) {
@@ -95,9 +96,13 @@ func startWorker(command *exec.Cmd, event func(string, json.RawMessage)) (*worke
 		}
 		client.mu.Lock()
 		client.failure = waitError
-		close(client.done)
 		client.pending = make(map[int64]chan response)
 		client.mu.Unlock()
+		if client.event != nil && !client.expectedClose.Load() {
+			message, _ := json.Marshal(waitError.Error())
+			client.event("disconnected", message)
+		}
+		close(client.done)
 	}()
 	return client, nil
 }
@@ -144,7 +149,7 @@ func (client *workerClient) Request(ctx context.Context, method string, params a
 }
 
 func (client *workerClient) Close() {
-	client.closeOnce.Do(func() { client.input.Close() })
+	client.closeOnce.Do(func() { client.expectedClose.Store(true); client.input.Close() })
 }
 
 type diagnosticTail struct {

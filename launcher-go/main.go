@@ -58,6 +58,10 @@ func (app *App) event(name string, data json.RawMessage) {
 			}
 		}
 	}
+	if name == "disconnected" {
+		app.busy = false
+		app.closing = false
+	}
 	closing := app.closing && !app.busy
 	ctx := app.ctx
 	app.mu.Unlock()
@@ -113,6 +117,10 @@ func (app *App) Call(method string, params json.RawMessage) (string, error) {
 	defer cancel()
 	if method == "session.start" {
 		app.mu.Lock()
+		if app.busy {
+			app.mu.Unlock()
+			return "", errors.New("A session is already starting or running.")
+		}
 		app.busy = true
 		app.mu.Unlock()
 	}

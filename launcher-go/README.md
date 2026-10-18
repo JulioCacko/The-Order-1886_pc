@@ -4,7 +4,7 @@ Wails v2.17.0, Go and locally embedded TypeScript/HTML/CSS. This is an opt-in mi
 
 ## Develop
 
-Requires Go 1.24+, Node.js compatible with Vite 7, and Python with the existing project's preparation dependencies.
+Requires Go 1.25+, Node.js compatible with Vite 7, and Python with the existing project's preparation dependencies.
 
 ```powershell
 rtk proxy npm --prefix frontend ci

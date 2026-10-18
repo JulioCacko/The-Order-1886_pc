@@ -40,8 +40,6 @@ Copy-Item -LiteralPath (Join-Path $destination 'The Order 1886.exe') -Destinatio
 Push-Location (Join-Path $projectRoot 'launcher-go')
 try {
     if (-not $SkipFrontendBuild) {
-        & npm ci
-        if ($LASTEXITCODE) { throw 'Frontend dependency installation failed.' }
         & go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.0 build -clean -skipbindings
         if ($LASTEXITCODE) { throw 'Go launcher build failed.' }
     }

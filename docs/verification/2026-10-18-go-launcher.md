@@ -18,6 +18,10 @@ Plan: implement the accepted Windows gold + Wails launcher contract. Linux remai
 - Preserve the legacy launcher and backend as the tested migration boundary; no provider is advertised working until its renderer path and gameplay evidence exist.
 - Wails v2.17.0 is the newest stable v2 version returned by the official module proxy.
 - UI uses plain TypeScript and semantic HTML/CSS, avoiding an additional component framework.
+- Fresh review found and reproduced duplicate-start state loss and worker-death close veto. Starts now reserve ownership atomically, unexpected worker death releases the veto and is reported without claiming descendants stopped.
+- Session-result tests distinguish successful verify/prepare, normal completion, stops, native failure and malformed completion. Error cues preserve the exit code and log path.
+- The redundant npm install at the Go module root was removed; Wails owns its configured frontend install. README now matches Go1.25 from go.mod.
+- A Windows CI workflow was added for worker/save regressions, frontend checks and the Go application build. Hosted execution is unverified until an authorized push/run.
 
 ## Evidence
 ## Current evidence

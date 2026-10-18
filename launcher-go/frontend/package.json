@@ -8,7 +8,8 @@
     "prebuild": "node scripts/copy-assets.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "tsc --target ES2022 --module ESNext --outDir .test-build src/session-status.ts && node --test tests/session-status.test.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3",

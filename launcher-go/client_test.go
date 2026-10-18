@@ -16,6 +16,7 @@ func TestProtocolHelper(t *testing.T) {
 		return
 	}
 	scanner := bufio.NewScanner(os.Stdin)
+	starts := 0
 	for scanner.Scan() {
 		var request struct {
 			ID     int64  `json:"id"`
@@ -24,6 +25,13 @@ func TestProtocolHelper(t *testing.T) {
 		_ = json.Unmarshal(scanner.Bytes(), &request)
 		if request.Method == "exit" {
 			os.Exit(7)
+		}
+		if request.Method == "session.start" {
+			starts++
+			if starts > 1 {
+				fmt.Printf("{\"version\":1,\"id\":%d,\"error\":{\"message\":\"session already active\"}}\n", request.ID)
+				continue
+			}
 		}
 		if request.Method == "fail" {
 			fmt.Printf("{\"version\":1,\"id\":%d,\"error\":{\"message\":\"rejected\"}}\n", request.ID)
@@ -84,5 +92,42 @@ func TestUnknownLocationCannotReachShell(t *testing.T) {
 	app := &App{}
 	if err := app.OpenLocation("../outside"); err == nil {
 		t.Fatal("arbitrary location accepted")
+	}
+}
+
+func TestDuplicateStartKeepsActiveReservation(t *testing.T) {
+	app := &App{worker: helperClient(t)}
+	if _, err := app.Call("session.start", json.RawMessage("{}")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.Call("session.start", json.RawMessage("{}")); err == nil {
+		t.Fatal("duplicate start accepted")
+	}
+	app.mu.Lock()
+	busy := app.busy
+	app.mu.Unlock()
+	if !busy {
+		t.Fatal("duplicate start cleared the live session")
+	}
+}
+
+func TestWorkerDeathReleasesCloseVeto(t *testing.T) {
+	app := &App{busy: true, closing: true}
+	command := exec.Command(os.Args[0], "-test.run=TestProtocolHelper")
+	command.Env = append(os.Environ(), "ORDER_LAUNCHER_PROTOCOL_TEST=1")
+	client, err := startWorker(command, app.event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, _ = client.Request(ctx, "exit", nil)
+	<-client.done
+	app.mu.Lock()
+	busy, closing := app.busy, app.closing
+	app.mu.Unlock()
+	if busy || closing {
+		t.Fatal("worker death left the window trapped or silently closing")
 	}
 }

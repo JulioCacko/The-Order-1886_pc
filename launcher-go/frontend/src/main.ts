@@ -1,4 +1,5 @@
 import './style.css';
+import {completionNotice} from './session-status';
 
 type Choice = {value:string|number; label:string; available:boolean; reason:string};
 type Field = {key:string;label:string;page:string;kind:string;default:unknown;description:string;
@@ -18,6 +19,9 @@ let page = 'home';
 let query = '';
 let selectedBackup = '';
 let notice = '';
+let noticeError = false;
+let starting = false;
+let disconnected = false;
 let saving = false;
 let confirmation:((value:boolean)=>void)|null = null;
 const root = document.querySelector<HTMLDivElement>('#app')!;
@@ -43,8 +47,14 @@ async function call<T=any>(method:string,params:Record<string,unknown>={}):Promi
 }
 function flash(message:string,error=false) {
   notice=message;
+  noticeError=error;
   const status=document.querySelector<HTMLElement>('#feedback');
   if(status){status.textContent=message;status.classList.toggle('error',error);}
+}
+function setStarting(value:boolean) { starting=value;render(); }
+function showCompletion(data:unknown) {
+ const result=completionNotice(data,snapshot.logfile);
+ flash(t(result.message),result.failed);
 }
 function confirmAction(title:string,detail:string,action='Confirm'):Promise<boolean> {
   const dialog=document.querySelector<HTMLDialogElement>('#confirm')!;
@@ -60,7 +70,7 @@ function finishConfirmation(value:boolean) {
 }
 function control(field:Field) {
   const value=snapshot.settings[field.key]??field.default;
-  const disabled=!field.available||snapshot.busy?' disabled':'';
+  const disabled=!field.available||snapshot.busy||starting||disconnected?' disabled':'';
   const label=`id="field-${field.key}" data-setting="${field.key}" aria-describedby="help-${field.key}"`;
   if(field.kind==='boolean') return `<input type="checkbox" ${label}${disabled}${value?' checked':''}>`;
   if(field.kind==='select') return `<select ${label}${disabled}>${field.choices!.map(choice=>
@@ -79,7 +89,7 @@ function fieldRow(field:Field) {
   <div class="setting-control">${control(field)}</div></div>`;
 }
 function actionButton(action:string,title:string,destructive=false) {
- return `<button data-action="${action}" class="${destructive?'danger':''}"${snapshot.busy?' disabled':''}>${escape(t(title))}</button>`;
+ return `<button data-action="${action}" class="${destructive?'danger':''}"${snapshot.busy||starting||disconnected?' disabled':''}>${escape(t(title))}</button>`;
 }
 function gameActions() {
  return `<section class="utility-section"><h2>${escape(t('Save backups'))}</h2>
@@ -105,7 +115,7 @@ function home() {
  <img class="hero-logo" src="/assets/logo-horizontal.png" alt="The Order: 1886">
  <h1 id="home-title">${escape(t('Return to Whitechapel'))}</h1>
  <p>${escape(t('Your game. Your settings. Ready when you are.'))}</p>
- <button class="hero-play" data-action="play"${saving?' disabled':''}>${snapshot.busy?escape(t('Stop')):`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>${escape(t('Play'))}`}</button>
+ <button class="hero-play" data-action="play"${saving||starting||disconnected?' disabled':''}>${snapshot.busy?escape(t('Stop')):`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>${escape(t('Play'))}`}</button>
  <button class="quiet hero-settings" data-page="graphics">${escape(t('Configure graphics'))}</button></div></section>
  <section class="home-bottom" aria-label="${escape(t('Launch configuration'))}">
  <div><h2>${escape(t('Launch configuration'))}</h2><dl class="configuration">
@@ -144,11 +154,11 @@ function render() {
  root.innerHTML=`<div class="shell"><aside class="sidebar"><a href="#" class="brand" data-page="home" aria-label="The Order: 1886 Home"><img src="/assets/logo-stacked.png" alt="The Order: 1886"></a>
  <nav aria-label="${escape(t('Main navigation'))}">${snapshot.pages.map(item=>`<button data-page="${item.id}" class="nav-item ${page===item.id&&!query?'selected':''}"${page===item.id&&!query?' aria-current="page"':''}>${icon(item.id)}<span>${escape(t(item.title))}</span></button>`).join('')}</nav>
  <div class="sidebar-bottom"><span>CUSA00076</span><span>${escape(t('Development preview'))}</span><button class="quiet" data-link="releases">${escape(t('View releases'))}</button></div></aside>
- <main><header class="topbar"><span class="current-section">${escape(t(pageTitle))}</span><label class="search">${icon('search')}<span class="sr-only">${escape(t('Search all settings'))}</span><input id="search" type="search" placeholder="${escape(t('Search all settings'))}" value="${escape(query)}" autocomplete="off"></label><span class="session-status">${escape(t(snapshot.busy?'Running':'Idle'))}</span></header>
+ <main><header class="topbar"><span class="current-section">${escape(t(pageTitle))}</span><label class="search">${icon('search')}<span class="sr-only">${escape(t('Search all settings'))}</span><input id="search" type="search" placeholder="${escape(t('Search all settings'))}" value="${escape(query)}" autocomplete="off"></label><span class="session-status">${escape(t(disconnected?'Connection lost':snapshot.busy?'Running':starting?'Starting…':'Idle'))}</span></header>
  <div id="content" class="content">${page==='home'&&!query?home():settingsPage()}</div>
- <footer class="launchbar"><div><p id="feedback" role="status" aria-live="polite">${escape(notice||t(snapshot.busy?'Session running. Settings are locked.':'Changes are saved automatically.'))}</p>
+ <footer class="launchbar"><div><p id="feedback" class="${noticeError?'error':''}" role="status" aria-live="polite">${escape(notice||t(snapshot.busy?'Session running. Settings are locked.':'Changes are saved automatically.'))}</p>
  <p class="launch-context">${escape(selectedBackup?t('Selected backup will be restored after confirmation.'):t('Original game files and player data are protected.'))}</p></div>
- <button id="launch" class="primary" data-action="play"${saving?' disabled':''}>${escape(t(snapshot.busy?'Stop':'Play'))}</button></footer></main></div>
+ <button id="launch" class="primary" data-action="play"${saving||starting||disconnected?' disabled':''}>${escape(t(snapshot.busy?'Stop':'Play'))}</button></footer></main></div>
  <dialog id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-detail"><h2 id="confirm-title"></h2><p id="confirm-detail"></p><div class="actions"><button id="confirm-no">${escape(t('Cancel'))}</button><button id="confirm-yes" class="primary"></button></div></dialog>`;
  bind();
  if(focusKey) {
@@ -163,9 +173,9 @@ async function save(key:string,value:unknown) {
  saving=true;
  try {
   snapshot=await call<Snapshot>('settings.set',{values:{[key]:value}});
-  notice=t('Saved — applies on next launch.'); render();
+  notice=t('Saved — applies on next launch.');noticeError=false;render();
  } catch(error) { render();flash(String(error),true); }
- finally {saving=false;document.querySelectorAll<HTMLButtonElement>('[data-action="play"]').forEach(b=>b.disabled=false);}
+ finally {saving=false;document.querySelectorAll<HTMLButtonElement>('[data-action="play"]').forEach(b=>b.disabled=starting||disconnected);}
 }
 function bind() {
  document.querySelectorAll<HTMLElement>('[data-page]').forEach(button=>button.onclick=event=>{event.preventDefault();navigate(button.dataset.page!);});
@@ -200,15 +210,25 @@ async function action(name:string) {
  try {
   if(name==='play'&&snapshot.busy){await call('session.stop');flash(t('Stopping session…'));return;}
   if(['play','verify','prepare'].includes(name)) {
+   if(starting||disconnected) return;
+   setStarting(true);
+   try {
    const params:Record<string,unknown>={mode:name==='play'?'play':name};
    if(name==='play'&&selectedBackup){
     if(!await confirmAction(t('Restore save backup?'),`${selectedBackup}. ${t('Current saves will be backed up before restoring. The game will then start; choose Continue or Load.')} `,t('Restore and play'))) return;
     params.backup=selectedBackup;params.confirmed=true;
    }
-   await call('session.start',params);selectedBackup='';notice=t('Starting session…');await refresh();return;
+   const started=await call<{logfile:string}>('session.start',params);
+   snapshot.logfile=started.logfile;selectedBackup='';
+   await refresh();
+   if(snapshot.busy) flash(t('Starting session…'));
+   else if(snapshot.last_exit!==null) showCompletion([snapshot.last_exit,params.mode,false]);
+   return;
+   } finally {setStarting(false);}
   }
   if(name==='reset'){
-   if(await confirmAction(t('Reset section?'),t('Reset this section to validated defaults?'),t('Reset'))) snapshot=await call('settings.reset',{page});
+   if(!await confirmAction(t('Reset section?'),t('Reset this section to validated defaults?'),t('Reset'))) return;
+   snapshot=await call('settings.reset',{page});notice=t('Section reset.');
   }else if(name==='saves.restore'){
    if(!selectedBackup) {flash(t('Choose a save backup first.'),true);return;}
    if(!await confirmAction(t('Restore save backup?'),`${selectedBackup}. ${t('Current saves will be backed up first. Stop the game before restoring.')} `,t('Restore'))) return;
@@ -221,7 +241,7 @@ async function action(name:string) {
    if(result.settings) snapshot=result;
    notice=result.path?`${t('Completed')}: ${result.path}`:t('Completed');
   }
-  render();
+  noticeError=false;render();
  }catch(error){flash(String(error),true);}
 }
 async function start() {
@@ -235,13 +255,18 @@ async function start() {
     snapshot.logs.push(String(event.data));snapshot.logs=snapshot.logs.slice(-100);
     const output=document.querySelector('#session-output');if(output) output.textContent=snapshot.logs.join('');
    }
-   if(event.event==='done') {notice=t('Session ended.');void refresh().catch(error=>flash(String(error),true));}
+   if(event.event==='done') {snapshot.busy=false;showCompletion(event.data);void refresh().catch(error=>flash(String(error),true));}
+   if(event.event==='disconnected') {
+    disconnected=true;snapshot.busy=false;
+    flash(t('Worker connection lost. A game may still be running; check its window and the session log before starting another session.'),true);
+    render();
+   }
    if(event.event==='started') {snapshot.busy=true;render();}
   });
   window.runtime?.EventsOn('close-requested',async()=>{
    if(await confirmAction(t('Stop and close?'),t('The current session will be stopped before the launcher closes.'),t('Stop and close'))) await bridge().ConfirmClose();
   });
-  setInterval(()=>{if(page==='achievements'&&!saving&&!confirmation&&!document.hidden) void refresh().catch(error=>flash(String(error),true));},3000);
+  setInterval(()=>{if(page==='achievements'&&!saving&&!confirmation&&!disconnected&&!document.hidden) void refresh().catch(error=>flash(String(error),true));},3000);
  }catch(error){root.innerHTML=`<main class="boot"><h1>Launcher setup required</h1><p role="alert">${escape(String(error))}</p><p>Repair the portable installation or use the retained legacy launcher.</p></main>`;}
 }
 document.addEventListener('keydown',event=>{
