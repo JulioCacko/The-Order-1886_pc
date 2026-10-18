@@ -313,14 +313,15 @@ class OrderBackendTests(unittest.TestCase):
         released_log.unlink()
 
     def test_default_runtime_stays_inside_selected_installation(self):
+        runtime_name = 'order1886-runtime.exe' if os.name == 'nt' else 'order1886-runtime'
         install = self.base / 'portable package'
         source = self.base / 'source'
-        reference = self.base / 'foreign runtime' / 'unrelated-build' / 'bin' / 'order1886-runtime.exe'
+        reference = self.base / 'foreign runtime' / 'unrelated-build' / 'bin' / runtime_name
         reference.parent.mkdir(parents=True)
         reference.write_bytes(b'reference')
         with patch.object(order1886, 'INSTALL_ROOT', install), patch.object(order1886, 'ROOT', source):
             self.assertIsNone(order1886.find_runtime())
-            packaged = install / 'bin' / 'order1886-runtime.exe'
+            packaged = install / 'bin' / runtime_name
             packaged.parent.mkdir(parents=True)
             packaged.write_bytes(b'packaged')
             order1886.write_json(packaged.with_name('runtime-build.json'), {
