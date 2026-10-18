@@ -20,9 +20,9 @@ Proyecto comunitario para ejecutar el binario original de **The Order: 1886**, e
 
 ## Descargar
 
-**Descarga publicada: preview.3, del 17 de octubre.** Las novedades del 18 de octubre describen el código actual de `main`; no representan una nueva release publicada. Compila desde el código fuente para utilizarlas.
+**Descarga publicada: preview.4, del 18 de octubre.** Paquetes para Windows y Linux x86-64 experimental. Conserva la carpeta `user` al actualizar.
 
-**[Descargar el ZIP del launcher para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.3/order1886-windows.zip)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.3) · [Guía en inglés y portugués](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.3/QUICKSTART.txt)
+**[Descargar el ZIP del launcher para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/order1886-windows.zip)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.4) · [Guía en inglés y portugués](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/QUICKSTART.txt)
 
 Extrae el ZIP completo y lee **QUICKSTART.txt**, incluido en el paquete. No requiere Python, MSYS2 ni compilador. Descarga `order1886-windows.zip`; los archivos “Source code” son para desarrolladores. El juego no está incluido: usa tu propio dump CUSA00076. Esta versión preliminar conserva las limitaciones de compatibilidad indicadas arriba.
 
@@ -31,11 +31,13 @@ Extrae el ZIP completo y lee **QUICKSTART.txt**, incluido en el paquete. No requ
 - Mouse look mediante el stick, sensibilidad e inversión Y; inicio directo con **Play The Order 1886.exe**, acceso directo y **Game → Add to Steam** (cierra Steam primero).
 - Copias de seguridad con orden numérico, mods `_data` reversibles con orden/conflictos, limpieza segura de caché y 13 idiomas de interfaz con fallback inglés. La validación visual de árabe/CJK sigue pendiente.
 - Correcciones de shaders NaN/atomics, copia de claves de pipelines, memoria y mutex; aceptación de dumps ELF x86-64 validados.
-- **321 pruebas Python sin omisiones, 41 checks nativos, tres módulos SPIR-V validados y 15 checks portátiles aprobados.** [Evidencia](docs/verification/2026-10-18-donor-060.md) · [Estado de issues](docs/order1886-issue-status.md).
+- **340 pruebas Python en Windows sin omisiones; Linux: 340 ejecutadas, 21 omitidas; Windows: 41 checks nativos, Linux: subconjunto nativo aprobado; Windows 15 y Linux 10 checks portátiles.** [Evidencia](docs/verification/2026-10-18-preview4-release.md) · [Estado de issues](docs/order1886-issue-status.md).
 
 ![Utilidades actuales: acceso directo, Steam y guardados](docs/images/order1886-game-20261018.png)
 
 En el juego, **Esc** libera el cursor y **F6** alterna la captura. Configura el ratón en **Game → Controls** y guarda. Siguen pendientes la reasignación, cámara directa 1:1, selección independiente de texto/voces, logros en vivo y actualización automática. [Guía de entrada e inicio directo](docs/order1886-input.md).
+
+En **Game**, selecciona una copia y pulsa **Play** para confirmar la restauración antes del inicio, o usa **Restore selected backup**. Se respalda el guardado actual primero; después elige Continue/Load en el juego. Las copias antiguas pueden carecer de Profile/progreso. En **Advanced**, el idioma guardado también se solicita al juego en el próximo inicio; requiere los assets de idioma instalados. Reinicia el launcher para traducir su interfaz.
 
 ## El launcher
 
@@ -60,7 +62,7 @@ Usa tu propia copia extraída de CUSA00076 con `eboot.bin`, `sce_sys` y `sce_mod
 3. Empieza con **30 FPS** y elige el modo de pantalla y FSR 1 o Linear.
 4. Usa **Play**, **Advanced → View session log** y **Stop session** para iniciar, revisar o detener la sesión.
 
-Desde el código fuente, ejecuta `Launch The Order 1886.cmd` o `python launcher/order1886_launcher.py` después de seguir las [instrucciones de compilación para Windows](docs/order1886-build.md). El paquete no requiere Python ni MSYS2. No existe un paquete Linux verificado para este objetivo específico.
+Desde el código fuente, ejecuta `Launch The Order 1886.cmd` o `python launcher/order1886_launcher.py` después de seguir las [instrucciones de compilación para Windows](docs/order1886-build.md). El paquete no requiere Python ni MSYS2. [Linux x86-64 experimental](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/order1886-linux-x86_64.tar.gz): Ubuntu 26.04 / glibc 2.43+, X11/XWayland y driver Vulkan. Gameplay/GPU, distros antiguas y SteamOS aún no están aceptados. [Guía Linux](packaging/linux/README.md).
 
 ## Estado y rendimiento
 

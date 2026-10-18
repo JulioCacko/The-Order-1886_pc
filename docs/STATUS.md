@@ -1,6 +1,6 @@
 # The Order: 1886 PC — development status
 
-Updated **18 October 2026**. Verified implementation: `e4d02ff` plus documentation.
+Updated **18 October 2026**. Preview.4 implementation: `54242e0` plus release documentation.
 Cinematics render and a street route has been exercised, but performance remains
 slow. Campaign progression, gameplay checkpoint save/load, long-session stability,
 native 4K and sustained 4K/60 remain unaccepted.
@@ -18,6 +18,13 @@ native 4K and sustained 4K/60 remain unaccepted.
   discovery, preservation/backups, atomic replacement and idempotence.
 - Backup/restore protects original files; numeric same-second ordering preserves
   the newest copy and restore safety backup.
+- Game-page backup selection plus Play confirms restoration before launch; the
+  game save APIs see restored slots/metadata in disposable fixtures. Older
+  snapshots may lack Profile. In-game Continue/progression remains unverified.
+- Launcher language also sets the next game's PS4 system language, including
+  pt-BR. Matching installed assets are required; independent text/voice is open.
+- Experimental Linux x86-64 bundle with Python/Tk and native dependency closure.
+  Ubuntu 26.04/glibc 2.43+ required; Linux gameplay/GPU remains unqualified.
 - Ordered `_data` asset overlays preserve originals and show conflicts. New mods
   remain disabled until selected. External executable patches remain unsupported.
 - Shader-cache clearing is scoped to this installation and blocked during a session.
@@ -33,36 +40,37 @@ and [mod limits](order1886-mods.md). Passing fixtures do not establish gameplay 
 
 | Check | Result | Scope |
 | --- | --- | --- |
-| Full Python suite | 321 passed, zero skips | Private package environment; 313.946 seconds |
+| Full Python suite | Windows 340 pass, zero skips; Linux 340 run, 21 skips | Integrated save/language and packaging changes |
 | Windows native gate | 41 checks passed | Runtime, shader/IR, cache, input, media, queue and memory fixtures |
+| Linux native gate | `build.sh --test` passed | Linux shader/cache/input/runtime/media/services/ISA subset |
 | SPIR-V | Three modules pass Vulkan 1.3 validation | Atomic structure and NaN math; no game image-quality claim |
 | RTX 3070 cache smoke | Graphics and compute pass | Four hits, two compiles/saves, no rejects/cache errors |
-| Portable package | All 15 relocated checks pass | Hashes, identity, helper closure, GUI/direct play and CPU preparation |
+| Portable packages | Windows 15 / Linux 10 relocated checks pass | Hashes, identity, dependency closure, GUI/direct play and CPU preparation |
 | Launcher images | Four fresh 1240 × 800 captures | Actual source UI, isolated state; no game launched |
 | Gameplay/performance | Pending | No sustained 4K/60 or campaign acceptance |
 
-The [verification receipt](verification/2026-10-18-donor-060.md) records commands,
+The [release receipt](verification/2026-10-18-preview4-release.md) records commands,
 artifacts and boundaries. Older reports retain their original dates and test scope.
 
 ## Runtime and package identity
 
 | Field | Value |
 | --- | --- |
-| Verified source | `e4d02ff7dbbdcfdef960a9ea6a301c09fc86971f`, clean package snapshot |
-| Runtime SHA256 | `700197eb1a3feb6700dcbf15037eeaff59de71d9e9dad77875416bbe8a64ed17` |
-| Source-files SHA256 | `0b2672919c59d5089ab430938a2d8f2616dbada141019ec7b41bd9d5e003ee5c` |
+| Verified source | `54242e0e5ab05644bff2df56813d39f654659b30`, clean package snapshots |
+| Windows runtime SHA256 | `ca77edaf93ccec956b20263cb3b9a0c36b1b4496e5437e080d5f6d95b850f1e9` |
+| Linux runtime SHA256 | `cea8cac77b276bcec8b61365c420124ccd9340fdd44d1dde514240c54c24ac64` |
 | ABI / prepared format | `order1886-native-1` / `PS4BOOT5` |
 | Renderer / cache ABI | `native-ps4` / `native-ps4-v1` |
 | Shader binary / metadata / pipeline key | 16 / 10 / 8 |
-| Local package | `20261018T170925Z-700197eb1a3f` |
-| ZIP bytes | 108533689 |
-| ZIP SHA256 | `6b3550c1f96e59b28bd9d84a35c524cd3c1c952c5609b14b5d0ca47cb6a00bff` |
+| Windows package | `20261018T225850Z-ca77edaf93cc` |
+| ZIP bytes | 108539768 |
+| ZIP SHA256 | `ec613979ab159b7042554597deff9d9cb91b7670125152fa837a8adc2ebb74d6` |
 | Local hardware | Ryzen 5 5600X, RTX 3070; not minimum requirements |
 
-The local ZIP is under `dist/order1886/20261018T170925Z-700197eb1a3f/`, outside Git.
-**The public download remains preview.3 from October 17.** Pushing source and
-screenshots does not publish a replacement release ZIP. Shader version 16 rebuilds
-old translations on the next game launch.
+**[Preview.4 downloads](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.4)**
+include Windows and experimental Linux packages, checksums and setup guides.
+Preview.3 remains available for rollback. Shader version 16 rebuilds old
+translations on the next game launch.
 
 ## Current launcher
 
