@@ -60,7 +60,19 @@ struct GraphicsPipelineKey {
     };
 
     GraphicsPipelineKey() {
-        std::memset(this, 0, sizeof(*this));
+        std::memset(static_cast<void*>(this), 0, sizeof(*this));
+    }
+
+    // Equality and hashing include padding, so copies must preserve every byte.
+    GraphicsPipelineKey(const GraphicsPipelineKey& other) noexcept {
+        std::memcpy(static_cast<void*>(this), &other, sizeof(*this));
+    }
+
+    GraphicsPipelineKey& operator=(const GraphicsPipelineKey& other) noexcept {
+        if (this != &other) {
+            std::memcpy(static_cast<void*>(this), &other, sizeof(*this));
+        }
+        return *this;
     }
 
     bool operator==(const GraphicsPipelineKey& key) const noexcept {

@@ -29,24 +29,27 @@ MINGW*|MSYS*)
     fi
     cp out/gpu/order1886-runtime.exe out/gpu/ps4-gpu-capabilities.exe out/
     if [[ ${1:-} == --test ]]; then
-    ninja -C out/gpu runtime-test sema-test runtime-keys-test event-flag-test memory-hooks-test services-test content-test order-render-baseline-test srt-descriptor-validation-test pad-test pad-map-test frame-trace-test perf-overlay-test order-shader-math-test pipeline-binary-cache-test amd-paths-test mouse-look-test
-        out/gpu/runtime-test.exe
-        out/gpu/sema-test.exe
-        out/gpu/runtime-keys-test.exe
-        out/gpu/event-flag-test.exe
-        out/gpu/memory-hooks-test.exe
-        out/gpu/services-test.exe
-        out/gpu/content-test.exe
-        out/gpu/order-render-baseline-test.exe
-        out/gpu/srt-descriptor-validation-test.exe
-        out/gpu/pad-test.exe
-        out/gpu/frame-trace-test.exe "out/frame-trace-test-$$.csv"
-        out/gpu/perf-overlay-test.exe
-    out/gpu/order-shader-math-test.exe
-    out/gpu/pipeline-binary-cache-test.exe
-    out/gpu/amd-paths-test.exe
-    out/gpu/mouse-look-test.exe
-    out/gpu/pad-map-test.exe
+        tests=(runtime sema runtime-keys event-flag memory-hooks services content
+               order-render-baseline srt-descriptor-validation pad pad-map frame-trace
+               perf-overlay order-shader-math order-spirv pipeline-binary-cache
+               pipeline-binary-initialization amd-paths mouse-look mp3 videodec
+               trophy-history audio-downmix cpu-check isa-emulate isa-stub tsc-clock
+               png-decode aliasing depth-stencil-state async-compiler warmup-inbox
+               wave-stats pass-census frame-capture async-pipeline-cache
+               async-fetch-snapshot readback-queue wait-diagnostics readback-sources page-state)
+        ninja -C out/gpu "${tests[@]/%/-test}"
+        for test in "${tests[@]}"; do
+            case $test in
+                mp3) args=(tests/data/sine.mp3) ;;
+                videodec) args=(tests/data/tiny.h264) ;;
+                isa-stub) args=(tests/data/isa_fixture.bin) ;;
+                frame-trace) args=("out/frame-trace-test-$$.csv") ;;
+                trophy-history) args=("$(mktemp -d "$PWD/out/trophy-history-test.XXXXXX")" lifecycle) ;;
+                *) args=() ;;
+            esac
+            "out/gpu/$test-test.exe" "${args[@]}"
+        done
+        printf 'Native checks passed: %s\n' "${#tests[@]}"
     fi
     python scripts/runtime_build_identity.py out/order1886-runtime.exe
     echo "Built $PWD/out/order1886-runtime.exe"
@@ -109,8 +112,9 @@ echo "Built $PWD/out/order1886-runtime"
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -Igpu/shadps4 tools/gpu_capabilities.c "${libraries[@]}" -o out/ps4-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
-    cmake --build out/gpu --target order-shader-math-test pipeline-binary-cache-test amd-paths-test mouse-look-test
+    cmake --build out/gpu --target order-shader-math-test order-spirv-test pipeline-binary-cache-test amd-paths-test mouse-look-test
     out/gpu/order-shader-math-test
+    out/gpu/order-spirv-test
     out/gpu/pipeline-binary-cache-test
     out/gpu/amd-paths-test
     out/gpu/mouse-look-test

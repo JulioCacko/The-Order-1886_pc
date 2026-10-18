@@ -1,5 +1,43 @@
 # The Order donor reuse, 2026-10-17
 
+## Order donor 0.6.0 follow-up, 2026-10-18
+
+The continued comparison pins `D:\Emulator\theorder1886-port` at
+`9d6f7f4781c41f51d7b1e5d5d0cfdd6ab8399a9d`. The donor is read-only;
+existing per-file license notices remain in adapted sources. This batch starts
+from local `23f726f120e3f140eead97bdf8bd217ed615ebfa`.
+
+| Donor commit | Adaptation |
+| --- | --- |
+| `9168c66` | Negated floating comparisons include NaNs; legacy reciprocal square root maps signed zero to zero; trinary min/max/median and saturation emit explicit NaN handling. Local CMPX active-lane masking remains intact. |
+| `2efe7eb` | Buffer and image float atomic min/max fallbacks use exclusive control-flow branches: selecting two atomic results previously executed both mutations. |
+| `ce24f6c` | Graphics pipeline key copies preserve every byte used by raw-byte equality and hashing. The donor's speculative compute substitution and session warm-up subsystem are separate changes. |
+| `748d74a` | Reuse the broader Windows native-test inventory in the existing build gate, with local target names and fixture paths. |
+| `fe8f76b` | Accept validated unpacked x86-64 ELF dumps and order same-second backup suffixes numerically so retention preserves the newest copy. |
+
+Shader binary version advances from 15 to 16 for the combined math and atomic
+changes; old translations must be rebuilt. The donor's per-shader revision scheme
+would not avoid that rebuild because this batch also changes general math.
+Saturation currently assumes DX10_CLAMP, mapping NaN to zero; shader control-bit
+propagation is still needed to preserve NaN when that hardware bit is disabled.
+
+### Remaining donor candidates
+
+- `3654b06` readbacks need CPU-write cancellation, unmap/remap cleanup, overlapping
+  watch handling and overflow-safe backing reads. Its HTILE synthesis also needs
+  an optional-value guard for shader-written metadata and scene validation.
+  Existing backing-write texture invalidation is already present locally.
+- Async pipeline restore prioritization depends on the donor's publication and
+  queue state; import it with cache-pairing and scheduling tests, not in isolation.
+- Anisotropic filtering, mouse capture and bulk GPU log writes already have local
+  implementations. Donor launcher files and environment prefixes differ here.
+- Donor FOV/HUD byte patches require adaptation to the local version/signature
+  guards and gameplay evidence. Do not replace the pinned public patch XML.
+
+No GitHub issue is closed by this follow-up. See the
+[verification record](verification/2026-10-18-donor-060.md) for measured checks and
+remaining acceptance boundaries.
+
 ## Additional authorized donor: Bloodborne PC
 
 The user requested extensive reuse from `D:\Emulator\bloodborne_pc`,

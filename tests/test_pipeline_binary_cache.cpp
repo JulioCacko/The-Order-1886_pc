@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <chrono>
 #include <fstream>
+#include <new>
 #include <set>
 #include <xxhash.h>
 #include "video_core/renderer_vulkan/vk_instance.h"
@@ -13,6 +14,28 @@
 #include <cassert>
 
 namespace {
+void TestGraphicsKeyCopy() {
+    Vulkan::GraphicsPipelineKey key;
+    key.stage_hashes[0] = 123;
+    key.num_samples = 4;
+    key.depth_clamp_enable = 1;
+    const auto hash = XXH3_64bits(&key, sizeof(key));
+
+    // Reused map and worker storage may contain nonzero bytes before copying the key.
+    alignas(Vulkan::GraphicsPipelineKey) unsigned char storage[sizeof(key)];
+    std::memset(storage, 0xa5, sizeof(storage));
+    auto* copied = new (storage) Vulkan::GraphicsPipelineKey(key);
+    assert(*copied == key && XXH3_64bits(copied, sizeof(key)) == hash);
+
+    Vulkan::GraphicsPipelineKey assigned;
+    std::memset(static_cast<void*>(&assigned), 0xa5, sizeof(assigned));
+    assigned = key;
+    assert(assigned == key && XXH3_64bits(&assigned, sizeof(key)) == hash);
+    assigned = assigned;
+    assert(assigned == key);
+    copied->~GraphicsPipelineKey();
+}
+
 unsigned compiled{}, restored{}, destroyed{}, released{};
 bool reject_binary{}, reject_pipeline{}, fail_capture{}, fail_compile{};
 VKAPI_ATTR VkResult VKAPI_CALL GetKey(VkDevice, const VkPipelineCreateInfoKHR* info,
@@ -373,6 +396,7 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
     _set_error_mode(_OUT_TO_STDERR);
 #endif
+    TestGraphicsKeyCopy();
     if (argc == 3 && std::string_view(argv[1]) == "--gpu") {
         TestRealDriver(argv[2]);
         return 0;

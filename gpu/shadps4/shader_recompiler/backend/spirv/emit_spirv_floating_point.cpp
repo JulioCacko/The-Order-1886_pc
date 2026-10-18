@@ -55,26 +55,23 @@ Id EmitFPMin64(EmitContext& ctx, Id a, Id b) {
     return ctx.OpFMin(ctx.F64[1], a, b);
 }
 
+// port (shadPS4 #5257): GCN's DX10 NaN rules. min3/max3 skip a NaN operand (NMin/NMax; FMin,
+// FMax and the AMD trinary ops leave NaN undefined) and med3 with a NaN operand is min3.
 Id EmitFPMinTri32(EmitContext& ctx, Id a, Id b, Id c) {
-    if (ctx.profile.supports_trinary_minmax) {
-        return ctx.OpFMin3AMD(ctx.F32[1], a, b, c);
-    }
-    return ctx.OpFMin(ctx.F32[1], a, ctx.OpFMin(ctx.F32[1], b, c));
+    return ctx.OpNMin(ctx.F32[1], a, ctx.OpNMin(ctx.F32[1], b, c));
 }
 
 Id EmitFPMaxTri32(EmitContext& ctx, Id a, Id b, Id c) {
-    if (ctx.profile.supports_trinary_minmax) {
-        return ctx.OpFMax3AMD(ctx.F32[1], a, b, c);
-    }
-    return ctx.OpFMax(ctx.F32[1], a, ctx.OpFMax(ctx.F32[1], b, c));
+    return ctx.OpNMax(ctx.F32[1], a, ctx.OpNMax(ctx.F32[1], b, c));
 }
 
 Id EmitFPMedTri32(EmitContext& ctx, Id a, Id b, Id c) {
-    if (ctx.profile.supports_trinary_minmax) {
-        return ctx.OpFMid3AMD(ctx.F32[1], a, b, c);
-    }
+    const Id is_nan{ctx.OpLogicalOr(
+        ctx.U1[1], ctx.OpIsNan(ctx.U1[1], a),
+        ctx.OpLogicalOr(ctx.U1[1], ctx.OpIsNan(ctx.U1[1], b), ctx.OpIsNan(ctx.U1[1], c)))};
     const Id mmx{ctx.OpFMin(ctx.F32[1], ctx.OpFMax(ctx.F32[1], a, b), c)};
-    return ctx.OpFMax(ctx.F32[1], ctx.OpFMin(ctx.F32[1], a, b), mmx);
+    const Id med3{ctx.OpFMax(ctx.F32[1], ctx.OpFMin(ctx.F32[1], a, b), mmx)};
+    return ctx.OpSelect(ctx.F32[1], is_nan, EmitFPMinTri32(ctx, a, b, c), med3);
 }
 
 Id EmitFPMul32(EmitContext& ctx, IR::Inst* inst, Id a, Id b) {
@@ -145,16 +142,17 @@ Id EmitFPSqrt(EmitContext& ctx, Id value) {
     return ctx.OpSqrt(ctx.F32[1], value);
 }
 
+// shortcut: assumes DX10_CLAMP (NaN becomes zero); honor the bit when shader controls are exposed.
 Id EmitFPSaturate32(EmitContext& ctx, Id value) {
     const Id zero{ctx.ConstF32(f32{0.0})};
     const Id one{ctx.ConstF32(f32{1.0})};
-    return ctx.OpFClamp(ctx.F32[1], value, zero, one);
+    return ctx.OpNMin(ctx.F32[1], ctx.OpNMax(ctx.F32[1], value, zero), one);
 }
 
 Id EmitFPSaturate64(EmitContext& ctx, Id value) {
     const Id zero{ctx.Constant(ctx.F64[1], f64{0.0})};
     const Id one{ctx.Constant(ctx.F64[1], f64{1.0})};
-    return ctx.OpFClamp(ctx.F64[1], value, zero, one);
+    return ctx.OpNMin(ctx.F64[1], ctx.OpNMax(ctx.F64[1], value, zero), one);
 }
 
 Id EmitFPClamp32(EmitContext& ctx, Id value, Id min_value, Id max_value) {
