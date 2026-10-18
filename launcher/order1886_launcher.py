@@ -64,6 +64,9 @@ def save_settings(path: Path, values: dict) -> None:
 
 def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                     stop_file: Path | None = None) -> list[str]:
+    from order1886 import SYSTEM_LANGUAGES
+    locale = values.get("ui_language", "en")
+    language = SYSTEM_LANGUAGES.get(locale, 1) if isinstance(locale, str) else 1
     command = ([sys.executable, "--run-backend"] if FROZEN else
                [sys.executable, str(ROOT / "order1886.py")])
     command += ["--game-dir", values["game_dir"], "--state-dir", str(state),
@@ -75,7 +78,8 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                 "--aspect-ratio", values.get("aspect_ratio", "original"),
                 "--mouse-look", str(int(values.get("mouse_look", True))),
                 "--mouse-sensitivity", str(values.get("mouse_sensitivity", 100)),
-                "--mouse-invert-y", str(int(values.get("mouse_invert_y", False)))]
+                "--mouse-invert-y", str(int(values.get("mouse_invert_y", False))),
+                "--system-language", str(language)]
     if values.get("runtime"):
         command += ["--runtime", values["runtime"]]
     if mode == "play":
@@ -1147,6 +1151,7 @@ class DesktopLauncher(Launcher):
             selectbackground=GOLD, selectforeground=BLACK, exportselection=False,
             font=("Consolas", 10), highlightcolor=GOLD)
         self.backup_list.pack(fill="x", pady=8)
+        self.note(frame, "Select a backup, then Restore or Play. Restoration asks for confirmation and backs up the current saves. Choose Continue or Load after the game starts.")
         self.page_button(frame, "Back up saves now", self.backup_saves, changes=True)
         self.page_button(frame, "Restore selected backup", self.restore_saves, changes=True)
         self.section(frame, "Game patches and mods",
@@ -1279,7 +1284,7 @@ class DesktopLauncher(Launcher):
 
     def build_advanced(self):
         frame = self.scrolled_page("advanced", "Runtime selection, files, logs and support.")
-        self.section(frame, "Launcher language", "Save the language, then restart the launcher to apply it. Game language is unchanged.")
+        self.section(frame, "Launcher language", "Save the language, then restart the launcher and game to apply it. The game needs matching installed language assets.")
         from tkinter import ttk
         self.language_choice = self.tk.StringVar(value=LANGUAGES[self.language])
         self.language_combo = ttk.Combobox(frame, textvariable=self.language_choice,
@@ -1315,7 +1320,7 @@ class DesktopLauncher(Launcher):
             return
         self.values["ui_language"] = language
         self.page_fields["ui_language"].set(language)
-        messagebox.showinfo(self.tr("Language saved"), self.tr("Restart the launcher to apply the language."), parent=self.root)
+        messagebox.showinfo(self.tr("Language saved"), self.tr("Restart the launcher to apply its language. The next game launch requests the same language; missing game assets may fall back."), parent=self.root)
 
     def sync_page_fields(self):
         for key, variable in self.page_fields.items():
@@ -1386,6 +1391,9 @@ class DesktopLauncher(Launcher):
     def run(self, mode="play"):
         if not self.busy and self.current_page != "home" and not self.save_page_settings():
             return
+        if not self.busy and self.current_page == "game" and mode == "play" and self.backup_list.curselection():
+            if not self.save_action(restore=True):
+                return
         super().run(mode)
 
     def back(self, event=None):
@@ -1441,34 +1449,45 @@ class DesktopLauncher(Launcher):
         from tkinter import messagebox
         import order1886
         if self.busy:
-            return
+            return False
         try:
             # Apply the same original-file boundary as a normal launcher settings write.
-            game = Path(self.values["game_dir"]).resolve()
+            game = Path(self.values["game_dir"])
+            game = (game if game.is_absolute() else ROOT / game).resolve()
             state = self.state.resolve()
             if state == game or game in state.parents:
                 raise ValueError("Launcher state must be outside the selected game folder.")
             if restore:
                 selected = self.backup_list.curselection()
                 if not selected:
-                    return
+                    messagebox.showinfo(self.tr("Choose a save backup"),
+                        self.tr("Select a backup in the list before restoring."), parent=self.root)
+                    return False
                 name = self.backup_list.get(selected[0])
                 if not messagebox.askyesno(self.tr("Restore save backup?"),
                         self.tr("Restore {name}? Current saves will be backed up first.", name=name), parent=self.root):
-                    return
-                order1886.save_backup.restore(self.state, name)
-            else:
-                if order1886.save_backup.backup(self.state) is None:
+                    return False
+            state.mkdir(parents=True, exist_ok=True)
+            with order1886.session_lock(state):
+                if restore:
+                    order1886.save_backup.restore(state, name)
+                elif order1886.save_backup.backup(state) is None:
                     messagebox.showinfo(self.tr("No saves yet"), self.tr("There are no saves to back up."), parent=self.root)
+                    return False
             self.refresh_backups()
-        except (OSError, ValueError) as exc:
+            return True
+        except (OSError, ValueError, RuntimeError) as exc:
             messagebox.showerror(self.tr("Save operation failed"), self.tr(str(exc)), parent=self.root)
+            return False
 
     def backup_saves(self):
         self.save_action()
 
     def restore_saves(self):
-        self.save_action(restore=True)
+        from tkinter import messagebox
+        if self.save_action(restore=True):
+            messagebox.showinfo(self.tr("Save restored"),
+                self.tr("The selected backup is restored. Start the game and choose Continue or Load; this does not load a running game."), parent=self.root)
 
 
 def main(argv=None):

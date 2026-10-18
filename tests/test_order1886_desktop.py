@@ -76,7 +76,7 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual((self.state / "settings.json").read_bytes(), before)
 
     def test_restore_uses_real_backup_and_retains_replaced_save(self):
-        savedata = self.state / "savedata" / "CUSA00076"
+        savedata = self.state / "savedata" / "1" / "CUSA00035" / "Playthrough00"
         savedata.mkdir(parents=True)
         save = savedata / "SYSTEM.DAT"
         save.write_bytes(b"first save")
@@ -87,10 +87,10 @@ class DesktopTests(unittest.TestCase):
         with patch("tkinter.messagebox.askyesno", return_value=False):
             self.app.restore_saves()
         self.assertEqual(save.read_bytes(), b"later save")
-        with patch("tkinter.messagebox.askyesno", return_value=True):
+        with patch("tkinter.messagebox.askyesno", return_value=True), patch("tkinter.messagebox.showinfo"):
             self.app.restore_saves()
         self.assertEqual(save.read_bytes(), b"first save")
-        backups = list((self.state / "savedata_backups").glob("*/CUSA00076/SYSTEM.DAT"))
+        backups = list((self.state / "savedata_backups").glob("*/1/CUSA00035/Playthrough00/SYSTEM.DAT"))
         self.assertIn(b"later save", [p.read_bytes() for p in backups])
         self.assertTrue((self.state / "savedata_backups" / name).is_dir())
         self.assertEqual(self.original.read_bytes(), b"original game must not change")

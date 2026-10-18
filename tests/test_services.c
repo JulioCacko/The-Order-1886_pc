@@ -16,9 +16,34 @@ int runtime_savedata_param(int32_t user, const char *dir, void *param) { (void)u
 int runtime_savedata_icon(int32_t user, const char *dir, char *out, size_t size) { (void)user; (void)dir; (void)out; (void)size; return -1; }
 static ABI void keyboard_event(void *arg,const void *event) { (void)arg; (void)event; abort(); }
 
+static void set_language(const char *value) {
+#ifdef _WIN32
+    assert(_putenv_s("ORDER1886_LANGUAGE",value ? value : "")==0);
+#else
+    assert((value ? setenv("ORDER1886_LANGUAGE",value,1) : unsetenv("ORDER1886_LANGUAGE"))==0);
+#endif
+}
+
 int main(void) {
     unsigned char param[128]={0}, result[64]={0}; /* the game zeroes the pointers it does not want */
     uint32_t value;
+
+    int32_t (ABI *get_param)(int32_t, int32_t *)=system_param;
+    int32_t lang=-1;
+    assert(get_param(1,NULL)==SYSTEM_PARAMETER);
+    set_language(NULL);
+    assert(get_param(1,&lang)==0 && lang==1);
+    for (int id=0;id<=29;++id) {
+        char text[4]; snprintf(text,sizeof(text),"%d",id);
+        set_language(text);
+        assert(get_param(1,&lang)==0 && lang==id);
+    }
+    const char *invalid_languages[]={"", "garbage", "-1", "30", "8oops", "8 ", " 8", "+8", "999999999999999999999999"};
+    for (size_t i=0;i<sizeof(invalid_languages)/sizeof(invalid_languages[0]);++i) {
+        set_language(invalid_languages[i]);
+        assert(get_param(1,&lang)==0 && lang==1);
+    }
+    set_language(NULL);
 
     /* The export wrappers retain progress state, errors and explicit close behavior. */
     assert(trace_save_open(NULL)==DIALOG_ARG_NULL);

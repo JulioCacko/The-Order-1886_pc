@@ -10,7 +10,7 @@ from launcher.order1886_lang_data import KEYS, TRANSLATIONS
 
 LANGUAGES = {
     "en": "English", "ru": "Русский", "ar": "العربية", "es": "Español",
-    "pt": "Português", "fr": "Français", "de": "Deutsch", "it": "Italiano",
+    "pt": "Português (Brasil)", "fr": "Français", "de": "Deutsch", "it": "Italiano",
     "pl": "Polski", "tr": "Türkçe", "zh": "简体中文", "ja": "日本語", "ko": "한국어",
 }
 _tables = {}
