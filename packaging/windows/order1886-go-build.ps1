@@ -48,13 +48,14 @@ try {
     foreach ($name in @('The Order 1886.exe','Play The Order 1886.exe')) {
         Copy-Item -LiteralPath $goLauncher -Destination (Join-Path $destination $name) -Force
     }
-    & go mod download
-    if ($LASTEXITCODE) { throw 'Go dependency metadata is unavailable.' }
-    $modules = @(& go list -m -f '{{if not .Main}}{{.Path}}|{{.Version}}|{{.Dir}}{{end}}' all)
+    $modules = @(& go list -deps -tags desktop,production -f '{{with .Module}}{{if not .Main}}{{.Path}}|{{.Version}}|{{.Dir}}{{end}}{{end}}' .)
     if ($LASTEXITCODE) { throw 'Go dependency listing failed.' }
+    $copiedModules = @{}
     foreach ($module in $modules) {
         if (-not $module.Trim()) { continue }
         $parts = $module.Split('|')
+        if ($copiedModules.ContainsKey($parts[0])) { continue }
+        $copiedModules[$parts[0]] = $true
         $licenses = @(Get-ChildItem -LiteralPath $parts[2] -File | Where-Object { $_.Name -match '^(LICENSE|LICENCE|COPYING|NOTICE|PATENTS|UNLICENSE)' })
         if (-not $licenses.Count) { throw "Missing license metadata for $($parts[0])" }
         $notice = Join-Path $destination ("notices/go/" + $parts[0].Replace('/','_') + '@' + $parts[1])
