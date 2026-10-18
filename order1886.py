@@ -31,6 +31,7 @@ import link_modules
 import save_backup
 import order1886_frame_rate as timing
 import order1886_display as display
+import order1886_mods as mods
 
 TITLE_ID = 'CUSA00076'
 RUNTIME_ABI = 'order1886-native-1'
@@ -215,6 +216,9 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
 
 
 def write_runtime_config(user, settings):
+    sensitivity = settings.get('mouse_sensitivity', 100)
+    if type(sensitivity) is not int or not 10 <= sensitivity <= 500:
+        raise ValueError('Mouse sensitivity must be an integer from 10 to 500 percent')
     mode = settings.get('display_mode', 'windowed')
     if mode not in ('windowed', 'borderless', 'fullscreen'):
         raise ValueError('Invalid display mode')
@@ -225,7 +229,10 @@ def write_runtime_config(user, settings):
     values = {'display_mode': mode, 'vsync': int(bool(settings.get('vsync', True))),
               'show_fps': int(bool(settings.get('show_fps', False))), 'fps_limit': frame_rate,
               'render_resolution': 'native', 'presentation_filter': presentation_filter, 'frames_queued': 1,
-              'overlay_fps': 1, 'overlay_frametime': 1, 'overlay_gpu': 1}
+              'overlay_fps': 1, 'overlay_frametime': 1, 'overlay_gpu': 1,
+              'mouse_look': int(bool(settings.get('mouse_look', True))),
+              'mouse_sensitivity': sensitivity,
+              'mouse_invert_y': int(bool(settings.get('mouse_invert_y', False)))}
     Path(user).mkdir(parents=True, exist_ok=True)
     (Path(user) / 'runtime.ini').write_text(
         '# The Order: 1886 requested settings; applied timing recipe is recorded in prepared.json.\n'
@@ -363,10 +370,29 @@ def main(argv=None):
                         help='Experimental full-screen 16:9 or original cinematic aspect; requires restart')
     parser.add_argument('--vsync', type=int, choices=[0, 1], default=1)
     parser.add_argument('--show-fps', type=int, choices=[0, 1], default=0)
+    parser.add_argument('--mouse-look', type=int, choices=[0, 1], default=1)
+    parser.add_argument('--mouse-sensitivity', type=int, default=100,
+                        help='Mouse-to-stick sensitivity, 10 to 500 percent (default: 100)')
+    parser.add_argument('--mouse-invert-y', type=int, choices=[0, 1], default=0)
+    parser.add_argument('--mods-dir', default='', help='Folder containing explicitly selected asset mod folders')
+    parser.add_argument('--mods-enabled', type=int, choices=[0, 1], default=0)
+    parser.add_argument('--mods-order', default='[]', help='JSON list of enabled mod folder names; later entries win')
     args = parser.parse_args(argv)
+    if not 10 <= args.mouse_sensitivity <= 500:
+        parser.error('--mouse-sensitivity must be from 10 to 500')
     if not math.isfinite(args.timeout) or args.timeout < 0:
         parser.error('--timeout must be a finite nonnegative number')
-    game, user = args.game_dir.resolve(), args.state_dir.resolve()
+    try:
+        args.mods_dir = str(mods.resolve_root(args.mods_dir, ROOT))
+        game, user = mods.safe_path(args.game_dir), mods.safe_path(args.state_dir)
+        mods.safe_path(user / 'session.lock')
+        if args.mods_dir:
+            mod_root = mods.safe_path(args.mods_dir)
+            if user == mod_root or mod_root in user.parents:
+                raise ValueError('State directory must be outside the mod source folder.')
+    except (OSError, ValueError) as error:
+        emit_status(f'The Order: {error}', error=True)
+        return 2
     if user == game or game in user.parents:
         emit_status('State directory must be outside the game folder.', error=True)
         return 2
@@ -374,6 +400,8 @@ def main(argv=None):
     try:
         user.mkdir(parents=True, exist_ok=True)
         with session_lock(user):
+            mod_order = json.loads(args.mods_order)
+            mods.validate_config(args.mods_dir, bool(args.mods_enabled), mod_order)
             metadata = inspect_game(game)
             if args.stop_file and args.stop_file.exists():
                 emit_status('Cancelled before preparation.', fallback=diagnostic_log)
@@ -416,9 +444,14 @@ def main(argv=None):
             logs = user / 'logs'
             logs.mkdir(exist_ok=True)
             log = logs / f'{stamp}-{mode}.log'
-            command = build_command(runtime, user / 'prepared/boot-linked.bin', game, user, args.check_imports)
+            mounted_game = mods.build_overlay(game, user, args.mods_dir,
+                                             bool(args.mods_enabled) and not args.check_imports, mod_order)
+            command = build_command(runtime, user / 'prepared/boot-linked.bin', mounted_game, user, args.check_imports)
             report = {'mode': mode, 'started_utc': stamp, **runtime_identity(runtime),
-                      'game': str(game), 'title_id': TITLE_ID, 'image_sha256': prepared['image_sha256'],
+                      'game': str(game), 'mounted_game': str(mounted_game),
+                      'mods': {'enabled': bool(args.mods_enabled) and not args.check_imports,
+                               'folder': args.mods_dir, 'order': mod_order},
+                      'title_id': TITLE_ID, 'image_sha256': prepared['image_sha256'],
                       'game_metadata': {key: metadata.get(key) for key in
                                         ('TITLE', 'TITLE_ID', 'APP_VER', 'VERSION', 'INSTALL_DIR_SAVEDATA', 'SYSTEM_VER')},
                       'shader_cache_abi': SHADER_CACHE_ABI,

@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "runtime_event_flag.h"
+#include "runtime_trophies.h"
 #ifdef _WIN32
 #include "compat_win.h"
 /* No signals on Windows: the exception handler resumes the thread in ps4_longjmp

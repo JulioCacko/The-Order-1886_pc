@@ -19,6 +19,7 @@
 #include "video_core/renderer_vulkan/vk_depth_stencil_state.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_image_binding_contract.h"
+#include "video_core/renderer_vulkan/order1886_image_mode.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 #include "video_core/renderer_vulkan/vk_gpu_profiler.h"
@@ -1432,8 +1433,43 @@ bool Rasterizer::HelperEligible(const Pipeline* pipeline) const {
     return true;
 }
 
+u64 Rasterizer::CountUnalignedWarning(u64 shader, u32 alignment) {
+    auto& count = unaligned_warning_counts[{shader, alignment}];
+    ++count;
+    return std::has_single_bit(count) ? count : 0;
+}
+
+bool Rasterizer::IsInactiveOrderImage(const Shader::Info& stage, u32 image_index) {
+    if (!UsesOrderImageModeGuard(stage)) return false;
+    const bool inactive = IsOrderComputeImageInactive(stage, image_index,
+        [&](VAddr address) -> std::optional<u32> {
+            if (memory->ClampRangeSize(address, sizeof(u32)) != sizeof(u32) ||
+                buffer_cache.IsRegionCpuModified(address, sizeof(u32)) ||
+                buffer_cache.IsRegionGpuModified(address, sizeof(u32))) {
+                return std::nullopt;
+            }
+            u32 mode;
+            std::memcpy(&mode, reinterpret_cast<const void*>(address), sizeof(mode));
+            if (buffer_cache.IsRegionCpuModified(address, sizeof(u32)) ||
+                buffer_cache.IsRegionGpuModified(address, sizeof(u32))) {
+                return std::nullopt;
+            }
+            return mode;
+        }, num_ring_stages && FindRingBinding(stage, 1));
+    if (inactive && std::getenv("ORDER1886_DIAG_RESOURCE_SHARPS")) {
+        static std::atomic<u32> records{0};
+        if (records.fetch_add(1, std::memory_order_relaxed) < 32) {
+            LOG_WARNING(Render_Vulkan, "Inactive Order compute image: shader={:#018x} index={} mode!=3",
+                     stage.pgm_hash, image_index);
+        }
+    }
+    return inactive;
+}
+
 bool Rasterizer::TexturesBindableOnHelper(const Shader::Info& stage,
                                           const PreparedStage* prepared) {
+    // The mode must be checked on the recording thread after BindBuffers uploads CPU writes.
+    if (UsesOrderImageModeGuard(stage)) return false;
     const u64 generation = texture_cache.RegistryGeneration();
     for (u32 image_index = 0; image_index < stage.images.size(); ++image_index) {
         const auto& image_desc = stage.images[image_index];
@@ -1448,6 +1484,13 @@ bool Rasterizer::TexturesBindableOnHelper(const Shader::Info& stage,
             !memory->IsValidGpuMapping(tsharp.Address(), 0) ||
             !IsKnownFormat(data_fmt, num_fmt)) {
             continue; // null descriptor
+        }
+        if (tsharp.NumLayers() > 2048 && std::getenv("ORDER1886_DIAG_RESOURCE_SHARPS")) {
+            LOG_CRITICAL(Render_Vulkan,
+                         "Oversized image binding: shader={:#018x} stage={} index={} r128={} "
+                         "prepared={} address={:#x} locations={}",
+                         stage.pgm_hash, stage.hw_stage, image_index, image_desc.is_r128,
+                         prepared != nullptr, tsharp.Address(), image_desc.sharp_fetch.offsets);
         }
         const auto& entry =
             prepared ? CachedImageDescEntry(tsharp, image_desc, prepared->image_hashes[image_index])
@@ -2126,8 +2169,11 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                                "ReadConst VMA range exceeds Vulkan storage-buffer range");
                 }
                 if (adjust % 4 != 0) {
-                    LOG_WARNING(Render_Vulkan, "Buffer binding in shader {:#x} isn't dword aligned",
-                                stage.pgm_hash);
+                    if (const auto count = CountUnalignedWarning(stage.pgm_hash, adjust % 4)) {
+                        LOG_WARNING(Render_Vulkan,
+                                    "Buffer binding in shader {:#x} isn't dword aligned: remainder={} "
+                                    "occurrences={} (repeats counted)", stage.pgm_hash, adjust % 4, count);
+                    }
                 }
                 push_data.AddOffset(binding.buffer, adjust);
                 buffer_infos.emplace_back(buffer->Handle(), offset_aligned, size + adjust);
@@ -2243,6 +2289,11 @@ void Rasterizer::BindTextures(const Shader::Info& stage, const PreparedStage* pr
             }
             image_binding_contracts.push_back(contract);
         };
+        if (IsInactiveOrderImage(stage, image_index)) {
+            set_ok = false;
+            bind_null();
+            continue;
+        }
         // a hash lookup per texture per draw for a diagnostic only.
         static const bool warn_meta = std::getenv("ORDER1886_WARN_META_TEXTURE") != nullptr;
         if (warn_meta && texture_cache.IsMeta(tsharp.Address())) {
@@ -2272,6 +2323,37 @@ void Rasterizer::BindTextures(const Shader::Info& stage, const PreparedStage* pr
         }
 
         const Shader::MipStorageFallbackMode mip_fallback_mode = image_desc.mip_fallback_mode;
+        if (tsharp.NumLayers() > 2048 && std::getenv("ORDER1886_DIAG_RESOURCE_SHARPS")) {
+            LOG_CRITICAL(Render_Vulkan,
+                         "Oversized image binding: shader={:#018x} stage={} index={} r128={} "
+                         "prepared={} address={:#x} locations={}",
+                         stage.pgm_hash, stage.hw_stage, image_index, image_desc.is_r128,
+                         prepared != nullptr, tsharp.Address(), image_desc.sharp_fetch.offsets);
+            // Diagnostic-only mode snapshot for the reproduced a7b66f58 sample branch.
+            const auto flat = stage.FlatUserData();
+            if (stage.pgm_hash == 0xa7b66f58 && stage.buffers.size() > 1 && flat.size() > 52 &&
+                !stage.buffers[1].IsSpecial()) {
+                const auto source = stage.buffers[1].GetSharp(stage);
+                const u32 record = flat[52];
+                const u32 word_offset = ((record * 1020u + 196u) >> 2) + 1u;
+                const u64 byte_offset = u64(word_offset) * 4;
+                const VAddr base = source.base_address;
+                const u64 size = source.GetSize();
+                const bool bounded = byte_offset <= size && size - byte_offset >= sizeof(u32) &&
+                                     base <= std::numeric_limits<VAddr>::max() - byte_offset &&
+                                     memory->ClampRangeSize(base + byte_offset, sizeof(u32)) == sizeof(u32);
+                const bool gpu_modified = bounded &&
+                    buffer_cache.IsRegionGpuModified(base + byte_offset, sizeof(u32));
+                u32 mode = ~0u;
+                if (bounded && !gpu_modified) {
+                    std::memcpy(&mode, reinterpret_cast<const void*>(base + byte_offset), sizeof(mode));
+                }
+                LOG_CRITICAL(Render_Vulkan,
+                             "Order image mode capture: shader={:#018x} record={} source={:#x} "
+                             "size={} byte_offset={} bounded={} gpu_modified={} mode={:#x}",
+                             stage.pgm_hash, record, base, size, byte_offset, bounded, gpu_modified, mode);
+            }
+        }
         const bool proxy_candidate = sample_proxies && num_bindings == 1 &&
                                      !image_desc.needs_native && !image_desc.is_written &&
                                      mip_fallback_mode == Shader::MipStorageFallbackMode::None;
@@ -2521,6 +2603,8 @@ Rasterizer::BeginSignature Rasterizer::MakeBeginSignature(const GraphicsPipeline
 
 bool Rasterizer::BindTexturesFromSet(const Shader::Info& stage, const PreparedStage* prepared,
                                      u32 first_image_idx, bool& barrier, TextureSet*& slot) {
+    // This scalar mode can change without changing any image descriptor/hash.
+    if (UsesOrderImageModeGuard(stage)) return false;
     const u32 count = static_cast<u32>(stage.images.size());
     if (!prepared || count == 0 || count > TextureSet::MaxImages ||
         Ps4Toggle::Disabled(Ps4Toggle::TextureSetMemo) || FrameCapture::Active()) {

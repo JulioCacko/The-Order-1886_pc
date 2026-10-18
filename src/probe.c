@@ -520,6 +520,10 @@ int main(int argc, char **argv) {
             fail("AppContent requires a valid --app0/sce_sys/param.sfo with TITLE_ID");
         if (runtime_sfo_value(sfo,"INSTALL_DIR_SAVEDATA",id,sizeof(id),NULL) || runtime_sfo_value(sfo,"TITLE_ID",id,sizeof(id),NULL))
             runtime_savedata_configure(id);
+        char trophy_title[16]="";
+        runtime_sfo_value(sfo,"TITLE_ID",trophy_title,sizeof(trophy_title),NULL);
+        /* Trophy identity is the Order title/profile, never INSTALL_DIR_SAVEDATA. */
+        runtime_trophy_configure(runtime_file_user_dir(),trophy_title);
     }
     ps4gpu_register_kernel();
 #ifdef _WIN32

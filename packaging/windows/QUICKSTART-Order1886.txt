@@ -1,6 +1,27 @@
 THE ORDER: 1886 - WINDOWS LAUNCHER PREVIEW 0.1.0
 Quick start / Guia rapido
 
+DEVELOPMENT UPDATE - INPUT AND DIRECT PLAY
+
+After saving your configuration in The Order 1886.exe, use Play The Order
+1886.exe for direct launch. Game > Create desktop shortcut updates one shortcut
+to this installation. Keep both executables beside _internal and bin.
+Game > Controls has mouse look, sensitivity and inverted Y. Save before Play.
+In the game, Esc releases the cursor and F6 captures/releases it. Left mouse is
+R2/fire, right mouse is L2/aim. WASD moves; arrows control the camera; I/J/K/L
+are the d-pad. Focus loss and text entry release capture. Mouse-to-stick input
+is implemented; direct 1:1 camera hooks and gameplay/QTE validation remain open.
+
+ATUALIZACAO EM DESENVOLVIMENTO - CONTROLES E INICIO DIRETO
+
+Salve as opcoes no launcher e use Play The Order 1886.exe para iniciar direto.
+Game > Create desktop shortcut cria ou atualiza o atalho desta instalacao.
+Mantenha os dois EXEs com _internal e bin. Game > Controls permite ajustar mouse,
+sensibilidade e inverter Y. No jogo, Esc libera o cursor e F6 captura/libera.
+Mouse esquerdo = R2/tiro; direito = L2/mira; WASD = movimento; setas = camera;
+I/J/K/L = direcional. Ao perder foco ou digitar texto, o cursor e liberado.
+A validacao em gameplay/QTEs e o controle de camera direto 1:1 continuam pendentes.
+
 ENGLISH
 -------
 

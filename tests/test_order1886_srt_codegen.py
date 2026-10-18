@@ -261,9 +261,75 @@ int main(int argc, char**) {
 
 
 class SrtCodegenTests(unittest.TestCase):
+    def test_pointer_offsets_obey_strict_ordering_and_replace_duplicate_keys(self):
+        comparator = function_body(SOURCE.read_text(), "struct PointerListCompare") + ";"
+        fixture = r'''
+#include <cassert>
+#include <cstdint>
+#include <list>
+#include <algorithm>
+#include <boost/container/flat_map.hpp>
+namespace IR {
+struct Block;
+struct Inst { Block* parent; Block* GetParent() const { return parent; } };
+struct Instructions {
+    std::list<Inst> values;
+    auto iterator_to(Inst& value) {
+        return std::find_if(values.begin(), values.end(), [&](Inst& item) { return &item == &value; });
+    }
+    auto end() { return values.end(); }
+};
+struct Block { IR::Instructions list; auto& Instructions() { return list; } };
+struct Value {
+    bool immediate; uint32_t value{}; IR::Inst* instruction{};
+    bool IsImmediate() const { return immediate; }
+    uint32_t U32() const { return value; }
+    IR::Inst* Inst() const { return instruction; }
+};
+}
+''' + comparator + r'''
+int main() {
+    IR::Block block;
+    block.list.values.push_back({&block});
+    block.list.values.push_back({&block});
+    IR::Value first{false, 0, &block.list.values.front()};
+    IR::Value second{false, 0, &block.list.values.back()};
+    IR::Value seven{true, 7}, nine{true, 9};
+    PointerListCompare less;
+    assert(!less(first, first));
+    assert(!less(second, second));
+    assert(less(first, second) && !less(second, first));
+    assert(less(seven, first) && !less(first, seven));
+    assert(less(seven, nine) && !less(seven, seven));
+    boost::container::flat_map<IR::Value, int, PointerListCompare> offsets;
+    offsets[first] = 11;
+    offsets[first] = 22;
+    assert(offsets.size() == 1 && offsets[first] == 22);
+    offsets[second] = 33;
+    offsets[seven] = 44;
+    assert(offsets.size() == 3 && offsets[first] == 22 && offsets[second] == 33);
+}
+'''
+        compiler = shutil.which(os.environ.get("CXX", "clang++"))
+        environment = os.environ.copy()
+        if os.name == "nt" and compiler is None:
+            candidate = Path(environment.get("MSYS2_ROOT", r"C:\msys64")) / "clang64/bin/clang++.exe"
+            if candidate.is_file():
+                compiler = str(candidate)
+                environment["PATH"] = str(candidate.parent) + os.pathsep + environment.get("PATH", "")
+        self.assertIsNotNone(compiler, "A C++ compiler is required for the SRT ordering check")
+        with tempfile.TemporaryDirectory(prefix="order1886-srt-order-") as directory:
+            cpp = Path(directory) / "order.cpp"
+            exe = Path(directory) / ("order.exe" if os.name == "nt" else "order")
+            cpp.write_text(fixture, encoding="utf-8")
+            subprocess.run([compiler, "-std=c++23", "-UNDEBUG", str(cpp), "-o", str(exe)],
+                           check=True, capture_output=True, env=environment)
+            result = subprocess.run([str(exe)], capture_output=True, text=True, env=environment)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_recoverable_speculative_fault_does_not_patch_shared_walker(self):
         source = SOURCE.read_text(encoding="utf-8")
-        handler = function_body(source, "static bool SrtWalkerSignalHandler(")
+        handler = function_body(source, "static bool SrtWalkerSignalHandler(void* context, void* fault_address) {")
         self.assertRegex(handler, r"if\s*\(\s*runtime_fault_recover\s*\)\s*\{\s*return false;")
 
     def test_generated_and_loaded_walkers_share_only_byte_identical_code(self):

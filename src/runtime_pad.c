@@ -231,6 +231,13 @@ static void sample_host(PadData *d) {
     key_axis(&d->left_y,k[SDL_SCANCODE_W],k[SDL_SCANCODE_S]);
     key_axis(&d->right_x,k[SDL_SCANCODE_LEFT],k[SDL_SCANCODE_RIGHT]);
     key_axis(&d->right_y,k[SDL_SCANCODE_UP],k[SDL_SCANCODE_DOWN]);
+    uint8_t mouse_axes[2]={128,128};
+    uint32_t mouse_buttons=0;
+    ps4gpu_mouse_sample(mouse_axes,&mouse_buttons);
+    if (abs((int)mouse_axes[0]-128)>abs((int)d->right_x-128)) d->right_x=mouse_axes[0];
+    if (abs((int)mouse_axes[1]-128)>abs((int)d->right_y-128)) d->right_y=mouse_axes[1];
+    if (mouse_buttons & 1) { d->buttons|=BTN_R2; d->r2=255; }
+    if (mouse_buttons & 2) { d->buttons|=BTN_L2; d->l2=255; }
 }
 
 /* ORDER1886_PAD_FILE=<file>: scripted input for automated runs. The file holds whitespace-separated

@@ -7,6 +7,11 @@
 #endif
 
 static int capture;
+static uint8_t mouse_axes[2]={128,128};
+static uint32_t mouse_buttons;
+void ps4gpu_mouse_sample(uint8_t axes[2],uint32_t *buttons) {
+    memcpy(axes,mouse_axes,2); *buttons=mouse_buttons;
+}
 static int vibration_percent=100;
 static uint16_t rumble_low, rumble_high;
 int ps4gpu_overlay_captures_input(void) { return capture; }
@@ -146,6 +151,19 @@ int main(void) {
     pump();
     data=read_pad();
     assert(data.buttons==0 && data.touch_count==0);
+    mouse_axes[0]=200;
+    mouse_buttons=3;
+    data=read_pad();
+    assert(data.right_x==200 && data.l2==255 && data.r2==255);
+    assert((data.buttons & (BTN_L2|BTN_R2))==(BTN_L2|BTN_R2));
+    assert(SDL_SetJoystickVirtualAxis(joystick,SDL_GAMEPAD_AXIS_RIGHTX,-32768));
+    pump();
+    data=read_pad();
+    assert(data.right_x==0);
+    capture=1;
+    data=read_pad();
+    assert(data.right_x==128 && data.buttons==0 && data.l2==0 && data.r2==0);
+    mouse_axes[0]=128; mouse_buttons=0; capture=0;
     SDL_CloseJoystick(joystick);
     if (gamepad) SDL_CloseGamepad(gamepad);
     gamepad=NULL;

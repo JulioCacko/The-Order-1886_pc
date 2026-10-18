@@ -112,6 +112,11 @@ Use **Save settings** after editing a page. Starting from a settings page saves
 its values before launch. The launch bar stays available on every page. Press
 **Escape** to return Home; native controls support keyboard navigation.
 
+Development input and quick-launch changes are documented in the
+[mouse, keyboard and direct-play guide](docs/order1886-input.md). Mouse look,
+sensitivity and inverted Y are under Game > Controls; the next built package
+also includes `Play The Order 1886.exe` and an optional desktop-shortcut action.
+
 The original cinematic launcher remains available:
 
 ```powershell

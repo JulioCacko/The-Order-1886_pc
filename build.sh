@@ -29,7 +29,7 @@ MINGW*|MSYS*)
     fi
     cp out/gpu/order1886-runtime.exe out/gpu/ps4-gpu-capabilities.exe out/
     if [[ ${1:-} == --test ]]; then
-    ninja -C out/gpu runtime-keys-test event-flag-test memory-hooks-test services-test content-test order-render-baseline-test srt-descriptor-validation-test pad-test frame-trace-test perf-overlay-test order-shader-math-test pipeline-binary-cache-test amd-paths-test
+    ninja -C out/gpu runtime-keys-test event-flag-test memory-hooks-test services-test content-test order-render-baseline-test srt-descriptor-validation-test pad-test pad-map-test frame-trace-test perf-overlay-test order-shader-math-test pipeline-binary-cache-test amd-paths-test mouse-look-test
         out/gpu/runtime-keys-test.exe
         out/gpu/event-flag-test.exe
         out/gpu/memory-hooks-test.exe
@@ -43,6 +43,8 @@ MINGW*|MSYS*)
     out/gpu/order-shader-math-test.exe
     out/gpu/pipeline-binary-cache-test.exe
     out/gpu/amd-paths-test.exe
+    out/gpu/mouse-look-test.exe
+    out/gpu/pad-map-test.exe
     fi
     python scripts/runtime_build_identity.py out/order1886-runtime.exe
     echo "Built $PWD/out/order1886-runtime.exe"
@@ -105,10 +107,11 @@ echo "Built $PWD/out/order1886-runtime"
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -Igpu/shadps4 tools/gpu_capabilities.c "${libraries[@]}" -o out/ps4-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
-    cmake --build out/gpu --target order-shader-math-test pipeline-binary-cache-test amd-paths-test
+    cmake --build out/gpu --target order-shader-math-test pipeline-binary-cache-test amd-paths-test mouse-look-test
     out/gpu/order-shader-math-test
     out/gpu/pipeline-binary-cache-test
     out/gpu/amd-paths-test
+    out/gpu/mouse-look-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_runtime.c "${runtime[@]}" out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/runtime-test
@@ -123,8 +126,9 @@ if [[ ${1:-} == --test ]]; then
     out/mp3-test tests/data/sine.mp3
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_videodec.c "${libraries[@]}" -o out/videodec-test
     out/videodec-test tests/data/tiny.h264
-    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_services.c -o out/services-test
+    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_services.c src/runtime_trophies.c -o out/services-test
     out/services-test
+    python3 -m unittest discover -s tests -p test_order1886_trophies.py
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -mbmi -mlzcnt -mmovbe -I. -Isrc tests/test_isa_emulate.c out/isa_emulate.o -o out/isa-emulate-test
     out/isa-emulate-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -c src/isa_rewrite.c -I. -Isrc -o out/isa_rewrite.o

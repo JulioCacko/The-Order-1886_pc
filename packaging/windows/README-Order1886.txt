@@ -1,5 +1,15 @@
 THE ORDER: 1886 - EXPERIMENTAL PC COMPATIBILITY BUILD
 
+Direct play: configure and save once in The Order 1886.exe, then use
+Play The Order 1886.exe. Game > Create desktop shortcut creates or updates
+a shortcut to this installation. Keep both EXEs with _internal and bin.
+
+Mouse: Game > Controls has mouse look, sensitivity and inverted Y. Save before
+starting. In the game, Esc releases the cursor and F6 captures/releases it.
+Left mouse = R2/fire, right mouse = L2/aim, WASD = movement, arrows = camera,
+I/J/K/L = d-pad. Alt-Tab and text entry release capture. This uses mouse-to-stick
+input; direct 1:1 camera control and gameplay/QTE acceptance remain unverified.
+
 Read QUICKSTART.txt for step-by-step setup, the required game-folder structure,
 settings, saves, updates and troubleshooting in English and Portuguese.
 

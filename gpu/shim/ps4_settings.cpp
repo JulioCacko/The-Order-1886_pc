@@ -109,6 +109,12 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.anisotropy = Ps4Graphics::ParseAnisotropy(i);
     } else if (key == "vibration") {
         v.vibration = value.empty() ? 100 : std::clamp(i, 0, 100);
+    } else if (key == "mouse_look") {
+        v.mouse_look = i != 0;
+    } else if (key == "mouse_invert_y") {
+        v.mouse_invert_y = i != 0;
+    } else if (key == "mouse_sensitivity") {
+        v.mouse_sensitivity = value.empty() ? 100 : std::clamp(i, 10, 500);
     } else if (key == "restart_unconfirmed") {
         v.restart_unconfirmed = i != 0;
 
@@ -249,6 +255,8 @@ void Save() {
         v.fsr1.load() ? "fsr1" : "linear",
         v.vibration.load(), v.anisotropy.load(), int(v.show_fps.load()),
         v.overlay_scale.load(), v.overlay_corner.load(), v.overlay_opacity.load(), v.overlay_layout.load());
+    std::fprintf(file, "mouse_look=%d\nmouse_sensitivity=%d\nmouse_invert_y=%d\n",
+        int(v.mouse_look.load()), v.mouse_sensitivity.load(), int(v.mouse_invert_y.load()));
     std::fclose(file);
 }
 

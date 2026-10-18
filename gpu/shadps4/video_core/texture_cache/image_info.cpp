@@ -159,13 +159,18 @@ ImageInfo::ImageInfo(const AmdGpu::Image& image, const Shader::ImageResource& de
         const char* value = std::getenv("ORDER1886_DIAG_RESOURCE_SHARPS");
         return value && std::strcmp(value, "1") == 0;
     }();
-    static std::atomic<u32> records{0};
+    static std::atomic<u32> records{0}, oversized_records{0};
     if (capture_sharps) {
-        u32 record = records.load(std::memory_order_relaxed);
-        while (record < 512 &&
-               !records.compare_exchange_weak(record, record + 1, std::memory_order_relaxed)) {}
-        if (record < 512) {
-            LogResourceSharp(image, desc, record + 1, "before image decode");
+        // Reserve late-failure evidence separately from ordinary startup descriptors.
+        const bool oversized = image.NumLayers() > 2048;
+        auto& budget = oversized ? oversized_records : records;
+        const u32 limit = oversized ? 16 : 512;
+        u32 record = budget.load(std::memory_order_relaxed);
+        while (record < limit &&
+               !budget.compare_exchange_weak(record, record + 1, std::memory_order_relaxed)) {}
+        if (record < limit) {
+            LogResourceSharp(image, desc, record + 1,
+                             oversized ? "oversized image decode" : "before image decode");
         }
     }
     tile_mode = image.GetTileMode();

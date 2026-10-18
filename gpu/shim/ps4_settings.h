@@ -63,6 +63,8 @@ struct Values {
     std::atomic<int> frames_queued{1};
     /// Controller vibration strength in percent; 0 turns it off (runtime_pad.c). Live.
     std::atomic<int> vibration{100};
+    std::atomic<bool> mouse_look{true}, mouse_invert_y{false};
+    std::atomic<int> mouse_sensitivity{100};
     // Startup: run.py turns them into patches and environment variables; "Apply and restart".
     std::atomic<bool> deferred_readback{false};
     std::atomic<bool> stale_readback{false};

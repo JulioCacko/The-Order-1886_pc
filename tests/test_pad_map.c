@@ -4,6 +4,9 @@
 #include "../src/runtime_pad.c"
 
 int ps4gpu_overlay_captures_input(void) { return 0; }
+void ps4gpu_mouse_sample(uint8_t axes[2],uint32_t *buttons) {
+    axes[0]=axes[1]=128; *buttons=0;
+}
 int ps4gpu_vibration_percent(void) { return 100; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;

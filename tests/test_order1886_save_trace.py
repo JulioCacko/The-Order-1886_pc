@@ -25,6 +25,8 @@ class SaveTraceTests(unittest.TestCase):
                 command = [compiler, '-std=c11', '-O2', '-UNDEBUG', '-Wall', '-Wextra', '-Werror',
                            '-pthread', '-I' + str(ROOT), '-I' + str(ROOT / 'src'),
                            str(ROOT / 'tests' / source), '-o', str(binary)]
+                if source == 'test_services.c':
+                    command.append(str(ROOT / 'src/runtime_trophies.c'))
                 if os.name == 'nt':
                     command += ['-lws2_32']
                 compiled = subprocess.run(command, env=environment, capture_output=True, text=True)

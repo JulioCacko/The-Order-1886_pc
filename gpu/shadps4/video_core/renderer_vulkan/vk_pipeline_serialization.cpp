@@ -33,7 +33,7 @@
 
 namespace Serialization {
 /* You should increment versions below once corresponding serialization scheme is changed. */
-static constexpr u32 ShaderBinaryVersion = 14u; // GCN legacy/clamp math and user-data binding keys
+static constexpr u32 ShaderBinaryVersion = 15u; // strict SRT offset ordering changes flattened bindings
 static constexpr u32 ShaderMetaVersion = 10u; // persisted uniform image guard recipes
 static constexpr u32 PipelineKeyVersion = 8u; // explicit inactive/active image specialization state
 } // namespace Serialization

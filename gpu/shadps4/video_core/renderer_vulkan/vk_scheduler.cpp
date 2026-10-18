@@ -209,13 +209,16 @@ void Scheduler::TraceDirectRecording(void* caller) {
 }
 
 std::unique_ptr<RecordChunk> Scheduler::AcquireChunk() {
-    std::scoped_lock lk{recorder_mutex};
-    if (free_chunks.empty()) {
-        return std::make_unique<RecordChunk>();
+    {
+        std::scoped_lock lk{recorder_mutex};
+        if (!free_chunks.empty()) {
+            auto chunk = std::move(free_chunks.back());
+            free_chunks.pop_back();
+            return chunk;
+        }
     }
-    auto chunk = std::move(free_chunks.back());
-    free_chunks.pop_back();
-    return chunk;
+    // Allocation can fault and re-enter recording; do not hold the pool mutex here.
+    return std::make_unique<RecordChunk>();
 }
 
 void Scheduler::SignalAfterHostCopies(std::function<void()> signal) {
@@ -276,14 +279,17 @@ void Scheduler::KickRecording(bool force) {
     if (full_chunks.empty() && record_chunk->Empty()) {
         return;
     }
+    // Acquire before handing over the current chunk so reentry never sees it null.
+    // AcquireChunk() takes recorder_mutex itself; keep acquisition outside that lock.
+    std::unique_ptr<RecordChunk> next = record_chunk->Empty() ? nullptr : AcquireChunk();
     bool wake;
     {
         std::scoped_lock lk{recorder_mutex};
         for (auto& chunk : full_chunks) {
             recorder_queue.push_back(std::move(chunk));
         }
-        if (!record_chunk->Empty()) {
-            recorder_queue.push_back(std::move(record_chunk));
+        if (next) {
+            recorder_queue.push_back(std::exchange(record_chunk, std::move(next)));
         }
         wake = recorder_sleeping;
         queued_chunks.store(recorder_queue.size(), std::memory_order_release);
@@ -292,9 +298,6 @@ void Scheduler::KickRecording(bool force) {
     // A busy recorder picks the new chunks up by itself: waking it is a syscall per draw.
     if (wake) {
         recorder_cv.notify_one();
-    }
-    if (!record_chunk) {
-        record_chunk = AcquireChunk();
     }
 }
 

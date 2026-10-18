@@ -42,6 +42,8 @@ private:
     bool text_requested{}, text_active{};
     int display_mode = -1; ///< applied Ps4Settings display mode (window thread)
     void ApplyDisplayMode(int mode);
+    void UpdateMouseCapture();
+    bool mouse_released{}, mouse_captured{}, mouse_focused{};
     int text_state{};
     std::string text, text_prompt, base_title;
     void UpdateTextTitle();

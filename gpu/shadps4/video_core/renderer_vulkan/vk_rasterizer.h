@@ -4,6 +4,7 @@
 #pragma once
 
 #include <atomic>
+#include <map>
 
 #include "common/recursive_lock.h"
 #include "common/shared_first_mutex.h"
@@ -292,6 +293,9 @@ private:
     /// Whether every texture of `stage` takes the memoized path without refreshing, creating or
     /// redirecting anything that records commands or touches the buffer cache.
     bool TexturesBindableOnHelper(const Shader::Info& stage, const PreparedStage* prepared);
+    bool IsInactiveOrderImage(const Shader::Info& stage, u32 image_index);
+    u64 CountUnalignedWarning(u64 shader, u32 alignment);
+    std::map<std::pair<u64, u32>, u64> unaligned_warning_counts;
     static void RunTextureTask(void* rasterizer);
     static void JoinBindHelper(void* rasterizer);
 

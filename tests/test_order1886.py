@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -280,15 +281,28 @@ class OrderBackendTests(unittest.TestCase):
         # Windows venv Python is a redirector; model the native runtime's direct child.
         host_python = getattr(sys, '_base_executable', sys.executable)
         log = self.user / 'timeout.log'
+        ready = self.user / 'watchdog-child-ready'
         processes = []
         popen = subprocess.Popen
         def capture(*args, **kwargs):
             process = popen(*args, **kwargs)
             processes.append(process)
+            # Exercise output draining after startup, even on a heavily loaded host.
+            deadline = time.monotonic() + 5
+            while not ready.exists():
+                if process.poll() is not None:
+                    self.fail('Watchdog fixture exited before signaling readiness')
+                if time.monotonic() >= deadline:
+                    process.kill()
+                    process.wait(timeout=5)
+                    self.fail('Watchdog fixture did not signal readiness')
+                time.sleep(0.01)
             return process
         with patch.object(order1886.subprocess, 'Popen', side_effect=capture):
             result = order1886.run_process(
-                [host_python, '-c', 'import os,time; print("fixture-pid=" + str(os.getpid()), flush=True); time.sleep(30)'],
+                [host_python, '-c', 'import os,time; from pathlib import Path; '
+                 'print("fixture-pid=" + str(os.getpid()), flush=True); '
+                 f'Path({str(ready)!r}).touch(); time.sleep(30)'],
                 env, log, timeout=0.15)
         released_log = log.rename(self.user / 'released-timeout.log')
         self.assertTrue(result['timed_out'])

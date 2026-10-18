@@ -42,10 +42,27 @@ static Shader::SrtWalkerCache<> g_srt_walker_cache;
 // threads.
 static std::mutex g_srt_codegen_mutex;
 
+namespace {
+static bool SrtWalkerSignalHandler(void* context, void* fault_address);
+}
+
+// Cover the entire arena whether the first walker is generated or loaded from cache.
+static void RegisterSrtWalkerFaultHandler() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        g_srt_codegen_start = g_srt_codegen.getCode();
+        // Call after the memory invalidation handler
+        constexpr u32 priority = 1;
+        Core::Signals::Instance()->RegisterAccessViolationHandler(SrtWalkerSignalHandler,
+                                                                  priority);
+    });
+}
+
 namespace Shader {
 
 PFN_SrtWalker RegisterWalkerCode(const u8* ptr, size_t size) {
     std::scoped_lock lock{g_srt_codegen_mutex};
+    RegisterSrtWalkerFaultHandler();
     if (const u8* existing = g_srt_walker_cache.Find(ptr, size)) {
         return reinterpret_cast<PFN_SrtWalker>(const_cast<u8*>(existing));
     }
@@ -158,6 +175,9 @@ struct PassInfo {
             } else if (!a.IsImmediate() && !b.IsImmediate()) {
                 auto a_inst = a.Inst();
                 auto b_inst = b.Inst();
+                if (a_inst == b_inst) {
+                    return false;
+                }
                 auto a_block = a_inst->GetParent();
                 auto b_block = b_inst->GetParent();
                 if (a_block != b_block) {
@@ -751,14 +771,7 @@ static void GenerateSrtProgram(Info& info, PassInfo& pass_info) {
     }
     std::scoped_lock lock{g_srt_codegen_mutex};
 
-    // Register the signal handler for SRT walker, if not already registered
-    if (g_srt_codegen_start == nullptr) {
-        g_srt_codegen_start = c.getCurr();
-        auto* signals = Core::Signals::Instance();
-        // Call after the memory invalidation handler
-        constexpr u32 priority = 1;
-        signals->RegisterAccessViolationHandler(SrtWalkerSignalHandler, priority);
-    }
+    RegisterSrtWalkerFaultHandler();
 
     const size_t walker_start = c.getSize();
     info.srt_info.walker_func = c.getCurr<PFN_SrtWalker>();

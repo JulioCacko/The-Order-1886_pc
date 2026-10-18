@@ -9,6 +9,7 @@
 #include "ps4_overlay.h"
 #include "ps4_graphics.h"
 #include "ps4_settings.h"
+#include "ps4_mouse.h"
 
 namespace Frontend {
 
@@ -29,6 +30,7 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     window = SDL_CreateWindowWithProperties(props);
     SDL_DestroyProperties(props);
     ASSERT_MSG(window, "Failed to create window: {}", SDL_GetError());
+    mouse_focused = (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0;
     // the game's own icon (run.py converts sce_sys/icon0.png to BMP, SDL's built-in format).
     if (const char* icon_path = std::getenv("ORDER1886_WINDOW_ICON")) {
         if (SDL_Surface* icon = SDL_LoadBMP(icon_path)) {
@@ -63,7 +65,7 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     }
     ApplyDisplayMode(Ps4Settings::Get().display_mode);
     // the game has no mouse; the in-game menu draws its own cursor (Ps4Overlay::SetOpen).
-    SDL_HideCursor();
+    SDL_ShowCursor();
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(window, &w, &h);
     width = w;
@@ -90,6 +92,9 @@ void WindowSDL::ApplyDisplayMode(int mode) {
 }
 
 WindowSDL::~WindowSDL() {
+    Ps4Mouse::input.Capture(false, SDL_GetTicksNS() * 1e-9);
+    SDL_SetWindowRelativeMouseMode(window, false);
+    SDL_ShowCursor();
     SDL_DestroyWindow(window);
 }
 
@@ -114,6 +119,22 @@ void WindowSDL::UpdateTextTitle() {
     Ps4Overlay::SetTextEntry(text_active, text_prompt, text);
 }
 
+void WindowSDL::UpdateMouseCapture() {
+    const bool wanted = Ps4Mouse::WantsCapture(Ps4Settings::Get().mouse_look, mouse_released,
+        text_active || Ps4Overlay::CapturesInput(), mouse_focused,
+        (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0);
+    if (wanted == mouse_captured && SDL_GetWindowRelativeMouseMode(window) == wanted) return;
+    if (!SDL_SetWindowRelativeMouseMode(window, wanted)) {
+        LOG_WARNING(Frontend, "Mouse capture failed: {}. Press F6 to retry.", SDL_GetError());
+        mouse_released = true;
+        mouse_captured = false;
+    } else {
+        mouse_captured = wanted;
+    }
+    Ps4Mouse::input.Capture(mouse_captured, SDL_GetTicksNS() * 1e-9);
+    if (!mouse_captured) SDL_ShowCursor();
+}
+
 bool WindowSDL::PollEvents() {
     {
         std::scoped_lock lock{text_mutex};
@@ -131,7 +152,15 @@ bool WindowSDL::PollEvents() {
         ApplyDisplayMode(mode);
     }
     SDL_Event event;
+    UpdateMouseCapture();
     while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && !text_active &&
+            !Ps4Overlay::CapturesInput() &&
+            (event.key.key == SDLK_F6 || (event.key.key == SDLK_ESCAPE && mouse_captured))) {
+            mouse_released = event.key.key == SDLK_ESCAPE || !mouse_released;
+            UpdateMouseCapture();
+            continue;
+        }
         if (text_active && (event.type == SDL_EVENT_TEXT_INPUT || event.type == SDL_EVENT_KEY_DOWN)) {
             std::scoped_lock lock{text_mutex};
             if (event.type == SDL_EVENT_TEXT_INPUT) {
@@ -163,6 +192,27 @@ bool WindowSDL::PollEvents() {
             continue;
         }
         switch (event.type) {
+        case SDL_EVENT_MOUSE_MOTION:
+            if (event.motion.windowID == SDL_GetWindowID(window))
+                Ps4Mouse::input.Motion(event.motion.xrel, event.motion.yrel);
+            break;
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+            if (event.button.windowID == SDL_GetWindowID(window)) {
+                const auto mask = event.button.button == SDL_BUTTON_LEFT ? 1u :
+                                  event.button.button == SDL_BUTTON_RIGHT ? 2u : 0u;
+                Ps4Mouse::input.Button(mask, event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
+            }
+            break;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            if (event.window.windowID == SDL_GetWindowID(window)) {
+                // SDL flags may already reflect a queued focus gain. Every focus-lost
+                // event must still release capture and discard prior motion/buttons.
+                mouse_focused = event.type == SDL_EVENT_WINDOW_FOCUS_GAINED;
+                UpdateMouseCapture();
+            }
+            break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
         case SDL_EVENT_WINDOW_RESIZED: {
             int w = 0, h = 0;
@@ -179,6 +229,9 @@ bool WindowSDL::PollEvents() {
             break;
         }
     }
+    UpdateMouseCapture();
+    Ps4Mouse::input.Update(SDL_GetTicksNS() * 1e-9,
+        Ps4Settings::Get().mouse_sensitivity, Ps4Settings::Get().mouse_invert_y);
     return is_open;
 }
 

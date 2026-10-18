@@ -1,5 +1,34 @@
 # The Order donor reuse, 2026-10-17
 
+## Additional authorized donor: Bloodborne PC
+
+The user requested extensive reuse from `D:\Emulator\bloodborne_pc`,
+[Jgamrot/bloodborne_pc](https://github.com/Jgamrot/bloodborne_pc), pinned at
+`52e4988f54b0626447563874bf8695633b1a4302`. Its checkout was clean and its root
+license is GPLv2. Preserve per-file notices and third-party SDK licenses when
+adapting code. Keep that checkout unchanged.
+
+Reuse is being evaluated by subsystem: renderer scheduling/resource handling,
+temporal-provider plumbing, input/settings, localization, updates, mods and
+achievements. The Order's executable guards, user-data isolation and branding
+remain the integration contracts. Bloodborne engine addresses, shader matches,
+camera conventions, asset formats and gameplay mechanics require separate Order
+evidence. Donor feature availability does not certify those features here.
+
+The donor's latest history includes a rollback of two texture-budget changes that
+crashed an 8 GB GPU; newer renderer code is not accepted without regression and
+RTX 3070 evidence. Findings and imported changes will be tracked against the
+pinned revision rather than treating a whole-tree replacement as verified.
+
+The integrated Bloodborne-derived batch includes recording-chunk reentry fixes,
+arena-wide SRT fault registration, attributed launcher translations, reversible
+asset overlays, and local trophy persistence. Order-specific validation and
+failure handling were retained or strengthened. See the
+[local integration record](verification/2026-10-18-gold-work.md) for tests, runtime
+identities, Chapter 2 evidence, and remaining acceptance gates.
+
+## Earlier Order-specific donor batch
+
 This is the first compatibility batch from `D:\Emulator\theorder1886-port`,
 [mateussmeneses/theorder1886-port](https://github.com/mateussmeneses/theorder1886-port),
 inspected at `74500b7`. Both projects distribute their code under GPLv2; imported

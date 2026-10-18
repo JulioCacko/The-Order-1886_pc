@@ -102,8 +102,8 @@ try {
     $scriptData = Join-Path $stage 'scripts'
     New-Item -ItemType Directory -Force -Path $scriptData | Out-Null
     # This is the complete source/data closure of the Order preparation path.
-    # Do not ship unrelated patch, overlay, mod, resource or title helpers.
-    foreach ($name in @('prepare.py', 'link_modules.py', 'link_libc.py', 'save_backup.py', 'order1886_frame_rate.py', 'order1886_display.py')) {
+    # Do not ship unrelated patch, resource or title helpers.
+    foreach ($name in @('prepare.py', 'link_modules.py', 'link_libc.py', 'save_backup.py', 'order1886_frame_rate.py', 'order1886_display.py', 'order1886_cache.py', 'order1886_steam.py', 'order1886_mods.py')) {
         Copy-Item -LiteralPath (Join-Path "$projectRoot/scripts" $name) -Destination (Join-Path $scriptData $name)
     }
     $pythonSource = Join-Path $stage 'python-source'
@@ -114,7 +114,11 @@ try {
         'order1886.py'=(Get-SHA256 "$pythonSource/order1886.py")
         'launcher/order1886_launcher.py'=(Get-SHA256 "$pythonSource/launcher/order1886_launcher.py")
     }
-    foreach ($name in @('prepare.py', 'link_modules.py', 'link_libc.py', 'save_backup.py', 'order1886_frame_rate.py', 'order1886_display.py')) {
+    foreach ($name in @('order1886_lang.py', 'order1886_lang_data.py')) {
+        Copy-Item -LiteralPath (Join-Path "$projectRoot/launcher" $name) -Destination (Join-Path "$pythonSource/launcher" $name)
+        $pythonSources["launcher/$name"] = Get-SHA256 (Join-Path "$pythonSource/launcher" $name)
+    }
+    foreach ($name in @('prepare.py', 'link_modules.py', 'link_libc.py', 'save_backup.py', 'order1886_frame_rate.py', 'order1886_display.py', 'order1886_cache.py', 'order1886_steam.py', 'order1886_mods.py')) {
         $pythonSources["scripts/$name"] = Get-SHA256 (Join-Path $scriptData $name)
     }
     $versionFile = Join-Path $stage 'version-info.txt'
@@ -128,9 +132,13 @@ VSVersionInfo(ffi=FixedFileInfo(filevers=(0,1,2,0), prodvers=(0,1,2,0), mask=0x3
         --add-data "$artwork;launcher/order1886" --add-data "$scriptData;scripts" `
         --hidden-import order1886 --hidden-import prepare --hidden-import link_modules `
         --hidden-import link_libc --hidden-import save_backup --hidden-import order1886_frame_rate --hidden-import order1886_display `
+        --hidden-import order1886_cache --hidden-import order1886_steam --hidden-import order1886_mods `
+        --hidden-import launcher.order1886_lang --hidden-import launcher.order1886_lang_data `
         "$pythonSource/launcher/order1886_launcher.py"
     if ($LASTEXITCODE) { throw 'Launcher packaging failed.' }
     $packageRoot = Join-Path $destination 'The Order 1886'
+    Copy-Item -LiteralPath (Join-Path $packageRoot 'The Order 1886.exe') `
+        -Destination (Join-Path $packageRoot 'Play The Order 1886.exe')
     $runtimeBin = Join-Path $packageRoot 'bin'
     Copy-RuntimeDependencies $runtimePath $runtimeBin
     if ((Get-SHA256 (Join-Path $runtimeBin 'order1886-runtime.exe')) -ne $runtimeHash) {

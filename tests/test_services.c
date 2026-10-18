@@ -109,10 +109,10 @@ int main(void) {
     assert(playgo_todo(handle,&chunk,1)==0 && playgo_todo(handle,NULL,1)==PLAYGO_BAD_POINTER);
     assert(playgo_close(handle)==0 && playgo_close(handle)==PLAYGO_BAD_HANDLE && playgo_terminate()==0);
 
-    /* Trophies: nothing unlocked. */
+    /* Unknown trophy handles never expose or modify local history. */
     uint32_t flags[4]={~0u,~0u,~0u,~0u}, count=7;
-    assert(trophy_unlock_state(1,1,flags,&count)==0 && !flags[0] && !flags[3] && count==0);
-    assert(trophy_unlock_state(1,1,NULL,&count)==TROPHY_INVALID && trophy_release(0)==TROPHY_INVALID);
+    assert(trophy_unlock_state(1,1,flags,&count)==TROPHY_INVALID && flags[0]==~0u && count==7);
+    assert(trophy_unlock_state(1,1,NULL,&count)==TROPHY_INVALID && trophy_destroy_handle(0)==TROPHY_INVALID);
 
     float ratio=0; assert(safe_area(&ratio)==0 && ratio==1.0f && safe_area(NULL)==SYSTEM_PARAMETER);
     puts("services test: ok");

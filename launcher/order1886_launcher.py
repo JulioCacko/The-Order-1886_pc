@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+from collections import deque
 import codecs
 import io
 import json
@@ -16,12 +18,14 @@ import tempfile
 import threading
 import time
 import uuid
+from typing import Protocol
 
 FROZEN = getattr(sys, "frozen", False)
 ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
 BUNDLE = Path(getattr(sys, "_MEIPASS", ROOT))
 ASSETS = BUNDLE / "launcher" / "order1886"
 sys.path.insert(0, str(BUNDLE))
+from launcher.order1886_lang import LANGUAGES, translate
 STATE = ROOT / "user" / "order1886"
 GOLD, PAPER, MUTED, BLACK = "#d4bd75", "#e9e5d8", "#a8a497", "#0b0b0a"
 DISPLAY = {"Windowed": "windowed", "Borderless": "borderless", "Fullscreen": "fullscreen"}
@@ -32,6 +36,9 @@ ASPECT_RATIO = {"Full screen 16:9 (experimental)": "16:9", "Original cinematic a
 # Reference: 7822ee56c2169f15ecde5d80f39e96143a252464, launcher/port_launcher_win.py.
 PAGES = ("home", "graphics", "performance", "game", "advanced")
 PAGE_TITLES = dict(zip(PAGES, ("Home", "Graphics", "Performance", "Game", "Advanced")))
+SETTINGS_KEYS = ("game_dir", "runtime", "display_mode", "vsync", "show_fps",
+                 "presentation_filter", "frame_rate", "aspect_ratio", "mouse_look",
+                 "mouse_sensitivity", "mouse_invert_y", "ui_language", "mods_dir", "mods_enabled")
 
 
 def read_settings(path: Path) -> dict:
@@ -44,7 +51,9 @@ def read_settings(path: Path) -> dict:
 
 def save_settings(path: Path, values: dict) -> None:
     if values.get("game_dir"):
-        game, state = Path(values["game_dir"]).resolve(), path.parent.resolve()
+        game = Path(values["game_dir"])
+        game = (game if game.is_absolute() else ROOT / game).resolve()
+        state = path.parent.resolve()
         if state == game or game in state.parents:
             raise ValueError("Launcher state must be outside the selected game folder.")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -63,9 +72,19 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                  "--show-fps", str(int(values["show_fps"])),
                  "--presentation-filter", values.get("presentation_filter", "fsr1"),
                  "--frame-rate", str(values.get("frame_rate", 30)),
-                 "--aspect-ratio", values.get("aspect_ratio", "16:9")]
+                "--aspect-ratio", values.get("aspect_ratio", "original"),
+                "--mouse-look", str(int(values.get("mouse_look", True))),
+                "--mouse-sensitivity", str(values.get("mouse_sensitivity", 100)),
+                "--mouse-invert-y", str(int(values.get("mouse_invert_y", False)))]
     if values.get("runtime"):
         command += ["--runtime", values["runtime"]]
+    if mode == "play":
+        from order1886 import mods
+        enabled, order = values.get("mods_enabled", False), values.get("mod_order", [])
+        mod_root = mods.resolve_root(values.get("mods_dir", ""), ROOT)
+        mods.validate_config(mod_root, enabled, order)
+        command += ["--mods-dir", str(mod_root), "--mods-enabled", str(int(enabled)),
+                    "--mods-order", json.dumps(order, ensure_ascii=False)]
     if mode == "verify":
         command += ["--check-imports"]
     if stop_file is not None:
@@ -73,7 +92,11 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
     return command
 
 
-def session_worker(command: list[str], logfile: Path, events: queue.Queue,
+class EventSink(Protocol):
+    def put(self, event: tuple) -> None: ...
+
+
+def session_worker(command: list[str], logfile: Path, events: EventSink,
                    cancelled: threading.Event, stop_file: Path,
                    mode: str, cwd: Path = ROOT) -> None:
     """Run one backend off the UI thread; record startup failures and stop races."""
@@ -173,6 +196,156 @@ def attach_stdio() -> None:
                 setattr(sys, name, stream)
 
 
+def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
+    """Use one set of defaults for the desktop and direct-play entry points."""
+    import order1886
+    if saved is None:
+        saved = read_settings(state / "settings.json")
+    values = {
+        **saved,
+        "game_dir": str(saved.get("game_dir", order1886.default_game_dir())),
+        "runtime": str(saved.get("runtime", "")),
+        "display_mode": saved.get("display_mode", "borderless"),
+        "vsync": bool(saved.get("vsync", True)),
+        "show_fps": bool(saved.get("show_fps", True)),
+        "presentation_filter": saved.get("presentation_filter", "fsr1"),
+        "frame_rate": saved.get("frame_rate", 30),
+        "aspect_ratio": saved.get("aspect_ratio", "original"),
+        "mouse_look": bool(saved.get("mouse_look", True)),
+        "mouse_sensitivity": saved.get("mouse_sensitivity", 100),
+        "mouse_invert_y": bool(saved.get("mouse_invert_y", False)),
+        "ui_language": saved.get("ui_language", "en"),
+        "mods_dir": saved.get("mods_dir", ""),
+        "mods_enabled": saved.get("mods_enabled", False),
+        "mod_order": saved.get("mod_order", []),
+    }
+    for key, allowed, default in (
+        ("display_mode", ("windowed", "borderless", "fullscreen"), "borderless"),
+        ("presentation_filter", ("linear", "fsr1"), "fsr1"),
+        ("aspect_ratio", ("original", "16:9"), "original"),
+    ):
+        if values[key] not in allowed:
+            values[key] = default
+    if type(values["frame_rate"]) is not int or values["frame_rate"] not in (30, 60):
+        values["frame_rate"] = 30
+    if type(values["mouse_sensitivity"]) is not int or not 10 <= values["mouse_sensitivity"] <= 500:
+        values["mouse_sensitivity"] = 100
+    return values
+
+
+class _QuickPlayEvents:
+    """The session log stays on disk; direct play only retains recent error context."""
+    def __init__(self):
+        self.code = 1
+        self.tail = deque(maxlen=3)
+
+    def put(self, event: tuple) -> None:
+        kind, value = event
+        if kind == "done":
+            self.code, _mode, _cancelled = value
+        elif kind == "line":
+            self.tail.append(value)
+
+
+def validate_launch_game(game: Path, values: dict) -> None:
+    """Use the backend's exact patch guards before creating a play session."""
+    import order1886
+    order1886.mods.validate_config(order1886.mods.resolve_root(values.get("mods_dir", ""), ROOT), values.get("mods_enabled", False),
+                                  values.get("mod_order", []))
+    game = (game if game.is_absolute() else ROOT / game).resolve()
+    metadata = order1886.inspect_game(game)
+    try:
+        order1886.timing.validate_source(game / "eboot.bin", values.get("frame_rate", 30), metadata)
+        order1886.display.validate_source(game / "eboot.bin", values.get("aspect_ratio", "original"), metadata)
+    except ValueError as exc:
+        raise ValueError(translate(
+            "Selected settings do not match this executable. Detected APP_VER {app_ver}, VERSION {version}.\n\n"
+            "{error}\n\nSelect 30 FPS and Original cinematic aspect to use the unpatched profile. "
+            "Fullscreen is a separate display setting. Gameplay compatibility still requires verification.",
+            values.get("ui_language", "en"), app_ver=metadata.get("APP_VER", "unknown"),
+            version=metadata.get("VERSION", "unknown"), error=exc)) from exc
+
+
+def run_saved_game(state: Path, on_error=None) -> int | None:
+    """None opens setup; configured installs use exactly the GUI Play worker."""
+    import order1886
+    state = state.resolve()
+    if not (state / "settings.json").is_file():
+        return None
+    saved = read_settings(state / "settings.json")
+    if not saved:
+        return None
+    values = load_launch_settings(state, saved)
+    for key in ("display_mode", "presentation_filter", "aspect_ratio", "frame_rate",
+                "mouse_sensitivity", "mouse_look", "mouse_invert_y", "vsync", "show_fps"):
+        if key in saved and (type(saved[key]) is not type(values[key]) or saved[key] != values[key]):
+            if on_error:
+                on_error(translate("Saved setting '{key}' is unsupported. Review it in the launcher and save your settings before using direct play.", values["ui_language"], key=key))
+            return None
+    try:
+        game = Path(values["game_dir"])
+        runtime = Path(values["runtime"]) if values["runtime"] else None
+        game = (game if game.is_absolute() else ROOT / game).resolve()
+        if state == game or game in state.parents:
+            return None
+        validate_launch_game(game, values)
+        if runtime and not runtime.is_absolute():
+            runtime = ROOT / runtime
+        if order1886.find_runtime(runtime) is None:
+            return None
+    except (OSError, ValueError) as exc:
+        if on_error:
+            on_error(str(exc))
+        return None
+    token = uuid.uuid4().hex
+    stop_file = state / f"session-stop-{token}"
+    logfile = state / f"launcher-{time.strftime('%Y%m%d-%H%M%S')}-{token[:8]}.log"
+    events = _QuickPlayEvents()
+    session_worker(backend_command(values, state=state, stop_file=stop_file), logfile,
+                   events, threading.Event(), stop_file, "play", ROOT)
+    code = events.code
+    if code not in (0, 130) and on_error:
+        details = "".join(events.tail).strip()[-1200:]
+        on_error(translate("The game exited with code {code}.\n{details}\n\nOpen the launcher to check your game and runtime settings.\nLog: {logfile}", values["ui_language"], code=code, details=details, logfile=logfile))
+    return code
+
+
+def create_desktop_shortcut(installation: Path = ROOT, desktop: Path | None = None) -> Path:
+    if os.name != "nt":
+        raise ValueError("Desktop shortcuts currently require Windows.")
+    installation = installation.resolve()
+    target = installation / "Play The Order 1886.exe"
+    if not target.is_file():
+        raise ValueError("Install or build the portable package containing Play The Order 1886.exe first.")
+    powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    if not powershell.is_file():
+        raise OSError("Windows PowerShell is unavailable; the desktop shortcut could not be created.")
+    quote = lambda value: "'" + str(value).replace("'", "''") + "'"
+    desktop_expression = quote(desktop.resolve()) if desktop else "[Environment]::GetFolderPath('Desktop')"
+    if desktop:
+        desktop.mkdir(parents=True, exist_ok=True)
+    script = (
+        "$ErrorActionPreference='Stop'\n"
+        "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)\n"
+        f"$desktop={desktop_expression}\n"
+        "if (-not $desktop) { throw 'Windows did not provide a Desktop folder.' }\n"
+        "$path=Join-Path $desktop 'Play The Order 1886.lnk'\n"
+        "$link=(New-Object -ComObject WScript.Shell).CreateShortcut($path)\n"
+        f"$link.TargetPath={quote(target)}\n"
+        f"$link.WorkingDirectory={quote(installation)}\n"
+        f"$link.IconLocation={quote(str(installation / 'The Order 1886.exe') + ',0')}\n"
+        "$link.Arguments=''\n$link.Save()\n[Console]::WriteLine($path)\n"
+    )
+    result = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-EncodedCommand",
+                             base64.b64encode(script.encode("utf-16le")).decode("ascii")],
+                            check=True, capture_output=True, encoding="utf-8", timeout=30,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    shortcut = Path(result.stdout.strip())
+    if not shortcut.is_file():
+        raise OSError("Windows did not create the requested shortcut.")
+    return shortcut
+
+
 class Launcher:
     def __init__(self, root, state: Path = STATE):
         import tkinter as tk
@@ -196,26 +369,10 @@ class Launcher:
         self.settings_frame = None
         self.background_photo = None
         self.resize_timer = None
-        saved = read_settings(state / "settings.json")
-        self.values = {
-            "game_dir": str(saved.get("game_dir", order1886.default_game_dir())),
-            "runtime": str(saved.get("runtime", "")),
-            "display_mode": saved.get("display_mode", "borderless"),
-            "vsync": bool(saved.get("vsync", True)),
-            "show_fps": bool(saved.get("show_fps", True)),
-            "presentation_filter": saved.get("presentation_filter", "fsr1"),
-            "frame_rate": saved.get("frame_rate", 30),
-            "aspect_ratio": saved.get("aspect_ratio", "original"),
-        }
-        if self.values["display_mode"] not in ("windowed", "borderless", "fullscreen"):
-            self.values["display_mode"] = "borderless"
-        if self.values["presentation_filter"] not in ("linear", "fsr1"):
-            self.values["presentation_filter"] = "fsr1"
-        if type(self.values["frame_rate"]) is not int or self.values["frame_rate"] not in (30, 60):
-            self.values["frame_rate"] = 30
-        if self.values["aspect_ratio"] not in ("original", "16:9"):
-            self.values["aspect_ratio"] = "original"
-        root.title("The Order: 1886")
+        self.values = load_launch_settings(state)
+        language = self.values["ui_language"]
+        self.language = language if isinstance(language, str) and language in LANGUAGES else "en"
+        root.title(self.tr("The Order: 1886"))
         root.configure(bg=BLACK)
         root.geometry("1160x760")
         root.minsize(940, 620)
@@ -240,6 +397,17 @@ class Launcher:
         self.refresh_status()
         self.draw()
         root.after(100, self.poll)
+
+    def tr(self, text, **values):
+        return translate(text, getattr(self, "language", "en"), **values)
+
+    @property
+    def text_anchor(self):
+        return "e" if getattr(self, "language", "en") == "ar" else "w"
+
+    @property
+    def text_justify(self):
+        return "right" if getattr(self, "language", "en") == "ar" else "left"
 
     def build_home(self):
         from tkinter import ttk
@@ -275,7 +443,7 @@ class Launcher:
         folder = tk.Frame(self.console, bg="#141513")
         folder.grid(row=0, column=0, sticky="ew")
         folder.columnconfigure(1, weight=1)
-        tk.Label(folder, text="Game folder", bg="#141513", fg=PAPER,
+        tk.Label(folder, text=self.tr("Game folder"), bg="#141513", fg=PAPER,
                  font=("Segoe UI", 11)).grid(row=0, column=0, padx=(0, 22))
         self.home_fields = {"game_dir": tk.StringVar()}
         self.game_entry = tk.Entry(folder, textvariable=self.home_fields["game_dir"],
@@ -300,12 +468,12 @@ class Launcher:
             controls.columnconfigure(index, weight=1, uniform="essential")
             group = tk.Frame(controls, bg="#141513")
             group.grid(row=0, column=index, sticky="nsew", padx=(0, 24))
-            tk.Label(group, text=label, fg=PAPER, bg="#141513",
+            tk.Label(group, text=self.tr(label), fg=PAPER, bg="#141513",
                      font=("Segoe UI", 10), anchor="w").pack(fill="x", pady=(0, 6))
             variable = self.home_fields[key] = tk.StringVar()
-            combo = ttk.Combobox(group, textvariable=variable, values=list(choices),
+            combo = ttk.Combobox(group, textvariable=variable, values=[self.tr(label) for label in choices],
                                  state="readonly", style="Order.TCombobox", width=1,
-                                 font=("Segoe UI", 11))
+                                 font=("Segoe UI", 11), justify=self.text_justify)
             combo.pack(fill="x")
             combo.bind("<<ComboboxSelected>>", lambda e: self.commit_home())
             self.quick_controls.append(combo)
@@ -329,10 +497,10 @@ class Launcher:
         warning_icon.create_polygon(11, 1, 21, 20, 1, 20, fill=GOLD, outline=GOLD)
         warning_icon.create_line(11, 6, 11, 12, fill=BLACK, width=2)
         warning_icon.create_oval(10, 15, 12, 17, fill=BLACK, outline=BLACK)
-        self.warning = tk.Label(notice, text="Experimental runtime. Gameplay is not yet verified.",
-            fg=GOLD, bg="#141513", font=("Segoe UI", 10), anchor="w", justify="left")
+        self.warning = tk.Label(notice, text=self.tr("Experimental runtime. Gameplay is not yet verified."),
+            fg=GOLD, bg="#141513", font=("Segoe UI", 10), anchor="w", justify=self.text_justify)
         self.warning.pack(side="left", fill="x", expand=True)
-        self.play_hint = tk.Label(controls, text="Enter to play", fg=MUTED, bg="#141513",
+        self.play_hint = tk.Label(controls, text=self.tr("Enter to play"), fg=MUTED, bg="#141513",
                                  font=("Segoe UI", 9))
         self.play_hint.grid(row=1, column=3, pady=(10, 0))
         self.sync_home()
@@ -341,22 +509,23 @@ class Launcher:
         self.home_fields["game_dir"].set(self.values["game_dir"])
         for key, choices in (("display_mode", DISPLAY), ("presentation_filter", UPSCALING),
                              ("frame_rate", FRAME_RATE)):
-            self.home_fields[key].set(next(label for label, value in choices.items()
+            self.home_fields[key].set(next(self.tr(label) for label, value in choices.items()
                                           if value == self.values[key]))
 
     def commit_home(self):
         from tkinter import messagebox
         values = dict(self.values, game_dir=self.home_fields["game_dir"].get().strip())
         if not values["game_dir"]:
-            messagebox.showerror("Choose a game folder", "Select the extracted CUSA00076 folder before continuing.", parent=self.root)
+            messagebox.showerror(self.tr("Choose a game folder"), self.tr("Select the extracted CUSA00076 folder before continuing."), parent=self.root)
             return False
         for key, choices in (("display_mode", DISPLAY), ("presentation_filter", UPSCALING),
                              ("frame_rate", FRAME_RATE)):
-            values[key] = choices[self.home_fields[key].get()]
+            values[key] = next(value for label, value in choices.items()
+                               if self.tr(label) == self.home_fields[key].get())
         try:
             save_settings(self.state / "settings.json", values)
         except (OSError, ValueError) as exc:
-            messagebox.showerror("Settings could not be saved", str(exc), parent=self.root)
+            messagebox.showerror(self.tr("Settings could not be saved"), self.tr(str(exc)), parent=self.root)
             self.sync_home()
             return False
         changed_folder = values["game_dir"] != self.values["game_dir"]
@@ -370,7 +539,7 @@ class Launcher:
 
     def change_folder(self):
         from tkinter import filedialog
-        value = filedialog.askdirectory(parent=self.root, title="Choose extracted CUSA00076 folder",
+        value = filedialog.askdirectory(parent=self.root, title=self.tr("Choose extracted CUSA00076 folder"),
                                         initialdir=self.values["game_dir"])
         if value:
             self.home_fields["game_dir"].set(value)
@@ -456,17 +625,17 @@ class Launcher:
                 self.logo_size = logo_size
             c.create_image(w * .037, h * .07, image=self.logo_photo, anchor="nw")
         else:
-            c.create_text(w * .037, h * .09, text="The Order: 1886", font=("Georgia", 32),
+            c.create_text(w * .037, h * .09, text=self.tr("The Order: 1886"), font=("Georgia", 32),
                           fill=GOLD, anchor="nw")
-        self.readiness.configure(text=self.status.replace("CUSA00076  /  ", ""),
+        self.readiness.configure(text=self.tr(self.status.replace("CUSA00076  /  ", "")),
                                  fg="#aec58f" if "Game files found" in self.status else MUTED,
-                                 wraplength=210, justify="left")
+                                 wraplength=210, justify=self.text_justify)
         self.readiness_icon.delete("all")
         if "Game files found" in self.status:
             self.readiness_icon.create_oval(1, 1, 21, 21, fill="#aec58f", outline="")
             self.readiness_icon.create_line(6, 11, 10, 15, 16, 7, fill=BLACK, width=2)
-        self.play_button.configure(text="Stopping…" if self.busy and self.session_cancel.is_set()
-                                   else "Stop session" if self.busy else "Play",
+        self.play_button.configure(text=self.tr("Stopping…" if self.busy and self.session_cancel.is_set()
+                                   else "Stop session" if self.busy else "Play"),
                                    font=("Segoe UI", 15 if self.busy else 22), disabledforeground=BLACK,
                                    state="disabled" if self.busy and self.session_cancel.is_set() else "normal")
         surface_size = (self.play_button.winfo_width(), self.play_button.winfo_height(), self.busy)
@@ -480,7 +649,7 @@ class Launcher:
                     tile = ImageOps.mirror(self.play_texture) if (x // tw) % 2 else self.play_texture
                     surface.paste(ImageOps.flip(tile) if (y // th) % 2 else tile, (x, y))
             if not busy:
-                label_width = tkfont.Font(font=self.play_button.cget("font")).measure("Play")
+                label_width = tkfont.Font(font=self.play_button.cget("font")).measure(self.tr("Play"))
                 x, y = bw // 2 + label_width // 2 + 14, bh // 2
                 ImageDraw.Draw(surface).polygon(((x, y - 8), (x, y + 8), (x + 12, y)), fill=BLACK)
             self.play_surface = self.ImageTk.PhotoImage(surface)
@@ -493,14 +662,14 @@ class Launcher:
             combo.configure(state="disabled" if self.busy or self.settings_frame else "readonly")
         for button in self.nav_buttons[:2]:
             button.configure(state=state)
-        warning = "Experimental runtime. Gameplay is not yet verified."
+        warning = self.tr("Experimental runtime. Gameplay is not yet verified.")
         if self.values["frame_rate"] == 60:
             import order1886
-            warning += "\n" + order1886.timing.WARNING
+            warning += "\n" + self.tr(order1886.timing.WARNING)
         if self.detail != "Experimental runtime. Gameplay is not yet verified.":
-            warning += "\n" + self.detail
-        self.warning.configure(text=warning, wraplength=max(480, int((w - 84) * .73) - 36))
-        self.play_hint.configure(text="View logs for progress" if self.busy else "Enter to play")
+            warning += "\n" + self.tr(self.detail)
+        self.warning.configure(text=self.tr(warning), wraplength=max(480, int((w - 84) * .73) - 36))
+        self.play_hint.configure(text=self.tr("View logs for progress" if self.busy else "Enter to play"))
 
     def activate(self, event=None):
         if event and event.widget.winfo_class() in ("Button", "TButton"):
@@ -518,7 +687,7 @@ class Launcher:
             self.nav_buttons[0].focus_set()
 
     def button(self, parent, text, command):
-        return self.tk.Button(parent, text=text, command=command, bg="#25241f", fg=PAPER,
+        return self.tk.Button(parent, text=self.tr(text), command=command, bg="#25241f", fg=PAPER,
                               activebackground="#3a3525", activeforeground=GOLD,
                               relief="flat", bd=0, padx=16, pady=9,
                               highlightthickness=1, highlightbackground="#514932",
@@ -554,11 +723,11 @@ class Launcher:
                     scroller.yview_moveto(max(0, top - 20) / max(1, frame.winfo_height()))
         self.root.bind("<MouseWheel>", wheel)
         self.root.bind("<FocusIn>", focus_visible)
-        tk.Label(frame, text="SETTINGS", fg=GOLD, bg=BLACK, font=("Georgia", 21)).pack(anchor="w", pady=(15, 25))
+        tk.Label(frame, text=self.tr("SETTINGS"), fg=GOLD, bg=BLACK, font=("Georgia", 21)).pack(anchor=self.text_anchor, pady=(15, 25))
         fields = {}
         for key, label, is_folder in (("game_dir", "Game folder", True),
                             ("runtime", "Runtime executable (optional)", False)):
-            tk.Label(frame, text=label, fg=PAPER, bg=BLACK, font=("Segoe UI", 10)).pack(anchor="w", pady=(8, 7))
+            tk.Label(frame, text=self.tr(label), fg=PAPER, bg=BLACK, font=("Segoe UI", 10)).pack(anchor=self.text_anchor, pady=(8, 7))
             row = tk.Frame(frame, bg=BLACK)
             row.pack(fill="x")
             variable = fields[key] = tk.StringVar(value=self.values[key])
@@ -567,61 +736,61 @@ class Launcher:
                              highlightbackground="#514932", highlightcolor=GOLD)
             entry.pack(side="left", fill="x", expand=True, ipady=10)
             def browse(v=variable, folder=is_folder):
-                value = (filedialog.askdirectory(parent=self.root, title="Choose extracted CUSA00076 folder") if folder else
-                         filedialog.askopenfilename(parent=self.root, title="Choose The Order: 1886 runtime", filetypes=[("Order runtime", "order1886-runtime.exe"), ("Executables", "*.exe")]))
+                value = (filedialog.askdirectory(parent=self.root, title=self.tr("Choose extracted CUSA00076 folder")) if folder else
+                         filedialog.askopenfilename(parent=self.root, title=self.tr("Choose The Order: 1886 runtime"), filetypes=[(self.tr("Order runtime"), "order1886-runtime.exe"), (self.tr("Executables"), "*.exe")]))
                 if value:
                     v.set(value)
             self.button(row, "Browse", browse).pack(side="right", padx=(8, 0))
-        tk.Label(frame, text="Display mode", fg=PAPER, bg=BLACK, font=("Segoe UI", 10)).pack(anchor="w", pady=(23, 8))
+        tk.Label(frame, text=self.tr("Display mode"), fg=PAPER, bg=BLACK, font=("Segoe UI", 10)).pack(anchor=self.text_anchor, pady=(23, 8))
         display = tk.StringVar(value=self.values["display_mode"])
         for mode in ("windowed", "borderless", "fullscreen"):
-            tk.Radiobutton(frame, text=mode.capitalize(), variable=display, value=mode,
+            tk.Radiobutton(frame, text=self.tr(mode.capitalize()), variable=display, value=mode,
                            bg=BLACK, fg=PAPER, selectcolor="#26251f", activebackground=BLACK,
-                           activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor="w", pady=2)
-        tk.Label(frame, text="Aspect ratio", fg=PAPER, bg=BLACK,
-                 font=("Segoe UI", 10)).pack(anchor="w", pady=(18, 8))
+                           activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor=self.text_anchor, pady=2)
+        tk.Label(frame, text=self.tr("Aspect ratio"), fg=PAPER, bg=BLACK,
+                 font=("Segoe UI", 10)).pack(anchor=self.text_anchor, pady=(18, 8))
         aspect = tk.StringVar(value=self.values["aspect_ratio"])
         for label, value in ASPECT_RATIO.items():
-            tk.Radiobutton(frame, text=label, variable=aspect, value=value,
+            tk.Radiobutton(frame, text=self.tr(label), variable=aspect, value=value,
                            bg=BLACK, fg=PAPER, selectcolor="#26251f", activebackground=BLACK,
-                           activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor="w", pady=2)
-        tk.Label(frame, text="Aspect changes apply after restarting the game.", fg=MUTED, bg=BLACK,
-                 font=("Segoe UI", 9)).pack(anchor="w", pady=(5, 0))
-        tk.Label(frame, text="Output scaling", fg=PAPER, bg=BLACK,
-                 font=("Segoe UI", 10)).pack(anchor="w", pady=(18, 8))
+                           activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor=self.text_anchor, pady=2)
+        tk.Label(frame, text=self.tr("Aspect changes apply after restarting the game."), fg=MUTED, bg=BLACK,
+                 font=("Segoe UI", 9)).pack(anchor=self.text_anchor, pady=(5, 0))
+        tk.Label(frame, text=self.tr("Output scaling"), fg=PAPER, bg=BLACK,
+                 font=("Segoe UI", 10)).pack(anchor=self.text_anchor, pady=(18, 8))
         presentation = tk.StringVar(value=self.values["presentation_filter"])
         for value, label in (("fsr1", "FSR 1 (spatial)"), ("linear", "Linear")):
-            tk.Radiobutton(frame, text=label, variable=presentation, value=value,
+            tk.Radiobutton(frame, text=self.tr(label), variable=presentation, value=value,
                            bg=BLACK, fg=PAPER, selectcolor="#26251f", activebackground=BLACK,
-                           activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor="w", pady=2)
-        tk.Label(frame, text="Frame rate", fg=PAPER, bg=BLACK,
-                 font=("Segoe UI", 10)).pack(anchor="w", pady=(18, 8))
+                           activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor=self.text_anchor, pady=2)
+        tk.Label(frame, text=self.tr("Frame rate"), fg=PAPER, bg=BLACK,
+                 font=("Segoe UI", 10)).pack(anchor=self.text_anchor, pady=(18, 8))
         frame_rate = tk.IntVar(value=self.values["frame_rate"])
         for value, label in ((30, "30 FPS (baseline)"), (60, "60 FPS (experimental)")):
-            tk.Radiobutton(frame, text=label, variable=frame_rate, value=value,
+            tk.Radiobutton(frame, text=self.tr(label), variable=frame_rate, value=value,
                            bg=BLACK, fg=PAPER, selectcolor="#26251f", activebackground=BLACK,
-                           activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+                           activeforeground=GOLD, font=("Segoe UI", 10)).pack(anchor=self.text_anchor, pady=2)
         import order1886
-        tk.Label(frame, text=order1886.timing.WARNING, justify="left", wraplength=340,
-                 fg=MUTED, bg=BLACK, font=("Segoe UI", 9)).pack(anchor="w", pady=(8, 4))
+        tk.Label(frame, text=self.tr(order1886.timing.WARNING), justify=self.text_justify, wraplength=340,
+                 fg=MUTED, bg=BLACK, font=("Segoe UI", 9)).pack(anchor=self.text_anchor, pady=(8, 4))
         vsync, fps = tk.BooleanVar(value=self.values["vsync"]), tk.BooleanVar(value=self.values["show_fps"])
         for label, variable in (("Vertical sync", vsync), ("Performance overlay (F9)", fps)):
-            tk.Checkbutton(frame, text=label, variable=variable, bg=BLACK, fg=PAPER,
+            tk.Checkbutton(frame, text=self.tr(label), variable=variable, bg=BLACK, fg=PAPER,
                            selectcolor="#26251f", activebackground=BLACK, activeforeground=GOLD,
-                           font=("Segoe UI", 10)).pack(anchor="w", pady=(10, 0))
-        tk.Label(frame, text="Leave runtime blank to use the packaged build.\nDisplay options apply on the next launch.\nPerformance depends on runtime compatibility.",
-                 justify="left", wraplength=340, fg=MUTED, bg=BLACK, font=("Segoe UI", 9)).pack(anchor="w", pady=22)
+                           font=("Segoe UI", 10)).pack(anchor=self.text_anchor, pady=(10, 0))
+        tk.Label(frame, text=self.tr("Leave runtime blank to use the packaged build.\nDisplay options apply on the next launch.\nPerformance depends on runtime compatibility."),
+                 justify=self.text_justify, wraplength=340, fg=MUTED, bg=BLACK, font=("Segoe UI", 9)).pack(anchor=self.text_anchor, pady=22)
         row = tk.Frame(frame, bg=BLACK)
-        row.pack(anchor="w")
+        row.pack(anchor=self.text_anchor)
         def save():
-            values = {key: v.get().strip() for key, v in fields.items()}
+            values = dict(self.values, **{key: v.get().strip() for key, v in fields.items()})
             values.update(display_mode=display.get(), vsync=vsync.get(), show_fps=fps.get(),
                           presentation_filter=presentation.get(), frame_rate=frame_rate.get(),
                           aspect_ratio=aspect.get())
             try:
                 save_settings(self.state / "settings.json", values)
             except (OSError, ValueError) as exc:
-                messagebox.showerror("Settings could not be saved", str(exc), parent=self.root)
+                messagebox.showerror(self.tr("Settings could not be saved"), self.tr(str(exc)), parent=self.root)
                 return
             self.values = values
             self.sync_home()
@@ -639,7 +808,7 @@ class Launcher:
             self.log_window.lift()
             return
         window = self.log_window = tk.Toplevel(self.root)
-        window.title("The Order: 1886 — Session log")
+        window.title(self.tr("The Order: 1886 — Session log"))
         window.geometry("900x550")
         window.configure(bg=BLACK)
         window.transient(self.root)
@@ -656,7 +825,7 @@ class Launcher:
                         content = stream.read().decode("utf-8", errors="replace")
             except OSError as exc:
                 content = str(exc)
-        self.log_text.insert("end", content or "No sessions recorded. Choose Verify files or Play to create a log.\n")
+        self.log_text.insert("end", content or self.tr("No sessions recorded. Choose Verify files or Play to create a log.\n"))
         self.log_text.configure(state="disabled")
         row = tk.Frame(window, bg=BLACK, padx=12, pady=12)
         row.pack(fill="x")
@@ -680,10 +849,12 @@ class Launcher:
         if not self.commit_home():
             return
         try:
+            if mode == "play":
+                validate_launch_game(Path(self.values["game_dir"]), dict(self.values, ui_language=self.language))
             save_settings(self.state / "settings.json", self.values)
             (self.state / "logs").mkdir(parents=True, exist_ok=True)
         except (OSError, ValueError) as exc:
-            messagebox.showerror("Cannot start session", str(exc), parent=self.root)
+            messagebox.showerror(self.tr("Cannot start session"), self.tr(str(exc)), parent=self.root)
             return
         self.busy = True
         self.session_cancel = threading.Event()
@@ -738,7 +909,7 @@ class Launcher:
                     code, mode, stopped = value
                     self.status = ("Session stopped" if stopped else
                         ("File and import verification finished" if mode == "verify" else "Runtime session ended")
-                        if code == 0 else f"Session failed (exit {code})")
+                        if code == 0 else self.tr("Session failed (exit {code})", code=code))
                     self.detail = "Review View logs. Gameplay and performance remain unverified."
                     report_path = self.state / "logs" / "last-run.json"
                     try:
@@ -749,7 +920,7 @@ class Launcher:
                                 self.detail = str(reason)[:240]
                             if report.get("missing_imports"):
                                 self.status = "Import compatibility needs attention"
-                                self.detail = f"{report['missing_imports']} imports are unresolved. See View logs."
+                                self.detail = self.tr("{count} imports are unresolved. See View logs.", count=report["missing_imports"])
                             if report.get("forced_stop"):
                                 self.status = "Runtime timed out" if report.get("timed_out") else "Session stopped (forced shutdown)"
                                 self.detail = "The runtime did not close in time. Review View logs before restarting."
@@ -779,8 +950,8 @@ class Launcher:
 
     def close(self):
         from tkinter import messagebox
-        if self.busy and not messagebox.askyesno("Stop current session?",
-                "A session is running. Stop it and close the launcher?", parent=self.root):
+        if self.busy and not messagebox.askyesno(self.tr("Stop current session?"),
+                self.tr("A session is running. Stop it and close the launcher?"), parent=self.root):
             return
         if self.busy:
             self.closing = True
@@ -803,11 +974,16 @@ class DesktopLauncher(Launcher):
         root.minsize(1120, 700)
         self.current_page = "home"
         self.page_controls = []
+        self.mod_order = list(self.values["mod_order"]) if isinstance(self.values["mod_order"], list) else self.values["mod_order"]
+        self.mods_source = self.values["mods_dir"]
+        self.mod_config_invalid = not isinstance(self.values["mods_dir"], str) or type(self.values["mods_enabled"]) is not bool
         self.page_fields = {
-            key: (self.tk.BooleanVar(value=value) if isinstance(value, bool) else
+            key: (self.tk.StringVar(value=value) if key == "mods_dir" else
+                  self.tk.BooleanVar(value=value if type(value) is bool else False) if key == "mods_enabled" else
+                  self.tk.BooleanVar(value=value) if isinstance(value, bool) else
                   self.tk.IntVar(value=value) if isinstance(value, int) else
                   self.tk.StringVar(value=value))
-            for key, value in self.values.items()
+            for key, value in self.values.items() if key in SETTINGS_KEYS
         }
         self.page_host = self.tk.Frame(root, bg=BLACK)
         self.page_host.grid(row=0, column=1, sticky="nsew")
@@ -841,27 +1017,27 @@ class DesktopLauncher(Launcher):
                     logo.convert("RGBA"), (140, 100), self.Image.Resampling.LANCZOS))
         except OSError:
             pass
-        self.tk.Label(side, image=self.sidebar_logo, text="" if self.sidebar_logo else "The Order: 1886",
+        self.tk.Label(side, image=self.sidebar_logo, text=self.tr("" if self.sidebar_logo else "The Order: 1886"),
                       bg="#10110f", fg=GOLD, font=("Georgia", 12), anchor="w").grid(
                           row=0, column=0, sticky="w", padx=20, pady=(24, 26))
         self.page_buttons = {}
         for index, name in enumerate(PAGES, 1):
             button = self.button(side, PAGE_TITLES[name], lambda n=name: self.show_page(n))
-            button.configure(anchor="w", bg="#10110f", highlightbackground="#10110f")
+            button.configure(anchor=self.text_anchor, wraplength=140, bg="#10110f", highlightbackground="#10110f")
             button.grid(row=index, column=0, sticky="ew", padx=10, pady=3)
             self.page_buttons[name] = button
-        self.tk.Label(side, text="CUSA00076\nDevelopment preview", bg="#10110f", fg=MUTED,
-                      font=("Segoe UI", 9), justify="left").grid(
+        self.tk.Label(side, text=self.tr("CUSA00076\nDevelopment preview"), bg="#10110f", fg=MUTED,
+                      font=("Segoe UI", 9), justify=self.text_justify).grid(
                           row=8, column=0, sticky="sw", padx=22, pady=24)
 
     def scrolled_page(self, name, subtitle):
         tk = self.tk
         outer = tk.Frame(self.page_host, bg=BLACK)
         self.pages[name] = outer
-        tk.Label(outer, text=PAGE_TITLES[name].upper(), bg=BLACK, fg=GOLD,
-                 font=("Georgia", 23)).pack(anchor="w", padx=30, pady=(26, 8))
-        tk.Label(outer, text=subtitle, bg=BLACK, fg=MUTED, font=("Segoe UI", 10),
-                 wraplength=660, justify="left").pack(anchor="w", padx=30, pady=(0, 16))
+        tk.Label(outer, text=self.tr(PAGE_TITLES[name]).upper(), bg=BLACK, fg=GOLD,
+                 font=("Georgia", 23)).pack(anchor=self.text_anchor, padx=30, pady=(26, 8))
+        tk.Label(outer, text=self.tr(subtitle), bg=BLACK, fg=MUTED, font=("Segoe UI", 10),
+                 wraplength=660, justify=self.text_justify).pack(anchor=self.text_anchor, padx=30, pady=(0, 16))
         bar = tk.Scrollbar(outer, orient="vertical")
         bar.pack(side="right", fill="y")
         canvas = tk.Canvas(outer, bg=BLACK, highlightthickness=0, yscrollcommand=bar.set)
@@ -875,34 +1051,35 @@ class DesktopLauncher(Launcher):
         return body
 
     def section(self, frame, title, detail=""):
-        self.tk.Label(frame, text=title, bg=BLACK, fg=PAPER,
-                      font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(16, 8))
+        self.tk.Label(frame, text=self.tr(title), bg=BLACK, fg=PAPER,
+                      font=("Segoe UI", 12, "bold")).pack(anchor=self.text_anchor, pady=(16, 8))
         self.tk.Frame(frame, bg="#34352f", height=1).pack(fill="x", pady=(0, 8))
         if detail:
             self.note(frame, detail)
 
     def note(self, frame, text):
-        self.tk.Label(frame, text=text, bg=BLACK, fg=MUTED, wraplength=650,
-                      justify="left", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 10))
+        self.tk.Label(frame, text=self.tr(text), bg=BLACK, fg=MUTED, wraplength=650,
+                      justify=self.text_justify, font=("Segoe UI", 10)).pack(anchor=self.text_anchor, pady=(0, 10))
 
     def choices(self, frame, key, choices):
         for label, value in choices.items():
-            button = self.tk.Radiobutton(frame, text=label, value=value,
+            button = self.tk.Radiobutton(frame, text=self.tr(label), value=value,
                 variable=self.page_fields[key], bg=BLACK, fg=PAPER, selectcolor="#26251f",
                 activebackground=BLACK, activeforeground=GOLD, font=("Segoe UI", 10))
-            button.pack(anchor="w", pady=3)
+            button.pack(anchor=self.text_anchor, pady=3)
             self.page_controls.append(button)
 
     def check(self, frame, key, label):
-        button = self.tk.Checkbutton(frame, text=label, variable=self.page_fields[key],
+        button = self.tk.Checkbutton(frame, text=self.tr(label), variable=self.page_fields[key],
             bg=BLACK, fg=PAPER, selectcolor="#26251f", activebackground=BLACK,
             activeforeground=GOLD, font=("Segoe UI", 10))
-        button.pack(anchor="w", pady=5)
+        button.pack(anchor=self.text_anchor, pady=5)
         self.page_controls.append(button)
+        return button
 
     def page_button(self, frame, label, command, changes=False):
         button = self.button(frame, label, command)
-        button.pack(anchor="w", pady=6)
+        button.pack(anchor=self.text_anchor, pady=6)
         if changes:
             self.page_controls.append(button)
         return button
@@ -944,11 +1121,14 @@ class DesktopLauncher(Launcher):
             highlightbackground="#514932", highlightcolor=GOLD)
         entry.pack(side="left", fill="x", expand=True, ipady=9)
         def browse():
-            value = (filedialog.askdirectory(parent=self.root, title="Choose extracted CUSA00076 folder")
+            value = (filedialog.askdirectory(parent=self.root, title=self.tr("Choose mods folder" if key == "mods_dir" else "Choose extracted CUSA00076 folder"))
                      if is_folder else filedialog.askopenfilename(parent=self.root,
-                         title="Choose Order runtime", filetypes=[("Executable", "*.exe")]))
+                         title=self.tr("Choose Order runtime"), filetypes=[(self.tr("Executable"), "*.exe")]))
             if value:
                 self.page_fields[key].set(value)
+                if key == "mods_dir":
+                    self.mod_order = []  # A different source folder requires explicit selection.
+                    self.refresh_mods()
         button = self.button(row, "Browse", browse)
         button.pack(side="right", padx=(8, 0))
         self.page_controls.extend((entry, button))
@@ -959,7 +1139,9 @@ class DesktopLauncher(Launcher):
         self.path_field(frame, "game_dir")
         self.save_button(frame)
         self.page_button(frame, "Verify files", lambda: self.run("verify"), changes=True)
-        self.section(frame, "Saves and data", f"Data folder: {self.state}\nA backup is created before each game session. Restoring first backs up the current saves.")
+        self.page_button(frame, "Create desktop shortcut", self.create_shortcut, changes=True)
+        self.page_button(frame, "Add to Steam", self.add_steam, changes=True)
+        self.section(frame, "Saves and data", self.tr("Data folder: {path}\nA backup is created before each game session. Restoring first backs up the current saves.", path=self.state))
         self.page_button(frame, "Open data folder", lambda: self.open_directory(self.state))
         self.backup_list = self.tk.Listbox(frame, height=4, bg="#20201c", fg=PAPER,
             selectbackground=GOLD, selectforeground=BLACK, exportselection=False,
@@ -969,12 +1151,143 @@ class DesktopLauncher(Launcher):
         self.page_button(frame, "Restore selected backup", self.restore_saves, changes=True)
         self.section(frame, "Game patches and mods",
             "The 60 FPS and aspect-ratio recipes use hash-checked prepared copies; original game files "
-            "stay unchanged. Configure them in Performance and Graphics. External patch, update and "
-            "mod formats from the reference port are not supported by this backend.")
-        self.section(frame, "Controls", "Connect your controller before starting. Use the game's own control prompts. Controller remapping, motion simulation and touchpad guides from other ports still need validation for this runtime.")
+            "stay unchanged. Configure them in Performance and Graphics. Asset mods are selected below; external executable patches and updates are unsupported.")
+        self.section(frame, "Asset mods", "Each mod is a folder containing _data assets and optionally archivemap.bin. New folders stay disabled. Later enabled mods win conflicts. Original files remain unchanged.")
+        self.path_field(frame, "mods_dir")
+        self.check(frame, "mods_enabled", "Enable asset mods").configure(command=self.refresh_mods)
+        self.mod_list = self.tk.Listbox(frame, height=5, exportselection=False, bg="#20201c", fg=PAPER,
+            selectbackground=GOLD, selectforeground=BLACK, font=("Segoe UI", 10), highlightcolor=GOLD)
+        self.mod_list.pack(fill="x", pady=8)
+        self.page_controls.append(self.mod_list)
+        self.page_button(frame, "Refresh mods and conflicts", self.refresh_mods, changes=True)
+        self.page_button(frame, "Enable / disable selected mod", self.toggle_mod, changes=True)
+        self.page_button(frame, "Move selected mod earlier", lambda: self.move_mod(-1), changes=True)
+        self.page_button(frame, "Move selected mod later", lambda: self.move_mod(1), changes=True)
+        self.mod_notice = self.tk.Label(frame, bg=BLACK, fg=MUTED, wraplength=650,
+            justify=self.text_justify, font=("Segoe UI", 10))
+        self.mod_notice.pack(anchor=self.text_anchor, pady=(0, 10))
+        self.refresh_mods()
+        self.save_button(frame)
+        self.section(frame, "Controls", "Mouse movement controls the right stick. Left mouse fires (R2); right mouse aims (L2). "
+                     "Press Esc to release the cursor and F6 to capture or release it. Alt-Tab and text entry release capture. "
+                     "WASD moves, arrow keys control the camera, I/J/K/L are the d-pad, Enter opens Options. "
+                     "Controllers remain available. Direct 1:1 camera hooks are not implemented.")
+        self.check(frame, "mouse_look", "Enable mouse look")
+        self.check(frame, "mouse_invert_y", "Invert mouse Y")
+        sensitivity = self.tk.Scale(frame, from_=10, to=500, orient="horizontal", resolution=1,
+                      variable=self.page_fields["mouse_sensitivity"], label=self.tr("Mouse sensitivity (%)"),
+                      bg=BLACK, fg=PAPER, highlightthickness=0)
+        sensitivity.pack(fill="x", pady=6)
+        self.page_controls.append(sensitivity)
+        self.note(frame, "Save controls before starting the game.")
+        self.save_button(frame)
+
+    def refresh_mods(self):
+        import order1886_mods as mods
+        self.mod_names = []
+        self.mod_list.delete(0, "end")
+        try:
+            root = self.page_fields["mods_dir"].get().strip()
+            if root != self.mods_source:
+                self.mod_order = []
+                self.mods_source = root
+            enabled = self.page_fields["mods_enabled"].get()
+            mod_root = mods.resolve_root(root, ROOT)
+            mods.validate_config(mod_root, enabled, self.mod_order)
+            available = mods.discover(mod_root) if mod_root else []
+            self.mod_names = [name for name in self.mod_order if name in available] + [name for name in available if name not in self.mod_order]
+            for name in self.mod_names:
+                self.mod_list.insert("end", self.tr("{state}: {name}", state=self.tr("Enabled" if name in self.mod_order else "Disabled"), name=name))
+            game = Path(self.page_fields["game_dir"].get())
+            game = game if game.is_absolute() else ROOT / game
+            _, conflicts = mods.plan(game, mod_root, enabled, self.mod_order)
+            message = self.tr("{count} selected mods; {conflicts} file overrides. Later mods win.", count=len(self.mod_order), conflicts=len(conflicts))
+            if not enabled:
+                message = self.tr("Mods are off. The original game folder will be mounted.") + "\n" + message
+            if conflicts:
+                message += "\n" + "\n".join(f"{path}: {previous} → {winner}" for path, previous, winner in conflicts[:10])
+        except (OSError, ValueError) as error:
+            message = self.tr("Mods need attention: {error}", error=error)
+        if self.mod_config_invalid:
+            message = self.tr("Saved mod settings are invalid. Review the folder and enabled state, then save settings.") + "\n" + message
+        self.mod_notice.configure(text=message)
+
+    def toggle_mod(self):
+        if self.busy or not self.mod_list.curselection() or not isinstance(self.mod_order, list):
+            return
+        name = self.mod_names[self.mod_list.curselection()[0]]
+        if name in self.mod_order:
+            self.mod_order.remove(name)
+        else:
+            self.mod_order.append(name)
+        self.refresh_mods()
+        self.mod_list.selection_set(self.mod_names.index(name))
+
+    def move_mod(self, direction):
+        if self.busy or not self.mod_list.curselection() or not isinstance(self.mod_order, list):
+            return
+        name = self.mod_names[self.mod_list.curselection()[0]]
+        if name not in self.mod_order:
+            return
+        index = self.mod_order.index(name)
+        target = index + direction
+        if 0 <= target < len(self.mod_order):
+            self.mod_order[index], self.mod_order[target] = self.mod_order[target], self.mod_order[index]
+            self.refresh_mods()
+            self.mod_list.selection_set(self.mod_names.index(name))
+
+    def create_shortcut(self):
+        from tkinter import messagebox
+        try:
+            shortcut = create_desktop_shortcut()
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            messagebox.showerror(self.tr("Shortcut could not be created"), self.tr(str(error)), parent=self.root)
+            return
+        messagebox.showinfo(self.tr("Desktop shortcut created"), self.tr(str(shortcut)), parent=self.root)
+
+    def add_steam(self):
+        from tkinter import messagebox
+        from order1886_steam import add_to_steam, SteamIntegrationError
+        if self.busy:
+            messagebox.showerror(self.tr("Steam shortcut unavailable"), self.tr("Stop the game before changing shortcuts."), parent=self.root)
+            return
+        try:
+            add_to_steam(ROOT, state=self.state)
+        except (OSError, SteamIntegrationError) as error:
+            messagebox.showerror(self.tr("Could not add to Steam"), self.tr(str(error)), parent=self.root)
+            return
+        messagebox.showinfo(self.tr("Added to Steam"), self.tr("Open Steam to find The Order: 1886 in your library. "
+                            "It uses your saved launcher settings."), parent=self.root)
+
+    def clear_cache(self):
+        from tkinter import messagebox
+        from order1886_cache import clear_shader_cache
+        if self.busy:
+            messagebox.showerror(self.tr("Shader cache is in use"), self.tr("Stop the game before clearing its shader cache."), parent=self.root)
+            return
+        if not messagebox.askyesno(self.tr("Clear shader cache?"), self.tr("Remove this installation's compiled shaders? "
+                                  "The next launch will rebuild them and may stutter. Saves, settings and game files are preserved."),
+                                  parent=self.root):
+            return
+        try:
+            removed = clear_shader_cache(self.state)
+        except (OSError, ValueError, RuntimeError) as error:
+            messagebox.showerror(self.tr("Shader cache could not be cleared"), self.tr(str(error)), parent=self.root)
+            return
+        messagebox.showinfo(self.tr("Shader cache"), self.tr("Shader cache cleared. The next launch will rebuild it."
+                            if removed else "The shader cache is already empty."), parent=self.root)
 
     def build_advanced(self):
         frame = self.scrolled_page("advanced", "Runtime selection, files, logs and support.")
+        self.section(frame, "Launcher language", "Save the language, then restart the launcher to apply it. Game language is unchanged.")
+        from tkinter import ttk
+        self.language_choice = self.tk.StringVar(value=LANGUAGES[self.language])
+        self.language_combo = ttk.Combobox(frame, textvariable=self.language_choice,
+            values=list(LANGUAGES.values()), state="readonly", style="Order.TCombobox",
+            font=("Segoe UI", 11), justify=self.text_justify)
+        self.language_combo.pack(fill="x", pady=(0, 8))
+        self.page_controls.append(self.language_combo)
+        self.page_button(frame, "Save language", self.save_language, changes=True)
         self.section(frame, "Runtime executable (optional)", "Leave blank to use this installation's runtime. Build identity is checked before launch.")
         self.path_field(frame, "runtime", is_folder=False)
         self.save_button(frame)
@@ -982,35 +1295,61 @@ class DesktopLauncher(Launcher):
         self.page_button(frame, "Open installation folder", lambda: self.open_directory(ROOT))
         self.page_button(frame, "View session log", self.show_logs)
         self.page_button(frame, "Open log folder", self.open_log_folder)
+        self.page_button(frame, "Clear shader cache", self.clear_cache, changes=True)
         self.note(frame, "Include last-run.json, the matching boot log, runtime SHA256 and reproduction steps in a report. Review logs for personal paths before sharing.")
         self.section(frame, "Updates and support", "Release availability is shown on GitHub. Downloads are installed manually; your saves and settings remain in the data folder.")
         import webbrowser
         self.page_button(frame, "Releases", lambda: webbrowser.open("https://github.com/JulioCacko/The-Order-1886_pc/releases"))
         self.page_button(frame, "Report a problem", lambda: webbrowser.open("https://github.com/JulioCacko/The-Order-1886_pc/issues"))
 
+    def save_language(self):
+        from tkinter import messagebox
+        if self.busy:
+            return
+        language = next(code for code, label in LANGUAGES.items() if label == self.language_choice.get())
+        values = dict(read_settings(self.state / "settings.json"), ui_language=language)
+        try:
+            save_settings(self.state / "settings.json", values)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror(self.tr("Settings could not be saved"), self.tr(str(exc)), parent=self.root)
+            return
+        self.values["ui_language"] = language
+        self.page_fields["ui_language"].set(language)
+        messagebox.showinfo(self.tr("Language saved"), self.tr("Restart the launcher to apply the language."), parent=self.root)
+
     def sync_page_fields(self):
-        for key, value in self.values.items():
-            self.page_fields[key].set(value)
+        for key, variable in self.page_fields.items():
+            variable.set(self.values[key])
+        self.mod_order = list(self.values["mod_order"]) if isinstance(self.values["mod_order"], list) else self.values["mod_order"]
+        self.mods_source = self.values["mods_dir"]
+        if hasattr(self, "mod_list"):
+            self.refresh_mods()
 
     def save_page_settings(self):
         from tkinter import messagebox
         if self.busy:
             return False
-        values = {key: variable.get() for key, variable in self.page_fields.items()}
+        if self.page_fields["mods_dir"].get().strip() != self.mods_source:
+            self.refresh_mods()
+        values = dict(self.values, **{key: variable.get() for key, variable in self.page_fields.items()})
+        values["mod_order"] = self.mod_order
         values["game_dir"], values["runtime"] = values["game_dir"].strip(), values["runtime"].strip()
         if not values["game_dir"]:
-            messagebox.showerror("Choose a game folder", "Select an extracted CUSA00076 folder.", parent=self.root)
+            messagebox.showerror(self.tr("Choose a game folder"), self.tr("Select an extracted CUSA00076 folder."), parent=self.root)
             return False
         try:
+            import order1886_mods as mods
+            mods.plan(Path(values["game_dir"]), values["mods_dir"], values["mods_enabled"], values["mod_order"])
             save_settings(self.state / "settings.json", values)
         except (OSError, ValueError) as exc:
-            messagebox.showerror("Settings could not be saved", str(exc), parent=self.root)
+            messagebox.showerror(self.tr("Settings could not be saved"), self.tr(str(exc)), parent=self.root)
             return False
         self.values = values
         self.sync_home()
         self.load_artwork()
         self.refresh_status()
         self.draw()
+        self.mod_config_invalid = False
         return True
 
     def show_page(self, name):
@@ -1063,7 +1402,8 @@ class DesktopLauncher(Launcher):
     def draw(self):
         super().draw()
         for widget in getattr(self, "page_controls", ()):
-            widget.configure(state="disabled" if self.busy else "normal")
+            widget.configure(state="disabled" if self.busy else
+                             "readonly" if widget.winfo_class() == "TCombobox" else "normal")
 
     def page_wheel(self, event):
         if self.current_page in self.scrollers and event.widget.winfo_toplevel() == self.root:
@@ -1089,7 +1429,7 @@ class DesktopLauncher(Launcher):
             else:
                 subprocess.Popen(["xdg-open", str(directory)])
         except OSError as exc:
-            messagebox.showerror("Could not open folder", str(exc), parent=self.root)
+            messagebox.showerror(self.tr("Could not open folder"), self.tr(str(exc)), parent=self.root)
 
     def refresh_backups(self):
         import order1886
@@ -1113,16 +1453,16 @@ class DesktopLauncher(Launcher):
                 if not selected:
                     return
                 name = self.backup_list.get(selected[0])
-                if not messagebox.askyesno("Restore save backup?",
-                        f"Restore {name}? Current saves will be backed up first.", parent=self.root):
+                if not messagebox.askyesno(self.tr("Restore save backup?"),
+                        self.tr("Restore {name}? Current saves will be backed up first.", name=name), parent=self.root):
                     return
                 order1886.save_backup.restore(self.state, name)
             else:
                 if order1886.save_backup.backup(self.state) is None:
-                    messagebox.showinfo("No saves yet", "There are no saves to back up.", parent=self.root)
+                    messagebox.showinfo(self.tr("No saves yet"), self.tr("There are no saves to back up."), parent=self.root)
             self.refresh_backups()
         except (OSError, ValueError) as exc:
-            messagebox.showerror("Save operation failed", str(exc), parent=self.root)
+            messagebox.showerror(self.tr("Save operation failed"), self.tr(str(exc)), parent=self.root)
 
     def backup_saves(self):
         self.save_action()
@@ -1140,6 +1480,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="The Order: 1886 launcher")
     parser.add_argument("--state-dir", type=Path, default=STATE)
     parser.add_argument("--smoke-test", action="store_true", help="Open, render, check settings and close")
+    parser.add_argument("--play", action="store_true",
+                        default=FROZEN and Path(sys.executable).name.casefold() == "play the order 1886.exe",
+                        help="Start with saved settings; open setup if configuration is missing")
     parser.add_argument("--classic", action="store_true", help="Open the original cinematic launcher")
     args = parser.parse_args(argv)
     if args.smoke_test:
@@ -1151,6 +1494,14 @@ def main(argv=None):
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("TheOrder1886.Launcher")
         except (AttributeError, OSError):
             pass
+    if args.play and not args.smoke_test:
+        def show_play_error(message):
+            from tkinter import messagebox
+            language = read_settings(args.state_dir / "settings.json").get("ui_language", "en")
+            messagebox.showerror(translate("Cannot launch The Order: 1886", language), message)
+        code = run_saved_game(args.state_dir.resolve(), on_error=show_play_error)
+        if code is not None:
+            return code
     import tkinter as tk
     root = tk.Tk()
     smoke_state = tempfile.TemporaryDirectory(prefix="order1886-launcher-smoke-") if args.smoke_test else None
@@ -1164,6 +1515,9 @@ def main(argv=None):
                 yield from descendants(child)
         def smoke():
             try:
+                import order1886_cache
+                import order1886_mods
+                import order1886_steam
                 if isinstance(app, DesktopLauncher):
                     for page in PAGES:
                         app.show_page(page)
@@ -1227,6 +1581,12 @@ def main(argv=None):
                         raise RuntimeError(f"Settings did not affect {key}")
                 if command[command.index("--frame-rate") + 1] != "60":
                     raise RuntimeError("Frame-rate selection did not affect the backend command")
+                if FROZEN:
+                    desktop = Path(smoke_state.name) / "Shortcut Desktop ç"
+                    first = create_desktop_shortcut(ROOT, desktop)
+                    second = create_desktop_shortcut(ROOT, desktop)
+                    if first != second or not first.is_file() or len(list(desktop.glob("*.lnk"))) != 1:
+                        raise RuntimeError("Desktop shortcut must be repeatable and installation-local")
                 app.play_button.focus_set()
                 if root.focus_get() != app.play_button:
                     raise RuntimeError("Play must be keyboard focusable")

@@ -30,14 +30,14 @@ def main():
     package = args.package.resolve()
     if (package / "user").exists():
         parser.error("Use a clean package, before player state has been created inside it")
-    work = args.output.resolve() / ("Portable Smoke " + uuid.uuid4().hex[:10])
+    work = args.output.resolve() / ("Portable Smoke ç ' " + uuid.uuid4().hex[:10])
     copied = work / "The Order 1886"
     shutil.copytree(package, copied)
     report = {"scope": "Host bootstrap, GUI and preparation only; gameplay remains unverified.",
               "package": str(package), "tested_copy": str(copied), "checks": {}}
     report_path = work / "smoke-report.json"
     manifest = json.loads((copied / "package-manifest.json").read_text(encoding="utf-8-sig"))
-    expected_scripts = {"prepare.py", "link_modules.py", "link_libc.py", "save_backup.py", "order1886_frame_rate.py", "order1886_display.py"}
+    expected_scripts = {"prepare.py", "link_modules.py", "link_libc.py", "save_backup.py", "order1886_frame_rate.py", "order1886_display.py", "order1886_cache.py", "order1886_steam.py", "order1886_mods.py"}
     actual_scripts = {p.name for p in (copied / "_internal/scripts").iterdir()}
     expected_art = {"order1886.ico", "ARTWORK.txt", "launcher-art.jpg", "launcher-art.png", "launcher-art.txt",
                     "play-brass.png", "logo-horizontal.png", "logo-stacked.png", "app-icon.png", "BRANDING.txt"}
@@ -63,6 +63,9 @@ def main():
     cwd = work / "Different Working Directory"
     cwd.mkdir()
     launcher = copied / "The Order 1886.exe"
+    quick_play = copied / "Play The Order 1886.exe"
+    report["checks"]["quick_play_executable"] = {
+        "passed": quick_play.is_file() and sha256(quick_play) == sha256(launcher)}
     state = copied / "user/order1886"
 
     def run(name, command, expected, timeout=45, without_stdio=False):
@@ -104,6 +107,7 @@ def main():
     run("native_help", [runtime, "--help"], {0, 2})
     run("native_info", [runtime, "--runtime-info"], {0})
     run("gui", [launcher, "--state-dir", state, "--smoke-test"], {0})
+    run("quick_play_setup_gui", [quick_play, "--state-dir", state, "--smoke-test"], {0})
     run("missing_game", [launcher, "--run-backend", "--game-dir", work / "Missing Game",
                          "--state-dir", state], {2})
     detached_state = work / "No standard handles state"
@@ -144,6 +148,49 @@ def main():
                 instruction == 'c7058c05170101000000' and magic == b'PS4BOOT2' and check['warning_present']
         except (OSError, ValueError, KeyError, struct.error) as error:
             check.update(passed=False, error=str(error))
+    if args.game_dir:
+        quick_state = work / "Quick saved state"
+        quick_state.mkdir()
+        settings = {
+            "game_dir": str(args.game_dir.resolve()), "runtime": "",
+            "display_mode": "windowed", "vsync": False, "show_fps": True,
+            "presentation_filter": "linear", "frame_rate": 30, "aspect_ratio": "original",
+            "mouse_look": False, "mouse_sensitivity": 175, "mouse_invert_y": True,
+        }
+        (quick_state / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+        quick_log = work / "quick_play_saved.log"
+        check = {"passed": False}
+        try:
+            with quick_log.open("w", encoding="utf-8") as output:
+                process = subprocess.Popen([str(quick_play), "--state-dir", str(quick_state)],
+                    cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=output,
+                    stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
+                try:
+                    deadline = time.monotonic() + 30
+                    command = ""
+                    while time.monotonic() < deadline and process.poll() is None:
+                        logs = list(quick_state.glob("launcher-*.log"))
+                        if logs:
+                            command = logs[0].read_text(encoding="utf-8", errors="replace")
+                            import re
+                            token = re.search(r"session-stop-[0-9a-f]{32}", command)
+                            if token:
+                                (quick_state / token.group()).touch()
+                                break
+                        time.sleep(0.05)
+                    code = process.wait(timeout=30)
+                    expected = ("--display-mode windowed", "--presentation-filter linear",
+                                "--frame-rate 30", "--aspect-ratio original", "--vsync 0",
+                                "--mouse-look 0", "--mouse-sensitivity 175", "--mouse-invert-y 1")
+                    check.update(passed=code in (0, 130) and all(part in command for part in expected),
+                                 exit_code=code, command_log=command, log=str(quick_log))
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait()
+        except (OSError, subprocess.SubprocessError) as error:
+            check["error"] = str(error)
+        report["checks"]["quick_play_saved_settings"] = check
     report["passed"] = all(item["passed"] for item in report["checks"].values())
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(report_path)

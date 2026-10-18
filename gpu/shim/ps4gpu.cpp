@@ -3,6 +3,7 @@
 #include "ps4_overlay.h"
 #include "ps4_png.h"
 #include "ps4_settings.h"
+#include "ps4_mouse.h"
 #include "ps4_copy.h"
 #ifndef _WIN32
 #include <sys/resource.h>
@@ -356,6 +357,12 @@ extern "C" int ps4gpu_vibration_percent(void) {
 
 extern "C" int ps4gpu_overlay_captures_input(void) {
     return Ps4Overlay::CapturesInput() ? 1 : 0;
+}
+extern "C" void ps4gpu_mouse_sample(uint8_t axes[2], uint32_t* buttons) {
+    const auto sample = Ps4Mouse::input.Sample();
+    axes[0] = sample.x;
+    axes[1] = sample.y;
+    *buttons = sample.buttons;
 }
 
 extern "C" int ps4gpu_text_input_begin(const char* initial, const char* prompt) {
