@@ -16,7 +16,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--2.0--or--later-blue" alt="GPL-2.0-or-later"></a>
 </p>
 
-> **In development.** The game boots and renders 3D cinematics. Interactive gameplay, checkpoint save/load and sustained performance still need validation. The supplied October 17 session ends in a Vulkan image-limit assertion. See [Status](#status).
+> **Development preview.** Cinematics render and a street route has been exercised, but performance remains slow and full gameplay, checkpoint progression and sustained 4K/60 are not accepted. The latest automated checks pass; see [Status](#status).
 
 **The Order: 1886** for PlayStation 4, running on a PC through a dedicated
 compatibility runtime. The original x86-64 executable runs on the host CPU,
@@ -39,32 +39,35 @@ GPU commands and shaders to Vulkan. The current target is **CUSA00076 on Windows
 
 ## What's new
 
-- **Five-page launcher:** Home, Graphics, Performance, Game and Advanced, with sidebar navigation and Play/Stop always available. Adapted from [mateussmeneses/theorder1886-port](https://github.com/mateussmeneses/theorder1886-port), using this project's runtime and settings.
-- **Save management:** browse backups, create a backup and restore one from the Game page. Restoring first backs up the current saves. Save operations are disabled while a session is running.
-- **Graphics and timing:** window modes, FSR 1 or Linear presentation, aspect-ratio selection, VSync, F9 overlay and an opt-in experimental 60 FPS recipe.
-- **Runtime hardening:** speculative SRT faults no longer rewrite shared walkers, identical walkers reuse generated code, and mapped-range snapshots refresh after map/unmap. These changes have not yet been measured in gameplay.
-- **Descriptor diagnostics:** ORDER1886_DIAG_RESOURCE_SHARPS=1 now reaches the runtime through the source launcher for raw image descriptor logging.
-- **Clearer evidence:** the supplied recording shows later 3D cinematics; the boot log identifies a concrete image-array-layer failure. The [reuse assessment](docs/order1886-reference-reuse.md) records what was adapted and which runtime changes need investigation.
+**Development on `main` — 18 October 2026.** The public preview.3 download predates these changes.
+
+- **Input and direct play:** configurable mouse-to-stick camera input, sensitivity and inverted Y; **Play The Order 1886.exe** uses saved settings and the shared session/log lifecycle. Game includes desktop-shortcut and Add to Steam actions.
+- **Saves and asset mods:** original-preserving `_data` overlays with explicit enable/order/conflict controls; save backup/restore now keeps the newest backup even when many are created in the same second. External executable patches remain unsupported.
+- **Launcher utilities:** 13 selectable UI languages with English fallback and safe shader-cache clearing. Arabic/CJK visual acceptance is still pending; game text and voice selection are separate work.
+- **Shader and runtime fixes:** unordered NaN comparisons, legacy reciprocal square root, exclusive float atomic fallbacks, byte-preserving pipeline keys, mapped-range probe caching and busy-mutex lifetime protection. Preparation also accepts validated unpacked x86-64 ELF dumps.
+- **Verification:** **321 Python tests, zero skips; 41 native checks; three SPIR-V modules validated for Vulkan 1.3; RTX 3070 graphics/compute cache smoke; all 15 relocated portable checks.** [Donor integration receipt](docs/verification/2026-10-18-donor-060.md).
+
+See [implementation and issue status](docs/order1886-issue-status.md). These checks do not certify gameplay or frame rate.
 
 ## Status
 
-| Area | Current evidence | Still to verify |
+| Area | Current evidence | Remaining acceptance |
 | --- | --- | --- |
-| Boot and video | Logos and later 3D cinematics in the supplied recording | Interactive gameplay and progression |
-| Windows launcher | Five pages, settings, Play/Stop, logs and backup/restore tools | Broader Windows and DPI coverage |
-| Saves | Initialization, SYSTEM.DAT creation and reopening an existing save | Checkpoint saves, load and restart during gameplay |
-| Graphics stability | October 17 log captures the failing image descriptor | Root cause of 8,029 requested layers versus a device limit of 2,048 |
-| Performance | FSR 1 presentation and experimental timing recipe implemented | Repeatable 4K output and sustained 60 FPS during gameplay |
-| Long sessions | A roughly 15-minute recording was supplied; sampled frames show cinematics | A 30-minute gameplay stability run |
-| Platforms | Dedicated Windows source build and portable packaging | An Order-specific Linux package |
+| Boot and rendering | Supplied cinematic recording; Chapter 2 run with copied saves | Representative interactive route, checkpoint save/load and progression |
+| Windows launcher/package | Five pages, saved settings, direct play, desktop/Steam shortcuts, backup and cache tools; 15 portable checks pass | Broader DPI/language coverage and end-to-end player validation |
+| Input and mods | Mouse-to-stick path and reversible asset-overlay fixtures pass | Remapping UI, direct camera hook, gameplay/QTE and real mod validation |
+| Graphics stability | Descriptor guards retained; copied-save run reached its 900.959-second timeout without the 8,029-layer/assertion marker | Residual SRT errors, exact original crash sequence and full stability run; [#5](https://github.com/JulioCacko/The-Order-1886_pc/issues/5) remains open |
+| Performance | User reported slow street performance; mapped-range and shader/cache fixes pass local regressions | Same-viewpoint frame-time comparison and sustained 4K/60 |
+| Temporal providers | FSR 1 and Linear presentation available | Gameplay-qualified DLSS, FSR 3.1/4, XeSS and temporal inputs |
+| Game versions | Current local preparation checks use CUSA00076 | Update 1.02/fullscreen/high-FPS report [#23](https://github.com/JulioCacko/The-Order-1886_pc/issues/23) remains unverified |
 
-See the [full status report](docs/STATUS.md),
-[runtime history](docs/order1886-runtime-status.md) and
-[4K/60 acceptance plan](docs/order1886-4k60-verification.md).
-Older reports retain their original verification scope; the recording is
-additional evidence, not a claim that all previous gates have passed.
+The Chapter 2 duration includes menus/loading and ended by forced timeout; it is not 15 minutes of measured street gameplay. No FPS improvement is claimed.
+
+See [current status](docs/STATUS.md), [issue tracking](docs/order1886-issue-status.md), [integration evidence](docs/verification/2026-10-18-gold-work.md), and the [4K/60 acceptance plan](docs/order1886-4k60-verification.md).
 
 ## Download and start
+
+**Published download: preview.3 (October 17).** The October 18 fixes and screenshots describe current source on `main`; they do not imply a new release asset was published. Build from source for those changes.
 
 **[Download the Windows launcher ZIP](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.3/order1886-windows.zip)** ·
 [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.3) ·
@@ -96,36 +99,35 @@ python launcher/order1886_launcher.py
 
 ## The launcher
 
-![The five-page Windows launcher with a persistent launch bar](docs/images/order1886-desktop.png)
+![Current Windows launcher Home page](docs/images/order1886-home-20261018.png)
 
-<sub>Actual launcher capture using the wallpaper supplied by the user on October 17. It is not a gameplay screenshot. The selected 30 FPS option is a limit, not a measurement.</sub>
+<sub>Actual source launcher captured on October 18 at 1240 × 800 with isolated settings. This is launcher UI; the selected 30 FPS is configuration, not a benchmark.</sub>
 
-| Page | What you can do |
+| Page | Available controls |
 | --- | --- |
-| **Home** | Choose the game folder, display, scaling and frame rate; start or stop a session |
-| **Graphics** | Set window mode, original or experimental 16:9 aspect, FSR 1/Linear scaling and VSync |
-| **Performance** | Choose 30 FPS or experimental 60 FPS; configure the F9 performance overlay |
-| **Game** | Select and verify files, open the data folder, create or restore save backups |
-| **Advanced** | Select an optional runtime, inspect logs, open folders, releases and support |
+| **Home** | Game folder, display, presentation filter, frame rate and Play/Stop |
+| **Graphics** | Window mode, original/experimental 16:9 aspect, FSR 1/Linear and VSync |
+| **Performance** | Native 30 FPS, experimental 60 FPS and F9 overlay |
+| **Game** | Verify files, direct-play desktop shortcut, Add to Steam, save backups, ordered asset mods and mouse controls |
+| **Advanced** | Launcher language, optional runtime, logs/folders, shader-cache clearing and manual release links |
 
-Use **Save settings** after editing a page. Starting from a settings page saves
-its values before launch. The launch bar stays available on every page. Press
-**Escape** to return Home; native controls support keyboard navigation.
+<details><summary>Current settings and utilities screenshots</summary>
 
-Development input and quick-launch changes are documented in the
-[mouse, keyboard and direct-play guide](docs/order1886-input.md). Mouse look,
-sensitivity and inverted Y are under Game > Controls; the next built package
-also includes `Play The Order 1886.exe` and an optional desktop-shortcut action.
+![Graphics settings with the persistent launch bar](docs/images/order1886-graphics-20261018.png)
 
-The original cinematic launcher remains available:
+![Game utilities: desktop shortcut, Steam and saves](docs/images/order1886-game-20261018.png)
 
-```powershell
-python launcher/order1886_launcher.py --classic
-```
+![Advanced settings and launcher language selector](docs/images/order1886-advanced-20261018.png)
 
-The reference's unvalidated GPU switches, updater, external patches/mods and
-controller remapping are not enabled here. See the
-[feature mapping and source revisions](docs/order1886-reference-reuse.md).
+</details>
+
+Use **Save settings** after editing; launching from a settings page saves its values. Navigation keeps unsaved edits, and **Escape** returns Home. The launch bar stays available on every page.
+
+For mouse look, open **Game → Controls**: sensitivity and inverted Y persist. In the game window **Esc** releases the cursor and **F6** toggles capture; focus loss releases it automatically. This supplies the PS4 right stick; a direct 1:1 camera hook and remapping UI remain open. See the [input/direct-play guide](docs/order1886-input.md).
+
+**Play The Order 1886.exe** starts with the same saved configuration, preparation and logs as Play. Keep it beside `_internal` and `bin`. Use **Game → Add to Steam** with Steam closed; the action preserves existing shortcuts and is idempotent. Reopen Steam afterwards.
+
+[Asset mod formats and limits](docs/order1886-mods.md) describe reversible `_data` overlays. Updates are installed manually; automatic updating, external executable patches, a Cheats page, independent game text/voice and a live Achievements page are not complete. The classic launcher remains available with `python launcher/order1886_launcher.py --classic`.
 
 ## Graphics and performance
 
@@ -141,7 +143,7 @@ that the game produces that many new frames. Use the 30 FPS baseline first.
 
 | Problem | What to do |
 | --- | --- |
-| `Image exceeds device format limits`, `layers=8029/2048` | Preserve the boot log and matching `last-run.json`. This descriptor exceeds the device limit; a cause or fix has not been established. |
+| `Image exceeds device format limits`, `layers=8029/2048` | Preserve the boot log and matching `last-run.json`. Descriptor validation and targeted inactive-resource guards remain enabled. Keep the matching descriptor/shader evidence; the original crash is not closed by a timeout run. |
 | Low or varying frame rate | Include the scene, settings, GPU/driver and matching log. Shader compilation and compatibility work remain in progress. |
 | Runtime missing or identity rejected | Keep the complete package together, or build a matching runtime. Use Advanced for an explicit runtime override. |
 | Experimental 60 FPS timing problems | Return to 30 FPS and report the chapter and reproduction steps. |
@@ -163,7 +165,7 @@ required submodules. From PowerShell:
 
 ```powershell
 & C:\msys64\usr\bin\bash.exe build.sh --test
-python -m unittest discover -s tests -p 'test_*.py'
+out/order1886-pyenv/Scripts/python.exe -m unittest discover -s tests
 python launcher/order1886_launcher.py --smoke-test
 ```
 

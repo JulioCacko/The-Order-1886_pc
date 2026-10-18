@@ -6,11 +6,11 @@
 
 Proyecto comunitario para ejecutar el binario original de **The Order: 1886**, edición PS4 **CUSA00076**, mediante un launcher nativo de Windows y un runtime Vulkan. Reutiliza infraestructura de carga PS4 y trabajo de gráficos/APIs de [shadPS4](https://github.com/shadps4-emu/shadPS4).
 
-**En desarrollo.** El juego inicia y renderiza cinemáticas 3D, como muestra la grabación del 17 de octubre. También se han observado la inicialización del guardado y su reapertura. Siguen pendientes la jugabilidad interactiva, la progresión por puntos de control, 30 minutos de estabilidad y la salida 4K a 60 FPS. El registro enviado termina en una aserción Vulkan: la imagen solicita 8.029 capas frente a un límite de 2.048. No es un lanzamiento oficial para PC ni un port confirmado como jugable.
+**En desarrollo — 18 de octubre de 2026.** Se renderizan cinemáticas y se ha recorrido una ruta de calle, pero el rendimiento sigue siendo bajo. La progresión, los guardados por checkpoint, la estabilidad y 4K/60 todavía no están aceptados. La prueba del Capítulo 2 con copias de guardados llegó al timeout sin la aserción de 8.029 capas; quedan errores SRT y la issue #5 sigue abierta.
 
-![Launcher de The Order: 1886 para Windows con navegación lateral y barra de inicio permanente](docs/images/order1886-desktop.png)
+![Launcher de The Order: 1886 para Windows con navegación lateral y barra de inicio permanente](docs/images/order1886-home-20261018.png)
 
-*Captura real del launcher de cinco páginas con la imagen proporcionada por el usuario el 17 de octubre. No es gameplay. “30 FPS” es el límite seleccionado, no una medición.*
+*Captura real del launcher actual del 18 de octubre, 1240 × 800, con configuración aislada. No es gameplay; 30 FPS es la opción seleccionada.*
 
 ## Demostración en vídeo
 
@@ -20,9 +20,22 @@ Proyecto comunitario para ejecutar el binario original de **The Order: 1886**, e
 
 ## Descargar
 
+**Descarga publicada: preview.3, del 17 de octubre.** Las novedades del 18 de octubre describen el código actual de `main`; no representan una nueva release publicada. Compila desde el código fuente para utilizarlas.
+
 **[Descargar el ZIP del launcher para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.3/order1886-windows.zip)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.3) · [Guía en inglés y portugués](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.3/QUICKSTART.txt)
 
 Extrae el ZIP completo y lee **QUICKSTART.txt**, incluido en el paquete. No requiere Python, MSYS2 ni compilador. Descarga `order1886-windows.zip`; los archivos “Source code” son para desarrolladores. El juego no está incluido: usa tu propio dump CUSA00076. Esta versión preliminar conserva las limitaciones de compatibilidad indicadas arriba.
+
+## Novedades en el código fuente — 18 de octubre
+
+- Mouse look mediante el stick, sensibilidad e inversión Y; inicio directo con **Play The Order 1886.exe**, acceso directo y **Game → Add to Steam** (cierra Steam primero).
+- Copias de seguridad con orden numérico, mods `_data` reversibles con orden/conflictos, limpieza segura de caché y 13 idiomas de interfaz con fallback inglés. La validación visual de árabe/CJK sigue pendiente.
+- Correcciones de shaders NaN/atomics, copia de claves de pipelines, memoria y mutex; aceptación de dumps ELF x86-64 validados.
+- **321 pruebas Python sin omisiones, 41 checks nativos, tres módulos SPIR-V validados y 15 checks portátiles aprobados.** [Evidencia](docs/verification/2026-10-18-donor-060.md) · [Estado de issues](docs/order1886-issue-status.md).
+
+![Utilidades actuales: acceso directo, Steam y guardados](docs/images/order1886-game-20261018.png)
+
+En el juego, **Esc** libera el cursor y **F6** alterna la captura. Configura el ratón en **Game → Controls** y guarda. Siguen pendientes la reasignación, cámara directa 1:1, selección independiente de texto/voces, logros en vivo y actualización automática. [Guía de entrada e inicio directo](docs/order1886-input.md).
 
 ## El launcher
 
@@ -33,10 +46,10 @@ Estructura adaptada de [mateussmeneses/theorder1886-port](https://github.com/mat
 | Home | Carpeta del juego, opciones rápidas y Play/Stop |
 | Graphics | Pantalla, relación de aspecto, FSR 1/Linear y VSync |
 | Performance | 30 FPS, 60 FPS experimental y overlay F9 |
-| Game | Verificación, carpeta de datos, copias de seguridad y restauración de guardados |
-| Advanced | Runtime opcional, registros, carpetas, versiones y soporte |
+| Game | Archivos, accesos directos/Steam, guardados, mods de assets y ratón |
+| Advanced | Idioma del launcher, runtime, registros, caché y releases manuales |
 
-Usa **Save settings** para guardar las opciones. Iniciar desde una página de opciones también guarda los valores antes de abrir el juego. Restaurar requiere confirmación y crea una copia del guardado reemplazado; se bloquea durante una sesión. El launcher anterior sigue disponible con `python launcher/order1886_launcher.py --classic`. Las opciones GPU, mods y actualizador de referencia necesitan adaptación; consulta el [análisis de reutilización](docs/order1886-reference-reuse.md).
+Usa **Save settings** para guardar las opciones. Iniciar desde una página de opciones también guarda los valores antes de abrir el juego. Restaurar requiere confirmación y crea una copia del guardado reemplazado; se bloquea durante una sesión. El launcher anterior sigue disponible con `python launcher/order1886_launcher.py --classic`. Los mods de assets están disponibles; los parches ejecutables externos, funciones temporales y actualización automática siguen pendientes; consulta el [análisis de reutilización](docs/order1886-reference-reuse.md).
 
 ## Iniciar
 
