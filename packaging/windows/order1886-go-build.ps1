@@ -48,6 +48,21 @@ try {
     foreach ($name in @('The Order 1886.exe','Play The Order 1886.exe')) {
         Copy-Item -LiteralPath $goLauncher -Destination (Join-Path $destination $name) -Force
     }
+    & go mod download
+    if ($LASTEXITCODE) { throw 'Go dependency metadata is unavailable.' }
+    $modules = @(& go list -m -f '{{if not .Main}}{{.Path}}|{{.Version}}|{{.Dir}}{{end}}' all)
+    if ($LASTEXITCODE) { throw 'Go dependency listing failed.' }
+    foreach ($module in $modules) {
+        if (-not $module.Trim()) { continue }
+        $parts = $module.Split('|')
+        $licenses = @(Get-ChildItem -LiteralPath $parts[2] -File | Where-Object { $_.Name -match '^(LICENSE|LICENCE|COPYING|NOTICE|PATENTS|UNLICENSE)' })
+        if (-not $licenses.Count) { throw "Missing license metadata for $($parts[0])" }
+        $notice = Join-Path $destination ("notices/go/" + $parts[0].Replace('/','_') + '@' + $parts[1])
+        New-Item -ItemType Directory -Force -Path $notice | Out-Null
+        foreach ($license in $licenses) { Copy-Item -LiteralPath $license.FullName -Destination $notice }
+    }
+    $goRoot = (& go env GOROOT | Out-String).Trim()
+    Copy-Item -LiteralPath (Join-Path $goRoot 'LICENSE') -Destination (Join-Path $destination 'notices/go/GO-STDLIB-LICENSE')
     $scriptData = Join-Path $stage 'scripts'
     New-Item -ItemType Directory -Force -Path $scriptData | Out-Null
     foreach ($name in @('prepare.py','link_modules.py','link_libc.py','save_backup.py',
