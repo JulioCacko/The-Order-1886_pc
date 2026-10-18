@@ -39,7 +39,11 @@ Play/Stop and quick settings remain visible on each page. Use Save settings
 after editing; starting from a settings page saves its values before launch.
 Game lists save backups and offers backup/restore. Restore asks for confirmation
 and backs up the current saves first. Save changes are blocked during a session.
+On Game, select a backup and press Play to restore it before launch, then choose
+Continue/Load in the game. Older snapshots may lack Profile or progress.
 Advanced holds runtime selection, logs, folders and GitHub release/support links.
+Its language selection also requests the same game language on the next launch.
+Matching game language assets must be installed. Restart the launcher for its UI.
 The original launcher remains available with the --classic command-line option.
 
 Title-specific settings, prepared images, logs, caches and saves belong in

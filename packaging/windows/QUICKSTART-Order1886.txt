@@ -96,11 +96,16 @@ SAVES, BACKUPS AND UPDATES
 Settings, prepared files, caches, logs and saves are kept in:
   <launcher folder>\user\order1886\
 
-The runtime makes a save backup before each game session. On Game, use
-Back up saves now or select a backup and Restore selected backup. Restoring
-asks for confirmation and first backs up the saves it replaces. Save changes
+The runtime makes a save backup before each game session. On Game, select a
+backup and press Play to confirm restoration before launch, or use Restore
+selected backup. Then choose Continue/Load in the game. Restoring first backs
+up the saves it replaces. Older backups may lack Profile or progress. Save changes
 are disabled while a session runs. Checkpoint save/load still needs gameplay
 validation; these tools do not establish that every in-game save works.
+
+Advanced's language selection also requests the same PS4 system language on the
+next game launch. Save it and restart the launcher for its interface. Matching
+game language assets must be installed; missing assets may fall back.
 
 Before updating, stop the game and close the launcher. Keep a separate copy
 of the entire user folder. Extract the new ZIP to a new folder, then copy

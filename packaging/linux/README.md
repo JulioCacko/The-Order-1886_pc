@@ -22,6 +22,15 @@ Windows desktop-shortcut and Windows Steam-discovery actions are not Linux
 integrations. Use your desktop/Steam client to add the direct-play script manually.
 Independent game text/voice, live achievements and automatic updating remain open.
 
+On Game, select a backup and press Play to confirm restoration before launch, or
+use Restore selected backup. Current saves are backed up first. Then choose
+Continue/Load in the game. Older snapshots may lack the Profile slot; restoration
+does not invent missing progress. Save changes are blocked during a session.
+
+Advanced's language selection also requests that PS4 system language on the next
+game launch. Save it and restart the launcher to translate its interface. The
+game requires matching installed language assets; missing assets may fall back.
+
 Host/bootstrap and CPU checks do not establish Linux gameplay, GPU compatibility,
 checkpoint progression, long-session stability or sustained 4K/60. The 60 FPS and
 16:9 modes remain experimental; Chapters 6 and 9 have known timing risks.

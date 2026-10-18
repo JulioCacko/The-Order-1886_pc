@@ -36,6 +36,9 @@ import order1886_mods as mods
 TITLE_ID = 'CUSA00076'
 RUNTIME_ABI = 'order1886-native-1'
 SHADER_CACHE_ABI = 'native-ps4-v1'
+# OrbisSystemParamLanguage: pt is Brazilian Portuguese; zh is Simplified Chinese.
+SYSTEM_LANGUAGES = {'en': 1, 'ru': 8, 'ar': 21, 'es': 3, 'pt': 17, 'fr': 2,
+                    'de': 4, 'it': 5, 'pl': 16, 'tr': 19, 'zh': 11, 'ja': 0, 'ko': 9}
 REQUIRED_FILES = ('eboot.bin', 'sce_sys/param.sfo', 'sce_module/libc.prx', 'sce_module/libSceFios2.prx')
 
 
@@ -187,6 +190,9 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     runtime, user = Path(runtime).resolve(), Path(user).resolve()
     settings = settings or {}
     frame_rate = timing.validate_frame_rate(settings.get('frame_rate', 30))
+    system_language = settings.get('system_language', 1)
+    if type(system_language) is not int or not 0 <= system_language <= 29:
+        raise ValueError('System language must be an integer from 0 to 29')
     source = os.environ if inherited is None else inherited
     env = {k: v for k, v in source.items()
            if not k.upper().startswith('ORDER1886_') or k == 'ORDER1886_DIAG_RESOURCE_SHARPS'}
@@ -194,6 +200,7 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
         'ORDER1886_CONFIG': str(user / 'runtime.ini'), 'ORDER1886_USER_DIR': str(user),
         'ORDER1886_GPU_USER_DIR': str(user / 'gpu' / SHADER_CACHE_ABI), 'ORDER1886_GAME_PROFILE': 'order1886',
         'ORDER1886_FPS_LIMIT': str(frame_rate),
+        'ORDER1886_LANGUAGE': str(system_language),
         # Reuse validated cached pipelines before playback rather than compiling during it.
         'ORDER1886_PIPELINE_BINARIES': '0', 'ORDER1886_BACKGROUND_WARMUP': '0',
         'ORDER1886_PARALLEL_WARMUP': '0',
@@ -366,6 +373,8 @@ def main(argv=None):
                         help='Output scaling filter; game rendering and timing stay native')
     parser.add_argument('--frame-rate', type=int, choices=[30, 60], default=30,
                         help='30 is the native baseline; 60 is experimental with known QTE risks')
+    parser.add_argument('--system-language', type=int, choices=range(30), default=1,
+                        help='PS4 system language ID; game requires installed language assets (default: English US)')
     parser.add_argument('--aspect-ratio', choices=['original', '16:9'], default='original',
                         help='Experimental full-screen 16:9 or original cinematic aspect; requires restart')
     parser.add_argument('--vsync', type=int, choices=[0, 1], default=1)
@@ -463,7 +472,7 @@ def main(argv=None):
                        'settings': {'display_mode': args.display_mode, 'vsync': args.vsync,
                                     'show_fps': args.show_fps, 'presentation_filter': args.presentation_filter,
                                     'frame_rate': args.frame_rate, 'fps_limit': args.frame_rate,
-                                    'aspect_ratio': args.aspect_ratio}}
+                                    'aspect_ratio': args.aspect_ratio, 'system_language': args.system_language}}
             write_json(logs / 'last-run.json', report)
             emit_status(f'Log: {log}', fallback=diagnostic_log)
             emit_status(f'Runtime: {report["runtime"]} | SHA256 {report["runtime_sha256"]}', fallback=diagnostic_log)

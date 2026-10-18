@@ -12,6 +12,15 @@ from launcher import order1886_launcher as launcher
 
 
 class CatalogTests(unittest.TestCase):
+    def test_ui_language_reaches_game_system_language(self):
+        expected = {"en": 1, "ru": 8, "ar": 21, "es": 3, "pt": 17, "fr": 2,
+                    "de": 4, "it": 5, "pl": 16, "tr": 19, "zh": 11, "ja": 0, "ko": 9}
+        for locale, code in expected.items():
+            values = {"game_dir": "game", "display_mode": "windowed", "vsync": True,
+                      "show_fps": False, "ui_language": locale}
+            command = launcher.backend_command(values, "verify")
+            self.assertEqual(command[command.index("--system-language") + 1], str(code))
+
     def test_literal_ui_translations_are_cataloged_without_donor_game_claims(self):
         source = ast.parse(Path(launcher.__file__).read_text(encoding="utf-8"))
         for call in ast.walk(source):

@@ -2434,3 +2434,38 @@ TRANSLATIONS = {
         "{state}:{name}"
     ]
 }
+
+# shortcut: new workflow guidance falls back to English outside pt/es; localize it during catalog review.
+_WORKFLOW_MESSAGES = (
+    ("Save the language, then restart the launcher to apply it. Game language is unchanged.",
+     "Save the language, then restart the launcher and game to apply it. The game needs matching installed language assets.",
+     {"pt": "Salve o idioma e reinicie o launcher e o jogo para aplicá-lo. O jogo precisa dos arquivos correspondentes ao idioma.",
+      "es": "Guarda el idioma y reinicia el launcher y el juego para aplicarlo. El juego necesita los archivos de ese idioma."}),
+    ("Restart the launcher to apply the language.",
+     "Restart the launcher to apply its language. The next game launch requests the same language; missing game assets may fall back.",
+     {"pt": "Reinicie o launcher para aplicar o idioma. No próximo início, o jogo solicitará o mesmo idioma; arquivos ausentes podem causar fallback.",
+      "es": "Reinicia el launcher para aplicar su idioma. Al iniciar, el juego solicitará el mismo idioma; si faltan archivos puede usar otro."}),
+    (None,
+     "Select a backup, then Restore or Play. Restoration asks for confirmation and backs up the current saves. Choose Continue or Load after the game starts.",
+     {"pt": "Selecione um backup e use Restaurar ou Jogar. A restauração pede confirmação e preserva os saves atuais em outro backup. Escolha Continuar ou Carregar no jogo.",
+      "es": "Selecciona una copia y elige Restaurar o Jugar. La restauración pide confirmación y respalda los guardados actuales. Elige Continuar o Cargar en el juego."}),
+    (None, "Choose a save backup", {"pt": "Escolha um backup de save", "es": "Elige una copia del guardado"}),
+    (None, "Select a backup in the list before restoring.",
+     {"pt": "Selecione um backup na lista antes de restaurar.", "es": "Selecciona una copia de la lista antes de restaurar."}),
+    (None, "Save restored", {"pt": "Save restaurado", "es": "Guardado restaurado"}),
+    (None,
+     "The selected backup is restored. Start the game and choose Continue or Load; this does not load a running game.",
+     {"pt": "O backup selecionado foi restaurado. Inicie o jogo e escolha Continuar ou Carregar; isso não carrega uma sessão já em execução.",
+      "es": "La copia seleccionada se ha restaurado. Inicia el juego y elige Continuar o Cargar; esto no carga una sesión que ya está ejecutándose."}),
+)
+for _old, _text, _localized in _WORKFLOW_MESSAGES:
+    _index = KEYS.index(_old) if _old is not None else len(KEYS)
+    if _old is None:
+        KEYS.append(_text)
+    else:
+        KEYS[_index] = _text
+    for _locale, _catalog in TRANSLATIONS.items():
+        if _index == len(_catalog):
+            _catalog.append(_localized.get(_locale, _text))
+        else:
+            _catalog[_index] = _localized.get(_locale, _text)
