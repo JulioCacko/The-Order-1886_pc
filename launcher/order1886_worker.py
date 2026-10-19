@@ -25,7 +25,8 @@ from launcher.order1886_options import FIELDS, PAGES
 MAX_REQUEST = 64 * 1024
 METHODS = frozenset(("state.get", "settings.set", "settings.reset", "session.start", "session.stop",
                      "saves.list", "saves.backup", "saves.restore", "cache.clear", "mods.list",
-                     "steam.add", "shortcut.create", "updates.preflight"))
+                     "steam.add", "shortcut.create", "updates.preflight",
+                     "patches.list", "patches.apply"))
 FIELD_BY_KEY = {item["key"]: item for item in FIELDS}
 
 
@@ -197,6 +198,50 @@ class Worker:
         except ValueError as exc:
             return {"error": str(exc)}
 
+    def game_folder(self):
+        """The selected game folder, resolved the way every other worker path is."""
+        game = Path(self.settings().get("game_dir") or order1886.default_game_dir())
+        return (game if game.is_absolute() else self.installation / game).resolve()
+
+    def guest_executable(self, game):
+        """The selected executable's bytes and metadata, or a reason they are unavailable."""
+        try:
+            metadata = order1886.inspect_game(game)
+            executable = (game / "eboot.bin").read_bytes()
+        except (OSError, ValueError) as exc:
+            return {}, b"", str(exc)
+        return metadata, executable, ""
+
+    def list_patches(self):
+        """Every version-checked recipe with its applicability; reads, never writes."""
+        from scripts import order1886_patches as catalogue
+        game = self.game_folder()
+        metadata, executable, problem = self.guest_executable(game)
+        recipes = ([catalogue.describe(item, problem) for item in catalogue.RECIPES] if problem
+                   else catalogue.catalogue(executable, metadata))
+        return {"recipes": recipes, "game": {"ready": not problem, "folder": str(game),
+                                             "message": problem or "Game files found",
+                                             "metadata": metadata}}
+
+    def apply_patch(self, params):
+        """Derive a patched copy of the selected executable; the game folder is only read."""
+        self.confirm(params)
+        from scripts import order1886_patches as recipes
+        identifier = params.get("id")
+        if not isinstance(identifier, str):
+            raise ValueError("Provide the id of a patch recipe to apply.")
+        recipe = recipes.recipe(identifier)
+        self.safe_state()
+        game = self.game_folder()
+        metadata, executable, problem = self.guest_executable(game)
+        if problem:
+            raise ValueError(problem)
+        destination = (self.state / "patched" / (recipe["id"] + ".bin")).resolve()
+        if destination == game or game in destination.parents:
+            raise ValueError("A derived patch image belongs outside the selected game folder.")
+        return recipes.apply_recipe_bytes(recipe, recipes.decode(recipe, executable),
+                                          destination, metadata)
+
     def require_idle(self):
         if self.busy:
             raise ValueError("Stop the current session before changing settings or player data.")
@@ -286,7 +331,11 @@ class Worker:
         if method == "mods.list":
             values = self.settings()
             return order1886.mods.discover(order1886.mods.resolve_root(values.get("mods_dir", ""), self.installation))
+        if method == "patches.list":
+            return self.list_patches()
         self.require_idle()
+        if method == "patches.apply":
+            return self.apply_patch(params)
         if method == "updates.preflight":
             self.safe_state()
             self.state.mkdir(parents=True, exist_ok=True)
