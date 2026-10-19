@@ -4,10 +4,12 @@
 Donor revision: 52e4988f54b0626447563874bf8695633b1a4302 (GPL-2.0-or-later).
 Order uses an explicit saved language, English by default, rather than OS locale.
 See order1886_lang_data.py for per-language reused keys and translation provenance,
-and order1886_lang_ui.py for the keys the Go frontend and the settings catalogue show.
+order1886_lang_ui.py for the keys the Go frontend and the settings catalogue show, and
+order1886_lang_ui_translations.py for the translated part of those keys.
 """
 from launcher.order1886_lang_data import KEYS, TRANSLATIONS
 from launcher.order1886_lang_ui import UI_KEYS
+from launcher.order1886_lang_ui_translations import UI_TRANSLATIONS
 
 
 LANGUAGES = {
@@ -23,7 +25,9 @@ def catalogue(language):
 
     The base tables were written for the previous Tk launcher. UI_KEYS covers the Go
     frontend and the settings catalogue, whose strings were previously not catalogued
-    at all and therefore silently fell back to English in every language.
+    at all and therefore silently fell back to English in every language. The
+    high-traffic subset of those keys is translated last, so it wins over the fallback
+    and `untranslated()` keeps counting only the keys that are still English.
     """
     language = language if isinstance(language, str) and language in LANGUAGES else "en"
     texts = KEYS if language == "en" else TRANSLATIONS[language]
@@ -32,6 +36,8 @@ def catalogue(language):
     merged = dict(zip(KEYS, texts))
     for key in UI_KEYS:
         merged.setdefault(key, key)
+    if language != "en":
+        merged.update(UI_TRANSLATIONS.get(language, {}))
     return merged
 
 
