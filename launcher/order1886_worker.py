@@ -183,8 +183,16 @@ class Worker:
                 "game": readiness, "state_dir": str(self.state), "installation": str(self.installation),
                 "busy": self.busy, "logfile": str(self.logfile) if self.logfile else "",
                 "last_exit": self.last_exit, "logs": self.log_tail[-100:],
+                "timing": self.timing(values),
                 "backups": order1886.save_backup.list_backups(self.state),
                 "acceptance": "Development preview — gold gameplay and provider qualification remain open."}
+
+    def timing(self, values):
+        """Report engine rate, presentation cadence, host cap and VSync as resolved."""
+        try:
+            return order1886.timing_profile(values)
+        except ValueError as exc:
+            return {"error": str(exc)}
 
     def require_idle(self):
         if self.busy:
