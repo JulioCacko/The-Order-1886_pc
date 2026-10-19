@@ -391,6 +391,77 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     return env
 
 
+# Keys the in-game menu can change that also exist as launcher settings. The runtime writes
+# them into the same runtime.ini the launcher generates, so a menu change would otherwise be
+# overwritten by the next Play without anyone noticing.
+MENU_SETTING_MAP = {
+    'display_mode': ('display_mode', ('windowed', 'borderless', 'fullscreen')),
+    'vsync': ('vsync', None),
+    'show_fps': ('show_fps', None),
+    'presentation_filter': ('presentation_filter', ('linear', 'fsr1')),
+    'mouse_look': ('mouse_look', None),
+    'mouse_invert_y': ('mouse_invert_y', None),
+    'mouse_sensitivity': ('mouse_sensitivity', None),
+}
+
+
+def menu_settings_import(state, values):
+    """Settings the in-game menu changed since the launcher last saved, or an empty dict.
+
+    The runtime writes the menu's choices into runtime.ini. Importing them lets both surfaces
+    agree instead of the next Play silently discarding what the player chose mid-session.
+    The file is only newer than settings.json after the runtime wrote it, so a launcher change
+    made after the last session is never overwritten by stale menu state.
+    """
+    state = Path(state)
+    ini, saved = state / 'runtime.ini', state / 'settings.json'
+    # A corrupt file must never block the launcher: unparsable lines are skipped.
+    try:
+        if ini.stat().st_mtime <= saved.stat().st_mtime:
+            return {}
+        with ini.open('r', encoding='utf-8', errors='replace') as handle:
+            lines = handle.read().splitlines()
+    except (OSError, ValueError):
+        return {}
+    raw = {}
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, _, value = line.partition('=')
+        raw[key.strip()] = value.strip()
+    changed = {}
+    for key, (setting, allowed) in MENU_SETTING_MAP.items():
+        if key not in raw:
+            continue
+        text = raw[key]
+        try:
+            if allowed is not None:
+                candidate = text
+                if candidate not in allowed:
+                    continue
+            elif key == 'mouse_sensitivity':
+                candidate = int(text)
+                if not 10 <= candidate <= 500:
+                    continue
+            else:
+                candidate = bool(int(text))
+        except ValueError:
+            continue
+        if setting in ('mouse_sensitivity',) and type(candidate) is not int:
+            continue
+        if values.get(setting) != candidate:
+            changed[setting] = candidate
+    # fps_limit is a presentation cap the launcher owns separately: only adopt it when it is
+    # one of the engine rates the launcher itself offers.
+    try:
+        limit = int(raw.get('fps_limit', ''))
+    except ValueError:
+        limit = None
+    if limit in (30, 60) and values.get('frame_rate') != limit:
+        changed['frame_rate'] = limit
+    return changed
+
 def write_runtime_config(user, settings):
     sensitivity = settings.get('mouse_sensitivity', 100)
     if type(sensitivity) is not int or not 10 <= sensitivity <= 500:
