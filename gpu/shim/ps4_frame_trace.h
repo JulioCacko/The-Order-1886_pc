@@ -3,13 +3,27 @@
 #include <cstdint>
 #include <cstdio>
 #include <mutex>
+#ifdef _WIN32
+#include <filesystem>
+#include <string>
+#endif
 
 namespace Ps4PerfStats {
 class FrameTrace {
 public:
     explicit FrameTrace(const char* path) {
         if (!path || !*path) return;
+#ifdef _WIN32
+        try {
+            const std::u8string encoded{path, path + std::char_traits<char>::length(path)};
+            const std::filesystem::path filename{encoded};
+            file = _wfopen(filename.c_str(), L"wx");
+        } catch (const std::exception&) {
+            file = nullptr;
+        }
+#else
         file = std::fopen(path, "wx");
+#endif
         if (!file) {
             std::fprintf(stderr, "Frame trace: cannot create new evidence file %s\n", path);
             return;

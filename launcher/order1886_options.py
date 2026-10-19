@@ -29,6 +29,8 @@ def field(key, label, page, kind, default, description, choices=None, reason="",
 
 field("game_dir", "Game folder", "game", "directory", "", "Select the extracted CUSA00076 game. Original files remain unchanged.")
 field("runtime", "Runtime executable", "system", "file", "", "Leave empty to use the installation's verified Order runtime.")
+field("performance_capture", "Record performance data", "system", "boolean", False,
+      "Save frame times and slow-frame diagnostics with each session's logs. Turn this off after recording the slow scene.")
 field("display_mode", "Display mode", "graphics", "select", "borderless", "Window mode is independent of framing and game timing.",
       [("windowed", "Windowed", ""), ("borderless", "Borderless", ""), ("fullscreen", "Fullscreen", "")])
 field("aspect_ratio", "Framing", "graphics", "select", "original", "Original preserves cinematic framing. The 16:9 patch is executable-specific and experimental.",
