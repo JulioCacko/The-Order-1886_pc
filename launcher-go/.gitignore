@@ -1,4 +1,6 @@
 /frontend/node_modules/
+/frontend/wailsjs/
+/frontend/package.json.md5
 /frontend/.test-build/
 /frontend/dist/*
 !/frontend/dist/.gitkeep
