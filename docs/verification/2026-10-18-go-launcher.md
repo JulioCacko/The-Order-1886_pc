@@ -7,7 +7,7 @@ Plan: implement the accepted Windows gold + Wails launcher contract. Linux remai
 - [x] Reconcile completed language/save batch from the original checkout (54242e0, cherry-picked as 84ea7cb).
 - [x] Versioned allowlisted worker with settings validation, capabilities, utilities and session events.
 - [x] Wails v2 desktop application, seven-page TypeScript UI, autosave and search (migration preview).
-- [ ] Worker/native launcher packaging and relocated smoke checks; preserve legacy default until parity passes.
+- [x] Worker/native launcher preview packaging and relocated smoke checks; retain the legacy distribution default while broader parity remains open.
 - [ ] Runtime correctness, donor readback/HTILE and performance baseline.
 - [ ] Controls/display/timing, temporal inputs, upscalers and frame generation.
 - [ ] Remaining GitHub acceptance and external qualification.
@@ -37,4 +37,18 @@ Plan: implement the accepted Windows gold + Wails launcher contract. Linux remai
 - User requested continued automated work; the street comparison remains deferred.
 
 Hardware gates: local RTX 3070 only; update 1.02 and external provider hardware remain required. Readback/HTILE, temporal inputs, upscalers/FG and the remaining open-issue acceptance are unfinished. This batch does not establish gold.
+
+## Final migration-preview checks
+
+- Clean code revision: `b9130ac59403d0ad7d9e1e55c99428183610a84d`.
+- Final portable package: `out/order1886-go-package/20261019T001510Z/The Order 1886`. Its manifest records `source_dirty=false` and native runtime SHA256 `ca77edaf93ccec956b20263cb3b9a0c36b1b4496e5437e080d5f6d95b850f1e9`.
+- **353 Python tests passed, zero skipped.** The final run uses matching existing native CPU fixture binaries from native source revision `54242e0`; these fixtures were not rebuilt in this Go checkout. `native-fixture-provenance.json` records each copied binary's hash and native source identity.
+- The former installation-path skip was covered with an exact copy of the real game's read-only `param.sfo`. Only metadata was copied for that native configuration fixture, not an eboot, game content or player saves. `sfo-fixture-provenance.json` records its hash. This is not a playable-installation or gameplay acceptance claim.
+- Go protocol/application tests (7), frontend completion-state tests (4), TypeScript/Vite production build, Go vet and npm audit pass. The post-metadata-copy worker subset also passes.
+- Fresh review resolved the four lifecycle/build/error-state findings and the subsequent notice-copy issue. The final collector reads compiled dependency modules, deduplicates them, and includes their notices plus Go's standard-library license.
+- Portable smoke checks pass for manifest hashes, both executable entry points, Unicode/spaces relocation, restricted PATH, worker protocol, autosave, language persistence and unavailable-setting rejection. Real-data CPU preparation passes from temporary state; the original eboot hash is unchanged.
+- Impeccable's mechanical detector returned an empty finding list. The reviewer approved the captured desktop appearance for the opt-in preview; it did not certify locale, minimum-size, DPI/theme or missing-WebView2 behavior.
+- The ZIP is `out/order1886-go-package/20261019T001510Z/order1886-go-launcher-preview-windows.zip`, with a sibling SHA256 file. `package-final.json` records archive size/digest and verification of every manifest payload inside the ZIP.
+
+No public push, issue closure or release publication was performed by this batch. Hosted CI execution, manual street/campaign evidence and all unfinished renderer/provider/FG/feature work remain open.
 
