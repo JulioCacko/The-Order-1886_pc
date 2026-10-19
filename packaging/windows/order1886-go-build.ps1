@@ -36,7 +36,8 @@ foreach ($entry in Get-ChildItem -LiteralPath $legacyRoot) {
 }
 $incomplete = Join-Path $destination 'GO-BUILD-INCOMPLETE.txt'
 'This Go preview is incomplete until packaging and smoke checks finish.' | Set-Content -LiteralPath $incomplete -Encoding UTF8
-Copy-Item -LiteralPath (Join-Path $destination 'The Order 1886.exe') -Destination (Join-Path $destination 'The Order 1886 Legacy.exe')
+# The package is Go only: the previous Python launcher is not shipped, and an
+# installed tree that still has it loses that file during the first update.
 Push-Location (Join-Path $projectRoot 'launcher-go')
 try {
     if (-not $SkipFrontendBuild) {
@@ -80,6 +81,8 @@ try {
         product='The Order: 1886'; launcher='Go / Wails v2.17.0'; status='development preview'
         built_utc=(Get-Date).ToUniversalTime().ToString('o'); runtime_sha256=$hash
         runtime_build=$legacyManifest.runtime_build
+        # Advertised only now that the copied helper and startup recovery exist.
+        update_abi='order1886-update-2'
         source_revision=(& git -C $projectRoot rev-parse HEAD | Out-String).Trim()
         source_dirty=([bool](& git -C $projectRoot status --porcelain | Out-String).Trim())
         files=@()

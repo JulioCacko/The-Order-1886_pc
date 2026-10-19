@@ -99,10 +99,12 @@ class Worker:
                     return reasons[option]
             order1886.find_runtime(runtime)
             reasons = {}
-            for candidate in ("selective", "precise", "performance_capture"):
+            for candidate in ("selective", "precise", "performance_capture", "htile_control"):
                 try:
                     if candidate == "performance_capture":
                         order1886.validate_performance_capture(runtime, True)
+                    elif candidate == "htile_control":
+                        order1886.validate_htile_control(runtime, True)
                     else:
                         order1886.validate_readback_policy(runtime, candidate)
                     reasons[candidate] = ""
@@ -305,6 +307,11 @@ class Worker:
             if ({"runtime", "performance_capture"} & patch.keys() and
                     values.get("performance_capture")):
                 reason = self.native_option_reason(values, "performance_capture")
+                if reason:
+                    raise ValueError(reason)
+            if ({"runtime", "htile_unqualified"} & patch.keys() and
+                    values.get("htile_unqualified")):
+                reason = self.native_option_reason(values, "htile_control")
                 if reason:
                     raise ValueError(reason)
             order1886.mods.validate_config(order1886.mods.resolve_root(values.get("mods_dir", ""), self.installation),

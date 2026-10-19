@@ -64,6 +64,8 @@ field("frame_generation", "Frame generation", "performance", "select", "off", "G
        ("dlss", "NVIDIA DLSS Frame Generation", FG + " Requires supported NVIDIA hardware."),
        ("xess", "Intel XeSS Frame Generation", FG + " Requires the Windows D3D12 presentation bridge.")], reason=FG)
 field("show_fps", "Performance overlay", "performance", "boolean", True, "Show the runtime performance overlay.")
+field("htile_unqualified", "HTILE metadata adaptation (unqualified)", "performance", "boolean", False,
+      "Off by default. The adapted HTILE metadata clear/read path has no matched gameplay, visual or frame-cost qualification yet (#5), so leave it off unless you are helping to measure it. Turning it on lets metadata clears skip their real shader work and lets buffer reads take the tracked HTILE word instead.")
 field("readbacks", "GPU readback policy", "performance", "select", "relaxed",
       "Relaxed keeps the existing behavior. Selective synchronizes CPU reads of small GPU output buffers; precise tracks all GPU-written buffers. Both can add waits and require gameplay/performance qualification.",
       [("relaxed", "Relaxed (existing baseline)", ""), ("selective", "Selective — experimental", ""),
@@ -99,5 +101,10 @@ field("mod_order", "Enabled mod order", "game", "order", [], "One folder name pe
 for key, label in (("infinite_health", "Infinite health"), ("infinite_ammo", "Infinite ammunition"),
                    ("skip_reload", "Skip reload")):
     field(key, label, "game", "boolean", False, "Cheats require version-verified recipes and gameplay acceptance (#15).", reason=PATCH)
-field("automatic_updates", "Automatic updates", "system", "boolean", False, "Transactional downloads, interruption recovery and rollback are still required (#9).", reason="The current updater uses manual release downloads.")
+field("automatic_updates", "Check for updates on start", "system", "boolean", False,
+      "Check the selected channel once when the launcher starts and show a notice. Nothing is downloaded or installed without a click.")
+field("update_channel", "Update channel", "system", "select", "preview",
+      "Preview follows every published Go preview, which is the only channel that carries a launcher package today. Stable stays quiet until a release without a preview suffix exists.",
+      [("preview", "Preview — every published Go preview", ""),
+       ("stable", "Stable — released builds only", "")])
 

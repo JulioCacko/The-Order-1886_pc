@@ -299,6 +299,12 @@ void PrintBufferStats() {
 } // namespace
 
 bool BufferCache::MaterializeHtile(const Buffer* arena, VAddr device_addr, u32 size) {
+    // ORDER1886_HTILE=0 keeps the unqualified adaptation out of the launch path: the
+    // metadata registry still tracks words, but no GPU-written buffer is replaced by
+    // one, so reads fall through to the normal paths.
+    if (!EmulatorSettings.HtileEnabled()) {
+        return false;
+    }
     // CPU invalidation must finish before its buffer readback can retire this GPU write.
     return texture_cache.WithHtileWord(device_addr, size, [&](u32 htile) {
         SynchronizeMemory(arena, device_addr, size, true, false);

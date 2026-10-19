@@ -4,6 +4,7 @@ import {achievementRows, unlockDate, type TrophyArtwork} from './achievement-lis
 import {replaceView} from './view-state';
 import {withBinding} from './input-bindings';
 import {createSettingsSaver} from './settings-save';
+import {parseUpdate, updateHeadline, updateSection, type UpdateStatus} from './updates';
 
 type Choice = {value:string|number; label:string; available:boolean; reason:string};
 type Field = {key:string;label:string;page:string;kind:string;default:unknown;description:string;
@@ -15,7 +16,9 @@ type Snapshot = {trophies:{id:number;unlocked_at:number}[];trophy_error:string;s
   busy:boolean;backups:string[];logs:string[];logfile:string;state_dir:string;last_exit:number|null;acceptance:string};
 type AppBridge = {Call:(method:string,params:Record<string,unknown>)=>Promise<string>;
   Browse:(kind:string)=>Promise<string>;OpenLink:(name:string)=>Promise<void>;
-  StartupError:()=>Promise<string>;ConfirmClose:()=>Promise<void>;OpenLocation:(kind:string)=>Promise<void>};
+  StartupError:()=>Promise<string>;ConfirmClose:()=>Promise<void>;OpenLocation:(kind:string)=>Promise<void>;
+  UpdateState:()=>Promise<string>;UpdateCheck:()=>Promise<string>;UpdateDownload:()=>Promise<string>;
+  UpdateCancel:()=>Promise<string>;UpdateInstall:()=>Promise<void>;UpdateRestore:()=>Promise<void>};
 declare global { interface Window {
   go?:{main:{App:AppBridge}};
   runtime?:{EventsOn:(name:string,callback:(event:any)=>void)=>void};
@@ -29,6 +32,11 @@ let noticeError = false;
 let starting = false;
 let disconnected = false;
 let saving = 0;
+let update:UpdateStatus|null = null;
+async function refreshUpdate() {
+ try { update = parseUpdate(await bridge().UpdateState()); } catch { update = null; }
+ return update;
+}
 const queueSettingsSave=createSettingsSaver(key=>snapshot.settings[key],commitSetting);
 let confirmation:((value:boolean)=>void)|null = null;
 const root = document.querySelector<HTMLDivElement>('#app')!;
@@ -123,8 +131,9 @@ function systemActions() {
  return `<section class="utility-section"><h2>${escape(t('Installation tools'))}</h2>
  <div class="actions">${actionButton('verify','Verify files')}${actionButton('prepare','Prepare game')}${actionButton('cache.clear','Clear shader cache',true)}
  ${actionButton('shortcut.create','Create desktop shortcut')}${actionButton('steam.add','Add to Steam')}</div>
- <h2>${escape(t('Updates and support'))}</h2><p>${escape(t('Manual release downloads are available. Automatic installation and rollback are not yet qualified.'))}</p>
- <div class="actions"><button data-link="releases">${escape(t('View releases'))}</button><button data-link="issues">${escape(t('Report an issue'))}</button></div>
+ <h2>${escape(t('Updates and support'))}</h2>
+ ${updateSection(update,t,escape,Boolean(snapshot.busy||starting||disconnected||saving))}
+ <div class="actions"><button data-link="issues">${escape(t('Report an issue'))}</button></div>
  <div class="actions"><button data-location="installation">${escape(t('Open installation'))}</button><button data-location="state">${escape(t('Open player data'))}</button><button data-location="logs">${escape(t('Open logs'))}</button></div>
  <dl class="locations"><dt>${escape(t('Player data'))}</dt><dd>${escape(snapshot.state_dir)}</dd><dt>${escape(t('Session log'))}</dt><dd>${escape(snapshot.logfile||t('No session yet'))}</dd></dl>
  <details><summary>${escape(t('Session output'))}</summary><pre id="session-output" tabindex="0">${escape(snapshot.logs.join('')||t('No session output yet.'))}</pre></details></section>`;
@@ -137,6 +146,10 @@ function home() {
  <p>${escape(t('Your game. Your settings. Ready when you are.'))}</p>
  <button class="hero-play" data-action="play"${saving||starting||disconnected?' disabled':''}>${snapshot.busy?escape(t('Stop')):`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>${escape(t('Play'))}`}</button>
  <button class="quiet hero-settings" data-page="graphics">${escape(t('Configure graphics'))}</button></div></section>
+ ${update&&['available','staged','downloading','failed'].includes(update.state)||update?.recovery_blocked?`<section class="utility-section" aria-live="polite">
+ <h2>${escape(updateHeadline(update,t))}</h2>
+ ${update?.error?`<p role="alert" class="error">${escape(update.error)}</p>`:''}
+ <div class="actions"><button data-page="system">${escape(t('Open updates'))}</button></div></section>`:''}
  <section class="home-bottom" aria-label="${escape(t('Launch configuration'))}">
  <div><h2>${escape(t('Launch configuration'))}</h2><dl class="configuration">
  <div><dt>${escape(t('Display'))}</dt><dd>${escape(values.display_mode)}</dd></div>
@@ -273,6 +286,31 @@ async function action(name:string) {
    return;
    } finally {setStarting(false);}
   }
+  if(name==='update.check') {
+   notice=t('Checking for updates…');noticeError=false;render();
+   await refreshUpdate();void bridge().UpdateCheck().then(()=>refreshUpdate()).then(()=>render()).catch(error=>flash(String(error),true));
+   return;
+  }
+  if(name==='update.download') {
+   notice=t('Downloading the update…');noticeError=false;render();
+   await refreshUpdate();
+   void bridge().UpdateDownload().then(()=>refreshUpdate()).then(()=>render()).catch(error=>flash(String(error),true));
+   return;
+  }
+  if(name==='update.cancel') {
+   await bridge().UpdateCancel();await refreshUpdate();notice=t('Download cancelled.');noticeError=false;render();
+   return;
+  }
+  if(name==='update.install') {
+   if(!await confirmAction(t('Install and restart?'),t('The launcher closes so the update can replace its own files. Saves, settings, mods and patches are preserved, and the launcher reopens when it is done.'),t('Install and restart'))) return;
+   await bridge().UpdateInstall();
+   return;
+  }
+  if(name==='update.restore') {
+   if(!await confirmAction(t('Restore the previous version?'),t('The interrupted update is rolled back from its verified backup. Choose this only after reading the recorded failure.'),t('Restore previous version'))) return;
+   await bridge().UpdateRestore();
+   return;
+  }
   if(name==='reset'){
    if(!await confirmAction(t('Reset section?'),t('Reset this section to validated defaults?'),t('Reset'))) return;
    snapshot=await call('settings.reset',{page});notice=t('Section reset.');
@@ -296,7 +334,16 @@ async function start() {
  try{
   for(let i=0;i<100&&!window.go;i++) await new Promise(resolve=>setTimeout(resolve,100));
   const startup=await bridge().StartupError();
-  await refresh();if(startup) flash(startup,true);
+  await refresh();
+  await refreshUpdate();
+  if(startup) flash(startup,true);
+  window.runtime?.EventsOn('update',(status:unknown)=>{
+   update=parseUpdate(JSON.stringify(status));
+   if(update.state==='available') notice=`${t('Update available')}: ${update.version}`;
+   if(update.recovery_blocked) notice=t('An interrupted update needs your decision');
+   noticeError=update.state==='failed';
+   render();
+  });
   window.runtime?.EventsOn('worker',(event:{event:string;data:unknown})=>{
    if(event.event==='line') {
     snapshot.logs.push(String(event.data));snapshot.logs=snapshot.logs.slice(-100);
@@ -314,7 +361,7 @@ async function start() {
    if(await confirmAction(t('Stop and close?'),t('The current session will be stopped before the launcher closes.'),t('Stop and close'))) await bridge().ConfirmClose();
   });
   setInterval(()=>{if(page==='achievements'&&!saving&&!confirmation&&!disconnected&&!document.hidden) void refresh().catch(error=>flash(String(error),true));},3000);
- }catch(error){root.innerHTML=`<main class="boot"><h1>Launcher setup required</h1><p role="alert">${escape(String(error))}</p><p>Repair the portable installation or use the retained legacy launcher.</p></main>`;}
+ }catch(error){root.innerHTML=`<main class="boot"><h1>Launcher setup required</h1><p role="alert">${escape(String(error))}</p><p>Repair the portable installation, or restore the previous version from the updates section of a working installation.</p></main>`;}
 }
 document.addEventListener('keydown',event=>{
  if((event.ctrlKey||event.metaKey)&&event.key==='k'){event.preventDefault();document.querySelector<HTMLInputElement>('#search')?.focus();}

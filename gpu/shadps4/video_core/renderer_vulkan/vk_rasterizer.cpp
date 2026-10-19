@@ -1891,6 +1891,11 @@ bool Rasterizer::IsComputeMetaClear(const Pipeline* pipeline) {
     if (!pipeline->IsCompute()) {
         return false;
     }
+    // ORDER1886_HTILE=0 runs the real dispatch: skipping it relies on the adapted
+    // metadata clear heuristic, which is not qualified for gameplay or visuals yet.
+    if (!EmulatorSettings.HtileEnabled()) {
+        return false;
+    }
 
     // Most of the time when a metadata is updated with a shader it gets cleared. It means
     // we can skip the whole dispatch and update the tracked state instead. Also, it is not

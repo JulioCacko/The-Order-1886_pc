@@ -59,6 +59,9 @@ class ReadBackingTests(unittest.TestCase):
 using u32=uint32_t; using u64=uint64_t; using VAddr=u64;
 #define LOG_TRACE(...) ((void)0)
 namespace Shader { enum class SwStage { Compute }; }
+// The runtime gate reads ORDER1886_HTILE and is off by default; this fixture models
+// a player who opted in, which is the path the recognizer asserts.
+static struct { bool HtileEnabled() const { return true; } } EmulatorSettings;
 struct Sharp { u64 base_address=0x1000, size=16; u64 GetSize() const { return size; } };
 struct Info;
 struct Desc { bool is_written=true; Sharp sharp; bool IsSpecial() const { return false; }
@@ -146,6 +149,10 @@ enum class ReadbackSource { BufferObtain };
 enum class GpuReadbacksMode { Relaxed, Selective, Precise };
 static struct { GpuReadbacksMode mode=GpuReadbacksMode::Selective;
     GpuReadbacksMode GetReadbacksMode() const { return mode; }
+    // The HTILE gate defaults off in the runtime; this fixture models the opted-in
+    // player so the materialization path it asserts stays exercised.
+    bool HtileEnabled() const { return htile; }
+    bool htile=true;
 } EmulatorSettings;
 struct Buffer { u64 Offset(u64 address) const { return address-0x1000; } };
 class BufferCache {
