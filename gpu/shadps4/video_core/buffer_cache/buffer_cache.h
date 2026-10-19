@@ -144,6 +144,7 @@ private:
                                size_t total_size_bytes);
 
     bool SynchronizeMemoryFromImage(const Buffer* arena, VAddr device_addr, u32 size);
+    bool MaterializeHtile(const Buffer* arena, VAddr device_addr, u32 size);
 
     const Vulkan::Instance& instance;
     Vulkan::Scheduler& scheduler;

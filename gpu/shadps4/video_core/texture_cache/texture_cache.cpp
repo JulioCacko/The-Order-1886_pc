@@ -495,6 +495,7 @@ void TextureCache::MarkAsMaybeDirty(ImageId image_id, Image& image) {
 }
 
 void TextureCache::InvalidateMemory(VAddr addr, size_t size) {
+    surface_metas.Write(addr, size);
     std::scoped_lock lock{mutex};
     const auto pages_start = PageManager::GetPageAddr(addr);
     const auto pages_end = PageManager::GetNextPageAddr(addr + size - 1);
@@ -572,6 +573,7 @@ void TextureCache::InvalidateMemoryFromGPU(VAddr address, size_t max_size) {
 }
 
 void TextureCache::UnmapMemory(VAddr cpu_addr, size_t size) {
+    surface_metas.Unmap(cpu_addr, size);
     CancelReadbacks(cpu_addr, size);
     std::scoped_lock lk{mutex};
 
@@ -1074,6 +1076,7 @@ ImageView& TextureCache::FindTexture(ImageId image_id, const ImageDesc& desc, Vi
                                      bool refresh) {
     Image& image = slot_images[image_id];
     if (desc.type == BindingType::Storage) {
+        surface_metas.Write(image.info.guest_address, image.info.guest_size);
         image.flags |= ImageFlagBits::GpuModified;
         if (readback_linear_images && (!image.info.props.is_tiled || image.info.size.width <= 8) &&
             image.info.guest_address != 0) {
@@ -1116,15 +1119,17 @@ ImageView& TextureCache::FindRenderTarget(ImageId image_id, const ImageDesc& des
 
     // Register meta data for this color buffer
     if (desc.info.meta_info.cmask_addr) {
-        surface_metas.emplace(desc.info.meta_info.cmask_addr,
-                              MetaDataInfo{.type = MetaType::CMask});
+        if (image.info.meta_info.cmask_addr != desc.info.meta_info.cmask_addr)
+            surface_metas.Erase(image.info.meta_info.cmask_addr, image.image_uid);
         image.info.meta_info.cmask_addr = desc.info.meta_info.cmask_addr;
+        surface_metas.Register(desc.info.meta_info.cmask_addr, image.image_uid, MetaType::CMask);
     }
 
     if (desc.info.meta_info.fmask_addr) {
-        surface_metas.emplace(desc.info.meta_info.fmask_addr,
-                              MetaDataInfo{.type = MetaType::FMask});
+        if (image.info.meta_info.fmask_addr != desc.info.meta_info.fmask_addr)
+            surface_metas.Erase(image.info.meta_info.fmask_addr, image.image_uid);
         image.info.meta_info.fmask_addr = desc.info.meta_info.fmask_addr;
+        surface_metas.Register(desc.info.meta_info.fmask_addr, image.image_uid, MetaType::FMask);
     }
 
     return image.FindView(desc.view_info, false);
@@ -1138,10 +1143,12 @@ ImageView& TextureCache::FindDepthTarget(ImageId image_id, const ImageDesc& desc
 
     // Register meta data for this depth buffer
     if (desc.info.meta_info.htile_addr) {
-        surface_metas.emplace(desc.info.meta_info.htile_addr,
-                              MetaDataInfo{.type = MetaType::HTile,
-                                           .clear_mask = image.info.meta_info.htile_clear_mask});
+        if (image.info.meta_info.htile_addr != desc.info.meta_info.htile_addr)
+            surface_metas.Erase(image.info.meta_info.htile_addr, image.image_uid);
         image.info.meta_info.htile_addr = desc.info.meta_info.htile_addr;
+        surface_metas.Register(desc.info.meta_info.htile_addr, image.image_uid, MetaType::HTile,
+                               image.info.meta_info.htile_clear_mask, image.info.resources.layers,
+                               desc.info.props.has_stencil);
     }
 
     // If there is a stencil attachment, link depth and stencil.
@@ -1640,13 +1647,13 @@ void TextureCache::DeleteImage(ImageId image_id) {
     // Remove any registered meta areas.
     const auto& meta_info = image.info.meta_info;
     if (meta_info.cmask_addr) {
-        surface_metas.erase(meta_info.cmask_addr);
+        surface_metas.Erase(meta_info.cmask_addr, image.image_uid);
     }
     if (meta_info.fmask_addr) {
-        surface_metas.erase(meta_info.fmask_addr);
+        surface_metas.Erase(meta_info.fmask_addr, image.image_uid);
     }
     if (meta_info.htile_addr) {
-        surface_metas.erase(meta_info.htile_addr);
+        surface_metas.Erase(meta_info.htile_addr, image.image_uid);
     }
 
     {

@@ -8,6 +8,7 @@
 #include <atomic>
 #include "video_core/texture_cache/readback_queue.h"
 #include "video_core/texture_cache/readback_sources.h"
+#include "video_core/texture_cache/surface_metadata.h"
 #include <chrono>
 #include "ps4_toggles.h"
 #include <optional>
@@ -266,52 +267,46 @@ public:
         return {};
     }
 
-    enum class MetaType {
-        CMask,
-        FMask,
-        HTile,
-    };
+    using MetaType = SurfaceMetadata::Type;
 
     /// Returns meta type if the specified address is a metadata surface.
     std::optional<MetaType> IsMeta(VAddr address) const {
-        auto it = surface_metas.find(address);
-        if (it != surface_metas.end()) {
-            return it->second.type;
-        }
-        return std::nullopt;
+        return surface_metas.TypeAt(address);
     }
 
     /// Returns true if a slice of the specified metadata surface has been cleared.
     bool IsMetaCleared(VAddr address, u32 slice) const {
-        const auto& it = surface_metas.find(address);
-        if (it != surface_metas.end()) {
-            return it.value().clear_mask & (1u << slice);
-        }
-        return false;
+        return surface_metas.IsCleared(address, slice);
     }
 
     /// Clears all slices of the specified metadata surface.
-    bool ClearMeta(VAddr address) {
-        auto it = surface_metas.find(address);
-        if (it != surface_metas.end()) {
-            it.value().clear_mask = u32(-1);
-            return true;
-        }
-        return false;
+    bool ClearMeta(VAddr address, u64 size) {
+        return surface_metas.Clear(address, size);
+    }
+
+    void FillMeta(VAddr address, u64 size, u32 value) {
+        surface_metas.Fill(address, size, value);
+    }
+
+    void NoteMetaShaderWrite(VAddr address, u64 size) {
+        surface_metas.Write(address, size);
+    }
+
+    std::optional<u32> HtileReadValue(VAddr address, u64 size) const {
+        return surface_metas.HtileWord(address, size);
+    }
+
+    bool WithHtileWord(VAddr address, u64 size, auto&& use) const {
+        return surface_metas.WithHtileWord(address, size, use);
+    }
+
+    std::optional<u32> HtileReadExtent(VAddr address) const {
+        return surface_metas.HtileExtent(address);
     }
 
     /// Updates the state of a slice of the specified metadata surface.
     bool TouchMeta(VAddr address, u32 slice, bool is_clear) {
-        auto it = surface_metas.find(address);
-        if (it != surface_metas.end()) {
-            if (is_clear) {
-                it.value().clear_mask |= 1u << slice;
-            } else {
-                it.value().clear_mask &= ~(1u << slice);
-            }
-            return true;
-        }
-        return false;
+        return surface_metas.Touch(address, slice, is_clear);
     }
 
     /// Runs the garbage collector.
@@ -530,11 +525,7 @@ private:
     std::atomic<u64> registry_generation{0};
     std::mutex samplers_mutex;
     std::mutex download_images_mutex;
-    struct MetaDataInfo {
-        MetaType type;
-        s32 clear_mask = -1;
-    };
-    tsl::robin_map<VAddr, MetaDataInfo> surface_metas;
+    SurfaceMetadata surface_metas;
 };
 
 } // namespace VideoCore

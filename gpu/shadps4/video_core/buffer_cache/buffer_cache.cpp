@@ -298,9 +298,37 @@ void PrintBufferStats() {
 }
 } // namespace
 
+bool BufferCache::MaterializeHtile(const Buffer* arena, VAddr device_addr, u32 size) {
+    // CPU invalidation must finish before its buffer readback can retire this GPU write.
+    return texture_cache.WithHtileWord(device_addr, size, [&](u32 htile) {
+        SynchronizeMemory(arena, device_addr, size, true, false);
+        runtime.FillBuffer(arena, arena->Offset(device_addr), size, htile);
+        if (size <= 64_KB && EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Selective)
+            memory_tracker->WatchReads(device_addr, size, true);
+        {
+            std::scoped_lock lock{gpu_ranges_mutex};
+            gpu_modified_ranges.Add(device_addr, size);
+        }
+        static std::atomic<u32> reports{};
+        if (reports.fetch_add(1, std::memory_order_relaxed) < 8)
+            LOG_INFO(Render_Vulkan, "Materialized HTILE address={:#x} bytes={} word={:#x}",
+                     device_addr, size, htile);
+    });
+}
+
 std::pair<const Buffer*, u64> BufferCache::ObtainBuffer(VAddr device_addr, u32 size,
                                                         bool is_written, bool is_texel_buffer) {
     texture_cache.ResolveReadbacks(device_addr, size, true, ReadbackSource::BufferObtain);
+    if (!is_written) {
+        if (texture_cache.HtileReadValue(device_addr, size)) {
+            const u64 first_block = device_addr >> block_shift;
+            const u64 last_block = (device_addr + size - 1) >> block_shift;
+            const auto* arena = GetArena(first_block, last_block);
+            EnsureResident(arena, first_block, last_block);
+            if (MaterializeHtile(arena, device_addr, size))
+                return {arena, arena->Offset(device_addr)};
+        }
+    }
     const bool stats = BufferStatsEnabled();
     if (stats) {
         PrintBufferStats();
@@ -352,6 +380,7 @@ std::pair<const Buffer*, u64> BufferCache::ObtainBuffer(VAddr device_addr, u32 s
             Ps4Stats::buffer_upload_bytes.load(std::memory_order_relaxed) - uploaded_before;
     }
     if (is_written) {
+        texture_cache.NoteMetaShaderWrite(device_addr, size);
         std::scoped_lock lock{gpu_ranges_mutex};
         gpu_modified_ranges.Add(device_addr, size);
     }
@@ -630,9 +659,7 @@ const Buffer* BufferCache::UploadCopies(const Buffer* arena, std::span<vk::Buffe
 bool BufferCache::SynchronizeMemoryFromImage(const Buffer* arena, VAddr device_addr, u32 size) {
     if (auto type = texture_cache.IsMeta(device_addr)) {
         if (*type == TextureCache::MetaType::HTile) {
-            static constexpr u32 ZmaskUncompressed = 0xf;
-            runtime.FillBuffer(arena, arena->Offset(device_addr), size, ZmaskUncompressed);
-            return true;
+            if (MaterializeHtile(arena, device_addr, size)) return true;
         } else {
             LOG_WARNING(Render_Vulkan, "Unhandled metadata type {}", magic_enum::enum_name(*type));
         }
