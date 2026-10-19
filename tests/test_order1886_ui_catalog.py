@@ -13,7 +13,7 @@ LITERAL = re.compile(r"\bt\(\s*'((?:[^'\\]|\\.)*)'\s*\)")
 
 def frontend_strings():
     texts = set()
-    for name in ('main.ts', 'updates.ts', 'session-status.ts', 'achievement-list.ts', 'timing-panel.ts'):
+    for name in ('main.ts', 'updates.ts', 'session-status.ts', 'achievement-list.ts', 'timing-panel.ts', 'patch-catalogue.ts'):
         path = FRONTEND / name
         if path.is_file():
             texts.update(match.group(1) for match in LITERAL.finditer(path.read_text(encoding='utf-8')))
@@ -60,16 +60,22 @@ class UiCatalogTests(unittest.TestCase):
                     self.assertTrue(lang.table(locale).get(key, '').strip())
 
     def test_untranslated_keys_are_counted_and_can_only_shrink(self):
-        # The numbers below are the honest state after cataloguing the Go UI and
-        # translating the high-traffic subset in order1886_lang_ui_translations.py: 75
-        # of the 261 UI keys are translated and 186 are still English on purpose.
-        # A translator makes these go down; adding a new English-only string must not
-        # make them go up unnoticed. See docs/order1886-localization-policy.md.
+        # 75 UI keys are translated by order1886_lang_ui_translations.py; everything else
+        # is English on purpose, which docs/order1886-localization-policy.md enumerates.
+        # The count is derived, so a translator shrinking it never breaks this test, while
+        # dropping a translation does: the translated total is pinned separately below.
         expected = {locale: len(lang.UI_KEYS) - 75 for locale in lang.LANGUAGES if locale != 'en'}
         for locale, count in expected.items():
             with self.subTest(locale=locale):
                 self.assertEqual(len(lang.untranslated(locale)), count)
         self.assertEqual(lang.untranslated('en'), [])
+        from launcher.order1886_lang_ui_translations import UI_TRANSLATIONS
+        for locale in lang.LANGUAGES:
+            if locale == 'en':
+                continue
+            with self.subTest(locale=locale):
+                self.assertEqual(len(UI_TRANSLATIONS[locale]), 75,
+                                 'the translated subset is pinned; add keys to the policy doc first')
 
     def test_english_is_the_source_text(self):
         for key in lang.UI_KEYS:

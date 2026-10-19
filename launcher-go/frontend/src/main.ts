@@ -6,6 +6,7 @@ import {withBinding} from './input-bindings';
 import {createSettingsSaver} from './settings-save';
 import {parseUpdate, updateHeadline, updateSection, type UpdateStatus} from './updates';
 import {timingPanel, type Timing} from './timing-panel';
+import {patchCatalogue, type CatalogueRow} from './patch-catalogue';
 
 type Choice = {value:string|number; label:string; available:boolean; reason:string};
 type Field = {key:string;label:string;page:string;kind:string;default:unknown;description:string;
@@ -15,7 +16,7 @@ type Snapshot = {trophies:{id:number;unlocked_at:number}[];trophy_error:string;s
   trophy_catalog?:TrophyArtwork[];trophy_catalog_error?:string;
   languages:Record<string,string>;translations:Record<string,string>;game:{ready:boolean;message:string;metadata:Record<string,unknown>};
   busy:boolean;backups:string[];logs:string[];logfile:string;state_dir:string;last_exit:number|null;acceptance:string;
-  timing?:Timing};
+  timing?:Timing;patches?:CatalogueRow[]};
 type AppBridge = {Call:(method:string,params:Record<string,unknown>)=>Promise<string>;
   Browse:(kind:string)=>Promise<string>;OpenLink:(name:string)=>Promise<void>;
   StartupError:()=>Promise<string>;ConfirmClose:()=>Promise<void>;OpenLocation:(kind:string)=>Promise<void>;
@@ -192,7 +193,7 @@ function settingsPage() {
  <p>${escape(query?`${matching.length} ${t('matching options')}`:t('Valid changes save automatically. Game settings take effect on the next launch.'))}</p></div>
  ${!query&&matching.some(f=>f.available)?`<button class="quiet" data-action="reset"${snapshot.busy||saving?' disabled':''}>${escape(t('Reset section'))}</button>`:''}</div>
  ${matching.length?matching.map(fieldRow).join(''):`<p class="empty-state">${escape(t('No matching settings. Try a different search.'))}</p>`}
- ${page==='performance'&&!query?timingPanel(snapshot.timing,t,escape):''}${page==='game'&&!query?gameActions():''}${page==='system'&&!query?systemActions():''}</section>`;
+ ${page==='performance'&&!query?timingPanel(snapshot.timing,t,escape):''}${page==='game'&&!query?patchCatalogue(snapshot.patches,escape)+gameActions():''}${page==='system'&&!query?systemActions():''}</section>`;
 }
 function render() {
  if(!snapshot) return;

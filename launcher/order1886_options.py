@@ -100,6 +100,7 @@ field("game_text_language", "Game text language", "game", "select", "follow", "I
       [("follow", "Follow launcher language", "")] + [(key, title, PATCH) for key, title in LANGUAGES.items()], reason=PATCH)
 field("game_voice_language", "Game voice language", "game", "select", "follow", "Independent voice selection requires installed language assets (#21).",
       [("follow", "Follow launcher language", "")] + [(key, title, PATCH) for key, title in LANGUAGES.items()], reason=PATCH)
+field("selected_patches", "Catalogued patches", "game", "patches", [], "Recipes that edit the prepared image are applied on the next preparation, and each one must match this build`s title id, APP_VER, VERSION, image hashes and expected bytes or the preparation refuses it. The 60 FPS and 16:9 recipes are configured by the game frame rate and framing settings instead, so they are not selectable here.")
 field("mods_dir", "Mods folder", "game", "directory", "", "Mount loose-file overlays without changing original game files.")
 field("mods_enabled", "Enable mods", "game", "boolean", False, "Only enabled folders in the saved order are mounted.")
 field("mod_order", "Enabled mod order", "game", "order", [], "One folder name per line. Later enabled mods take priority; newly discovered mods remain disabled.")
