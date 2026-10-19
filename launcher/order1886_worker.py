@@ -67,7 +67,7 @@ class Worker:
         self.logfile = None
         self.last_exit = None
         self.log_tail = []
-        self._readback_support = None
+        self._runtime_support = None
         # Legacy helper defaults remain unchanged; explicit installation/state paths
         # support both source runs and a worker under the portable bin directory.
         legacy.ROOT = self.installation
@@ -78,6 +78,9 @@ class Worker:
         return {**defaults, **legacy.read_settings(self.state / "settings.json")}
 
     def readback_policy_reason(self, values, policy):
+        return self.native_option_reason(values, policy)
+
+    def native_option_reason(self, values, option):
         requested = values.get("runtime", "")
         def signature(runtime):
             receipt = runtime.with_name("runtime-build.json")
@@ -86,28 +89,35 @@ class Worker:
         try:
             runtime = order1886.find_runtime_path(requested or None)
             if runtime is None:
-                return "Select a native runtime declaring this readback policy first."
-            if self._readback_support is not None:
-                previous, previous_runtime, stamp, reasons = self._readback_support
+                return "Select a verified native runtime declaring support for this option first."
+            if self._runtime_support is not None:
+                previous, previous_runtime, stamp, reasons = self._runtime_support
                 if requested == previous and runtime == previous_runtime and stamp == signature(runtime):
-                    return reasons[policy]
+                    return reasons[option]
             order1886.find_runtime(runtime)
             reasons = {}
-            for candidate in ("selective", "precise"):
+            for candidate in ("selective", "precise", "performance_capture"):
                 try:
-                    order1886.validate_readback_policy(runtime, candidate)
+                    if candidate == "performance_capture":
+                        order1886.validate_performance_capture(runtime, True)
+                    else:
+                        order1886.validate_readback_policy(runtime, candidate)
                     reasons[candidate] = ""
                 except ValueError as exc:
                     reasons[candidate] = str(exc)
-            self._readback_support = requested, runtime, signature(runtime), reasons
-            return reasons[policy]
+            self._runtime_support = requested, runtime, signature(runtime), reasons
+            return reasons[option]
         except (OSError, ValueError) as exc:
-            return "This readback policy is unavailable: " + str(exc)
+            return "This runtime option is unavailable: " + str(exc)
 
     def snapshot(self):
         values = self.settings()
         fields = copy.deepcopy(FIELDS)
         for item in fields:
+            if item["key"] == "performance_capture":
+                reason = self.native_option_reason(values, "performance_capture")
+                item.update(available=not bool(reason) or values.get("performance_capture") is True,
+                            reason=reason)
             if item["key"] == "readbacks":
                 for choice in item["choices"]:
                     if choice["value"] in ("selective", "precise"):
@@ -239,6 +249,10 @@ class Worker:
             values = {**self.settings(), **patch}
             if values.get("readbacks") in ("selective", "precise"):
                 reason = self.readback_policy_reason(values, values["readbacks"])
+                if reason:
+                    raise ValueError(reason)
+            if values.get("performance_capture"):
+                reason = self.native_option_reason(values, "performance_capture")
                 if reason:
                     raise ValueError(reason)
             order1886.mods.validate_config(order1886.mods.resolve_root(values.get("mods_dir", ""), self.installation),
