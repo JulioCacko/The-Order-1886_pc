@@ -767,6 +767,29 @@ int runtime_memory_write_backing(uintptr_t address, const void *data, uint64_t s
     read_unlock();
     return ok;
 }
+/* Host uploads bypass guest/GPU protection to avoid faulting back into the recorder
+ * they may be running on (theorder1886-port 3654b06). Hold mappings stable while copying. */
+void runtime_memory_read_backing(uintptr_t address, void *data, uint64_t size) {
+    if (!size) return;
+    unsigned char *out=data;
+    if (size>UINTPTR_MAX-address) { memset(out,0,size); return; }
+    read_lock();
+    for (uintptr_t at=address, end=address+size; at<end;) {
+        size_t i=vma_index(at);
+        if (i==vma_count) { memset(out+(at-address),0,end-at); break; }
+        if (vmas[i].start>at) {
+            uintptr_t gap=vmas[i].start<end ? vmas[i].start : end;
+            memset(out+(at-address),0,gap-at);
+            at=gap;
+            continue;
+        }
+        uint64_t n=(vmas[i].end<end ? vmas[i].end : end)-at;
+        if (vmas[i].kind==KIND_RESERVED) memset(out+(at-address),0,n);
+        else memcpy(out+(at-address),backing_base+vmas[i].phys+(at-vmas[i].start),n);
+        at+=n;
+    }
+    read_unlock();
+}
 /* Per-thread cache of recently found regions for the GPU's per-draw queries:
  * entries hold for as long as the table generation they were read at. */
 typedef struct { uint64_t generation; uintptr_t start, end; int kind; } CachedRegion;

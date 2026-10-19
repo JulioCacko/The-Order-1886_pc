@@ -1,0 +1,26 @@
+name: Sparse backing read regressions
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/runtime_memory.c'
+      - 'gpu/shim/ps4gpu.cpp'
+      - 'tests/test_memory_read_backing.c'
+      - 'tests/test_order1886_read_backing.py'
+      - '.github/workflows/order1886-memory-regressions.yml'
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compile and exercise the production memory reader and upload shim
+        env:
+          CC: clang
+          CXX: clang++
+        run: python -m unittest discover -s tests -p test_order1886_read_backing.py -v

@@ -5,6 +5,7 @@ Reviewed against the acceptance lists in
 Evidence: [verified implementation](verification/2026-10-18-donor-060.md),
 [runtime record](verification/2026-10-18-gold-work.md), release source at `54242e0`.
 Preview.4 adds Windows/Linux packages, selected-save restoration before Play and game system-language forwarding. See the [release receipt](verification/2026-10-18-preview4-release.md).
+The [opt-in Go prerelease](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.1) adds seven searchable pages, a separate worker and local trophy history. [Go verification](verification/2026-10-18-go-launcher.md) records its distinct package and CI evidence. The live open-issue list was refreshed before the next native batch; no acceptance issue was closed.
 
 ## Completed host features
 
@@ -26,7 +27,7 @@ performance are tracked separately.
 | [#5](https://github.com/JulioCacko/The-Order-1886_pc/issues/5) Image-layer crash | Validation pending | Guards and copied-save run demonstrate mitigation; original sequence and residual SRT errors remain. |
 | [#6](https://github.com/JulioCacko/The-Order-1886_pc/issues/6) Roadmap | In progress | Child features and acceptance remain open. |
 | [#7](https://github.com/JulioCacko/The-Order-1886_pc/issues/7) Temporal inputs | In progress | Bridges require validated depth, motion, jitter, UI composition and history. |
-| [#8](https://github.com/JulioCacko/The-Order-1886_pc/issues/8) UI/languages | Partial | Five pages and 13 choices exist; remaining feature surfaces, Arabic RTL/CJK and broad DPI acceptance are open. |
+| [#8](https://github.com/JulioCacko/The-Order-1886_pc/issues/8) UI/languages | Partial | Opt-in Go package has seven searchable pages and 43 visible fields (15 writable settings), with reasons for unavailable features. Existing 13 catalogs remain; new-copy translation, Arabic RTL/CJK and broad accessibility/DPI acceptance are open. |
 | [#9](https://github.com/JulioCacko/The-Order-1886_pc/issues/9) Updates | Open | Manual release links; no transactional automatic updater. |
 | [#10](https://github.com/JulioCacko/The-Order-1886_pc/issues/10), [#11](https://github.com/JulioCacko/The-Order-1886_pc/issues/11), [#12](https://github.com/JulioCacko/The-Order-1886_pc/issues/12), [#13](https://github.com/JulioCacko/The-Order-1886_pc/issues/13) Providers | Open | SDK/bridge presence is not gameplay-qualified DLSS, FSR 3.1/4 or XeSS; license, packaging and hardware gates remain. |
 | [#14](https://github.com/JulioCacko/The-Order-1886_pc/issues/14) Timing/caps | Partial | Native 30/experimental 60 exist; 90/unlocked and Chapter 6/9 behavior not accepted. |
@@ -35,7 +36,7 @@ performance are tracked separately.
 | [#18](https://github.com/JulioCacko/The-Order-1886_pc/issues/18) Steam shortcut | Implementation checked; acceptance pending | 24 integration fixtures cover discovery, quoting/Unicode, preservation, atomic writes, running-client refusal and idempotence. A live Steam shortcut launch with saved settings remains unverified; no personal library was changed during review. |
 | [#20](https://github.com/JulioCacko/The-Order-1886_pc/issues/20) In-game UI/text/cache | Partial | Overlay/input plumbing and safe clearing exist; text-dialog applicability and complete in-game focus/settings acceptance remain. |
 | [#21](https://github.com/JulioCacko/The-Order-1886_pc/issues/21) Text/voice | Partial | Launcher selection now forwards the verified PS4 system-language ID (including pt-BR) on next launch. Matching game assets, visible gameplay acceptance and independent text/voice controls remain required. |
-| [#22](https://github.com/JulioCacko/The-Order-1886_pc/issues/22) Achievements | Partial | ABI unlock IDs/timestamps persist in fixtures; official metadata, names/icons, live UI and real unlock capture remain. |
+| [#22](https://github.com/JulioCacko/The-Order-1886_pc/issues/22) Achievements | Partial | ABI unlock IDs/timestamps persist in fixtures; Go Achievements polls the validated native trophy store. Official metadata, names/icons and real unlock capture remain. |
 | [#23](https://github.com/JulioCacko/The-Order-1886_pc/issues/23) Update 1.02 | Validation pending | The shown 40 FPS rejection does not resolve the separate reported 60 FPS/fullscreen crash. |
 
 ## Screenshot provenance
