@@ -60,10 +60,12 @@ class UiCatalogTests(unittest.TestCase):
                     self.assertTrue(lang.table(locale).get(key, '').strip())
 
     def test_untranslated_keys_are_counted_and_can_only_shrink(self):
-        # The numbers below are the honest state after cataloguing the Go UI: the keys
-        # exist, the translations do not. A translator makes these go down; adding a
-        # new English-only string must not make them go up unnoticed.
-        expected = {locale: len(lang.UI_KEYS) for locale in lang.LANGUAGES if locale != 'en'}
+        # The numbers below are the honest state after cataloguing the Go UI and
+        # translating the high-traffic subset in order1886_lang_ui_translations.py: 75
+        # of the 261 UI keys are translated and 186 are still English on purpose.
+        # A translator makes these go down; adding a new English-only string must not
+        # make them go up unnoticed. See docs/order1886-localization-policy.md.
+        expected = {locale: len(lang.UI_KEYS) - 75 for locale in lang.LANGUAGES if locale != 'en'}
         for locale, count in expected.items():
             with self.subTest(locale=locale):
                 self.assertEqual(len(lang.untranslated(locale)), count)
