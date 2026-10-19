@@ -20,6 +20,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 
 ROOT = Path(__file__).resolve().parent
 INSTALL_ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else ROOT
@@ -204,12 +205,21 @@ def validate_readback_policy(runtime, policy):
             raise ValueError(f'{policy.title()} readbacks require a matching native runtime build declaring {policy} support. Rebuild or select a newer runtime.')
 
 
+def validate_performance_capture(runtime, enabled):
+    if type(enabled) not in (bool, int) or enabled not in (False, True):
+        raise ValueError('Performance recording must be on or off')
+    if enabled and (runtime_identity(runtime).get('build') or {}).get('performance_capture') is not True:
+        raise ValueError('Performance recording requires a matching native runtime declaring capture support. Rebuild or select a newer runtime.')
+
+
 def runtime_environment(runtime, user, settings=None, inherited=None):
     runtime, user = Path(runtime).resolve(), Path(user).resolve()
     settings = settings or {}
     frame_rate = timing.validate_frame_rate(settings.get('frame_rate', 30))
     readbacks = settings.get('readbacks', 'relaxed')
     validate_readback_policy(runtime, readbacks)
+    capture = settings.get('performance_capture', False)
+    validate_performance_capture(runtime, capture)
     system_language = settings.get('system_language', 1)
     if type(system_language) is not int or not 0 <= system_language <= 29:
         raise ValueError('System language must be an integer from 0 to 29')
@@ -240,6 +250,9 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     icon = user / 'window_icon.bmp'
     if icon.is_file():
         env['ORDER1886_WINDOW_ICON'] = str(icon)
+    if capture:
+        env['ORDER1886_FRAME_STATS'] = '1'
+        env['ORDER1886_FRAME_TRACE'] = str(user / 'logs' / f'performance-{uuid.uuid4().hex}.csv')
     return env
 
 
@@ -401,6 +414,8 @@ def main(argv=None):
     parser.add_argument('--vsync', type=int, choices=[0, 1], default=1)
     parser.add_argument('--readbacks', choices=['relaxed', 'selective', 'precise'], default='relaxed',
                         help='GPU buffer readback policy; selective/precise are experimental and can add CPU waits')
+    parser.add_argument('--performance-capture', type=int, choices=[0, 1], default=0,
+                        help='Record frame times and slow-frame diagnostics in session logs')
     parser.add_argument('--show-fps', type=int, choices=[0, 1], default=0)
     parser.add_argument('--mouse-look', type=int, choices=[0, 1], default=1)
     parser.add_argument('--mouse-sensitivity', type=int, default=100,
@@ -494,6 +509,7 @@ def main(argv=None):
                        'display_profile': prepared.get('display_profile'),
                        'settings': {'display_mode': args.display_mode, 'vsync': args.vsync,
                                     'show_fps': args.show_fps, 'presentation_filter': args.presentation_filter,
+                                    'performance_capture': bool(args.performance_capture),
                                     'frame_rate': args.frame_rate, 'fps_limit': args.frame_rate,
                                     'aspect_ratio': args.aspect_ratio, 'system_language': args.system_language}}
             write_json(logs / 'last-run.json', report)

@@ -2458,6 +2458,28 @@ _WORKFLOW_MESSAGES = (
      {"pt": "O backup selecionado foi restaurado. Inicie o jogo e escolha Continuar ou Carregar; isso não carrega uma sessão já em execução.",
       "es": "La copia seleccionada se ha restaurado. Inicia el juego y elige Continuar o Cargar; esto no carga una sesión que ya está ejecutándose."}),
 )
+_WORKFLOW_MESSAGES += (
+    (None, "Record performance data", {
+        "ru": "Записывать данные производительности", "ar": "تسجيل بيانات الأداء",
+        "es": "Registrar datos de rendimiento", "pt": "Registrar dados de desempenho",
+        "fr": "Enregistrer les données de performance", "de": "Leistungsdaten aufzeichnen",
+        "it": "Registra dati sulle prestazioni", "pl": "Rejestruj dane wydajności",
+        "tr": "Performans verilerini kaydet", "zh": "记录性能数据",
+        "ja": "パフォーマンスデータを記録", "ko": "성능 데이터 기록"}),
+    (None, "Save frame times and slow-frame diagnostics with each session's logs. Turn this off after recording the slow scene.", {
+        "ru": "Сохранять время кадров и диагностику задержек в журналах каждого сеанса. Отключите после записи проблемной сцены.",
+        "ar": "احفظ أزمنة الإطارات وتشخيص الإطارات البطيئة مع سجلات كل جلسة. أوقف التسجيل بعد تسجيل المشهد البطيء.",
+        "es": "Guarda los tiempos de fotograma y el diagnóstico de pausas en los registros de cada sesión. Desactívalo después de grabar la escena lenta.",
+        "pt": "Salva os tempos de quadro e o diagnóstico de lentidão nos logs de cada sessão. Desative após registrar a cena lenta.",
+        "fr": "Enregistre les temps d’image et le diagnostic des ralentissements dans les journaux de chaque session. Désactivez après avoir enregistré la scène lente.",
+        "de": "Speichert Bildzeiten und Diagnosen langsamer Frames mit den Sitzungsprotokollen. Nach der Aufnahme der langsamen Szene ausschalten.",
+        "it": "Salva i tempi dei fotogrammi e la diagnostica dei rallentamenti nei log di ogni sessione. Disattiva dopo aver registrato la scena lenta.",
+        "pl": "Zapisuje czasy klatek i diagnostykę spowolnień w dziennikach każdej sesji. Wyłącz po zarejestrowaniu wolnej sceny.",
+        "tr": "Kare sürelerini ve yavaş kare tanılarını her oturumun günlüklerine kaydeder. Yavaş sahneyi kaydettikten sonra kapatın.",
+        "zh": "将帧耗时和慢帧诊断信息保存到每次会话的日志中。记录慢速场景后请关闭此选项。",
+        "ja": "各セッションのログにフレーム時間と処理遅延の診断情報を保存します。遅いシーンの記録後はオフにしてください。",
+        "ko": "각 세션의 로그에 프레임 시간과 느린 프레임 진단 정보를 저장합니다. 느린 장면을 기록한 후 끄세요."}),
+)
 for _old, _text, _localized in _WORKFLOW_MESSAGES:
     _index = KEYS.index(_old) if _old is not None else len(KEYS)
     if _old is None:

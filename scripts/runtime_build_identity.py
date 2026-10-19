@@ -38,6 +38,7 @@ def main():
         'renderer_profile': 'native-ps4',
         'shader_cache_abi': 'native-ps4-v1',
         'readback_policies': ['relaxed','precise','selective'],
+        'performance_capture': True,
         'runtime_sha256': digest,
         'source_revision': command('git', 'rev-parse', 'HEAD'),
         'source_dirty': bool(command('git', 'status', '--porcelain', '--untracked-files=normal')),

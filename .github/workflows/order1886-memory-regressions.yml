@@ -6,6 +6,12 @@ on:
       - 'src/runtime_memory.c'
       - 'gpu/shim/ps4gpu.cpp'
       - 'gpu/shim/core/emulator_settings.h'
+      - 'gpu/shim/ps4_frame_trace.h'
+      - 'gpu/shadps4/video_core/amdgpu/liverpool.cpp'
+      - 'gpu/shadps4/core/libraries/videoout/driver.cpp'
+      - 'gpu/shadps4/core/libraries/videoout/video_out.cpp'
+      - 'tests/test_order1886_gpu_cpu_stats.py'
+      - 'tests/test_order1886_flip_logging.py'
       - 'gpu/shadps4/video_core/buffer_cache/**'
       - 'gpu/shadps4/video_core/texture_cache/**'
       - 'gpu/shadps4/video_core/renderer_vulkan/vk_rasterizer.cpp'
@@ -13,6 +19,7 @@ on:
       - 'launcher/order1886_*.py'
       - 'tests/test_selective_readbacks.cpp'
       - 'tests/test_order1886_readback_policy.py'
+      - 'tests/test_order1886_performance_capture.py'
       - 'tests/test_memory_read_backing.c'
       - 'tests/test_memory_ownership.c'
       - 'tests/test_htile_metadata.cpp'
@@ -38,3 +45,6 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_order1886_read_backing.py -v
           python -m unittest discover -s tests -p test_order1886_readback_policy.py -v
+          python -m unittest discover -s tests -p test_order1886_performance_capture.py -v
+          python -m unittest discover -s tests -p test_order1886_gpu_cpu_stats.py -v
+          python -m unittest discover -s tests -p test_order1886_flip_logging.py -v
