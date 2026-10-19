@@ -167,7 +167,8 @@ real deletion in the field.
   `source_dirty: false`, revision `9f0ca0a`, `update_abi: order1886-update-2`,
   2349 manifest files; portable smoke passed at a Unicode path with restricted PATH.
 - Candidate archive: **137,646,531 bytes**, SHA256
-  `e079e57cad379eccf0c2b00fd67ad366e5aec8627d05f9bf5c11ff525569b524`, 2350 entries.
+  `f7ff3f3abee1d63b5c779733db63e027b16fee12f8caa485b3cb5c4f0bc6f812`, 2350 entries.
+  This is the archive the tagged end-to-end test below actually consumed.
 - Packaged end-to-end (`-tags e2e`, `TestPackagedUpdatePreservesPlayerDataAndRollsBack`):
   a full copy of the published preview.6 package plus **46 real player files**
   (savedata, saves backups, trophies, logs, settings, runtime INI) copied read-only
