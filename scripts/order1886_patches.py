@@ -233,3 +233,79 @@ def apply_recipe(recipe, source_path, destination_path, metadata=None):
         raise ValueError('Patch a copy: a derived image is written to a new path, never in place.')
     result = apply_recipe_bytes(recipe, source.read_bytes(), destination, metadata)
     return {**result, 'source': str(source)}
+
+BUILTIN_IDS = tuple(item['id'] for item in RECIPES)
+
+
+def patch_fingerprint(recipes):
+    """The selection, in the form preparation hashes: order-independent, id plus recipe."""
+    return sorted({'id': item['id'], 'recipe_sha256': recipe_sha256(item)} for item in recipes)
+
+def select(identifiers, metadata):
+    """The recipes a preparation asked for, or an error naming the one that cannot apply.
+
+    The two built-in recipes are refused here on purpose: timing and aspect are applied by
+    their own preparation profiles, which validate them against the guest executable and
+    record them in prepared.json. Accepting the same recipe twice would mean two mechanisms
+    editing the same instruction.
+    """
+    chosen = []
+    for identifier in identifiers:
+        item = recipe(identifier)
+        if item['id'] in BUILTIN_IDS:
+            raise ValueError(f"{identifier}: this recipe is applied by its own preparation "
+                             "profile (game frame rate or framing), not as a catalogue patch.")
+        error = identity_error(item, metadata)
+        if error:
+            raise ValueError(f'{identifier}: {error}')
+        chosen.append(item)
+    return tuple(chosen)
+
+
+def apply_to_prepared(boot_path, recipes, metadata):
+    """Apply catalogued recipes inside an already-derived prepared container.
+
+    The prepared image is our own artifact, so editing it in place is allowed — unlike the
+    guest executable, which this function never receives. Identity comes from two places:
+    the caller's metadata must match each recipe, and every edit's `expected` bytes must be
+    present at the offset the recipe names. The container is bound to the guest executable
+    by the preparation fingerprint, which already hashes eboot.bin.
+    """
+    path = Path(boot_path).resolve()
+    if not recipes:
+        return []
+    data = bytearray(path.read_bytes())
+    if len(data) < timing.HEADER.size:
+        raise ValueError('Truncated PS4BOOT2 header')
+    magic, size, entry, ns, nr, ni, flags = timing.HEADER.unpack_from(data)
+    if magic != b'PS4BOOT2':
+        raise ValueError('Not a derived PS4BOOT2 image')
+    start = timing.HEADER.size + ns * 24 + ni * 128 + nr * 32
+    if size <= 0 or start + size != len(data):
+        raise ValueError('PS4BOOT2 image bounds mismatch')
+    applied = []
+    for item in recipes:
+        error = identity_error(item, metadata)
+        if error:
+            raise ValueError(f"{item['id']}: {error}")
+        edits = []
+        for edit in item['edits']:
+            offset = edit['offset']
+            end = offset + len(edit['expected'])
+            if offset < 0 or end > size:
+                raise ValueError(f"{item['id']}: edit at {hex(offset)} is outside the prepared image")
+            target_offset = start + offset
+            current = bytes(data[target_offset:target_offset + len(edit['expected'])])
+            if current != edit['expected']:
+                raise ValueError(f"{item['id']}: expected bytes are absent at {hex(offset)}; "
+                                 "the prepared image is not the build this recipe was verified against")
+            if len(edit['replacement']) != len(edit['expected']):
+                raise ValueError(f"{item['id']}: an edit must keep the instruction length")
+            edits.append({'offset': hex(offset), 'before': current.hex(),
+                          'after': bytes(edit['replacement']).hex()})
+            data[target_offset:target_offset + len(edit['replacement'])] = edit['replacement']
+        applied.append({'id': item['id'], 'recipe_sha256': recipe_sha256(item), 'edits': edits})
+    temporary = path.with_name(path.name + '.tmp')
+    temporary.write_bytes(bytes(data))
+    temporary.replace(path)
+    return applied
