@@ -41,6 +41,7 @@ def main():
         'performance_capture': True,
         'input_remapping': True,
         'htile_control': True,
+        'effect_toggles': True,
         'runtime_sha256': digest,
         'source_revision': command('git', 'rev-parse', 'HEAD'),
         'source_dirty': bool(command('git', 'status', '--porcelain', '--untracked-files=normal')),

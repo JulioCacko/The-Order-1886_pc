@@ -67,6 +67,10 @@ field("frame_generation", "Frame generation", "performance", "select", "off", "G
 field("show_fps", "Performance overlay", "performance", "boolean", True, "Show the runtime performance overlay.")
 field("htile_unqualified", "HTILE metadata adaptation (unqualified)", "performance", "boolean", False,
       "Off by default. The adapted HTILE metadata clear/read path has no matched gameplay, visual or frame-cost qualification yet (#5), so leave it off unless you are helping to measure it. Turning it on lets metadata clears skip their real shader work and lets buffer reads take the tracked HTILE word instead.")
+field("synchronous_recording", "Synchronous command recording (unqualified)", "performance", "boolean", False,
+      "Off by default and unqualified for performance, stability and visuals. The runtime normally records Vulkan commands on its own recording thread and hands them over; turning this on records each command on the thread that submits it, so no work moves between threads. It does not change what the game draws. A runtime honours it only when its build declares the live switch file.")
+field("texture_update_locking", "Locked texture update checks (unqualified)", "performance", "boolean", False,
+      "Off by default and unqualified for performance, stability and visuals. Before an upload the runtime checks a clean image's flags without taking the mutex it shares with the guest fault handlers; turning this on takes that mutex for every check. Uploads and image contents are otherwise unchanged, and the extra locking costs GPU-thread time. It is here to isolate a suspected race, not to change the picture. A runtime honours it only when its build declares the live switch file.")
 field("readbacks", "GPU readback policy", "performance", "select", "relaxed",
       "Relaxed keeps the existing behavior. Selective synchronizes CPU reads of small GPU output buffers; precise tracks all GPU-written buffers. Both can add waits and require gameplay/performance qualification.",
       [("relaxed", "Relaxed (existing baseline)", ""), ("selective", "Selective — experimental", ""),
