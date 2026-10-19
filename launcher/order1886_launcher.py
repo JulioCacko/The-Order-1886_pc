@@ -93,6 +93,11 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
         command += ['--' + kind + '-bindings', json.dumps(mapping, ensure_ascii=False)]
     if values.get("runtime"):
         command += ["--runtime", values["runtime"]]
+    # Catalogued recipes the player selected travel to preparation, where each one is
+    # validated against the build identity and its expected bytes before any edit.
+    selected = values.get("selected_patches") or []
+    if selected:
+        command += ["--patches", ",".join(str(name) for name in selected)]
     if mode == "play":
         from order1886 import mods
         enabled, order = values.get("mods_enabled", False), values.get("mod_order", [])
@@ -242,6 +247,7 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         "mods_dir": saved.get("mods_dir", ""),
         "mods_enabled": saved.get("mods_enabled", False),
         "mod_order": saved.get("mod_order", []),
+        "selected_patches": saved.get("selected_patches", []),
     }
     for key, allowed, default in (
         ("display_mode", ("windowed", "borderless", "fullscreen"), "borderless"),

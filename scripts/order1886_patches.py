@@ -241,6 +241,19 @@ def patch_fingerprint(recipes):
     """The selection, in the form preparation hashes: order-independent, id plus recipe."""
     return sorted({'id': item['id'], 'recipe_sha256': recipe_sha256(item)} for item in recipes)
 
+def validate_selection(identifiers):
+    """A saved selection must name catalogued, non-built-in recipes; order is preserved."""
+    if not isinstance(identifiers, list) or not all(isinstance(name, str) for name in identifiers):
+        raise ValueError('Selected patches must be a list of catalogued ids')
+    known = {item['id'] for item in RECIPES}
+    for name in identifiers:
+        if name not in known:
+            raise ValueError(f'Unknown patch id: {name}')
+        if name in BUILTIN_IDS:
+            raise ValueError(f'{name}: this recipe is configured by the game frame rate or framing '
+                             'setting, not by a patch selection.')
+    return list(dict.fromkeys(identifiers))
+
 def select(identifiers, metadata):
     """The recipes a preparation asked for, or an error naming the one that cannot apply.
 

@@ -54,6 +54,9 @@ def validate_patch(values):
                 raise ValueError(item["label"] + " must be a valid path or text.")
         elif kind == "order":
             order1886.mods.validate_config(Path("."), False, value)
+        elif kind == "patches":
+            from scripts.order1886_patches import validate_selection
+            validate_selection(value)
         elif kind == "bindings":
             order1886.inputs.validate(value, item["input_kind"])
 
@@ -188,9 +191,31 @@ class Worker:
                 "busy": self.busy, "logfile": str(self.logfile) if self.logfile else "",
                 "last_exit": self.last_exit, "logs": self.log_tail[-100:],
                 "timing": self.timing(values),
+                "patches": self.patch_catalogue(values),
                 "backups": order1886.save_backup.list_backups(self.state),
                 "acceptance": "Development preview — gold gameplay and provider qualification remain open."}
 
+    def patch_catalogue(self, values):
+        """Catalogue rows the launcher shows: the built-ins point at their own settings."""
+        from scripts.order1886_patches import BUILTIN_IDS, RECIPES, identity_error
+        try:
+            metadata = order1886.inspect_game(Path(values.get("game_dir") or "."))
+        except (OSError, ValueError):
+            metadata = None
+        rows = []
+        for item in RECIPES:
+            builtin = item["id"] in BUILTIN_IDS
+            if builtin:
+                reason = "Configured by the game frame rate or framing setting, not by a patch selection."
+            elif metadata is None:
+                reason = "Select a valid game folder to check this recipe."
+            else:
+                reason = identity_error(item, metadata) or ""
+            rows.append({"id": item["id"], "title": item["title"],
+                         "description": item["description"], "builtin": builtin,
+                         "available": not reason and not builtin, "reason": reason,
+                         "warning": item.get("warning", "")})
+        return rows
     def timing(self, values):
         """Report engine rate, presentation cadence, host cap and VSync as resolved."""
         try:
