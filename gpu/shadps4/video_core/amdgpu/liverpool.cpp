@@ -1338,7 +1338,16 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
     }
     if (seq != NoSeq && Ps4Stats::enabled) {
         Ps4Stats::submissions.fetch_add(1, std::memory_order_relaxed);
-#ifndef _WIN32 // per-thread rusage statistics are Linux-only
+#ifdef _WIN32
+        if (FILETIME created, exited, kernel, user;
+            GetThreadTimes(GetCurrentThread(), &created, &exited, &kernel, &user)) {
+            const auto microseconds = [](const FILETIME& time) {
+                return ((u64(time.dwHighDateTime) << 32) | time.dwLowDateTime) / 10;
+            };
+            Ps4Stats::gpu_user_us.store(microseconds(user), std::memory_order_relaxed);
+            Ps4Stats::gpu_sys_us.store(microseconds(kernel), std::memory_order_relaxed);
+        }
+#else
         if (rusage usage{}; getrusage(RUSAGE_THREAD, &usage) == 0) {
             Ps4Stats::gpu_user_us.store(u64(usage.ru_utime.tv_sec) * 1000000 + usage.ru_utime.tv_usec,
                                        std::memory_order_relaxed);
