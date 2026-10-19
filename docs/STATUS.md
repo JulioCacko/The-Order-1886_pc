@@ -33,6 +33,7 @@ native 4K and sustained 4K/60 remain unaccepted.
   and exclusive float atomics; graphics pipeline key copies preserve hash bytes.
 - Mapped-range epoch caching, busy-mutex lifetime protection and validated
   plaintext SELF/unpacked x86-64 ELF preparation.
+- Source follow-up: protected upload copies use stable backing views and flexible-map splits retain physical offsets. [355 Python tests, 42 Windows native checks and focused Linux CI pass](verification/2026-10-18-readback-correctness.md); this native change is separate from the published preview ZIP and has no matched-gameplay acceptance yet.
 
 See [donor reuse](order1886-donor-reuse.md), [input/direct play](order1886-input.md)
 and [mod limits](order1886-mods.md). Passing fixtures do not establish gameplay quality.

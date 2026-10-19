@@ -39,6 +39,8 @@ GPU commands and shaders to Vulkan. The current target is **CUSA00076 on Windows
 
 ## What's new
 
+**Optional Windows Go launcher preview.** [Download the redesigned seven-page launcher](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.1), with settings search, a separate worker and local trophy history. It is a prerelease with explicit unavailable-feature explanations. [Verification and limits](docs/verification/2026-10-18-go-launcher.md). Preview.4 below remains available for Windows and Linux.
+
 **Preview.4 — 18 October 2026.** Windows and experimental Linux packages include these changes.
 
 - **Input and direct play:** configurable mouse-to-stick camera input, sensitivity and inverted Y; **Play The Order 1886.exe** uses saved settings and the shared session/log lifecycle. Game includes desktop-shortcut and Add to Steam actions.
