@@ -7,6 +7,10 @@ Evidence: [verified implementation](verification/2026-10-18-donor-060.md),
 Preview.4 adds Windows/Linux packages, selected-save restoration before Play and game system-language forwarding. See the [release receipt](verification/2026-10-18-preview4-release.md).
 The [opt-in Go prerelease](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.4) adds seven searchable pages, a separate worker, local trophy history and performance recording. [Go verification](verification/2026-10-18-go-launcher.md) records its distinct package and CI evidence. The live open-issue list was refreshed on October 19: #1–18 and #20–23 remain open; no acceptance issue was closed.
 
+## The 19 October sweep, in one paragraph
+
+Two issues are closed with evidence ([#9](https://github.com/JulioCacko/The-Order-1886_pc/issues/9) updates, [#18](https://github.com/JulioCacko/The-Order-1886_pc/issues/18) Steam). Four advanced in source: [#8](https://github.com/JulioCacko/The-Order-1886_pc/issues/8) now catalogues every string the Go UI shows (249 still render in English), [#20](https://github.com/JulioCacko/The-Order-1886_pc/issues/20) made the in-game menu reachable behind an off-by-default setting and its live cap effective, [#14](https://github.com/JulioCacko/The-Order-1886_pc/issues/14) separated the presentation cap from game timing, and [#5](https://github.com/JulioCacko/The-Order-1886_pc/issues/5) turned the image-limit decision into one tested function that names its classification. [#2](https://github.com/JulioCacko/The-Order-1886_pc/issues/2) gained a page that states which resolution is which. Everything else still needs the game build, vendor hardware or gameplay capture, and says so below.
+
 ## Completed host features
 
 | Issue | Result | Verification |
