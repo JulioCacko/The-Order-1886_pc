@@ -250,11 +250,13 @@ class Worker:
                          if f["page"] == page and f["available"]}
             validate_patch(patch)
             values = {**self.settings(), **patch}
-            if values.get("readbacks") in ("selective", "precise"):
+            if ({"runtime", "readbacks"} & patch.keys() and
+                    values.get("readbacks") in ("selective", "precise")):
                 reason = self.readback_policy_reason(values, values["readbacks"])
                 if reason:
                     raise ValueError(reason)
-            if values.get("performance_capture"):
+            if ({"runtime", "performance_capture"} & patch.keys() and
+                    values.get("performance_capture")):
                 reason = self.native_option_reason(values, "performance_capture")
                 if reason:
                     raise ValueError(reason)

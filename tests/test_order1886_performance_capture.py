@@ -107,6 +107,36 @@ class PerformanceCaptureTests(unittest.TestCase):
                 app.dispatch('settings.set', {'values': {'runtime': str(runtime), 'performance_capture': True}})
             self.assertIs(app.settings()['performance_capture'], False)
 
+    def test_stale_native_options_can_be_repaired_one_at_a_time_in_either_order(self):
+        repairs = (('readbacks', 'relaxed'), ('performance_capture', False))
+        for sequence in (repairs, repairs[::-1]):
+            with self.subTest(sequence=sequence), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                runtime = self.fixture(root)
+                receipt = runtime.with_name('runtime-build.json')
+                build = json.loads(receipt.read_text())
+                build['readback_policies'] = ['relaxed', 'precise']
+                receipt.write_text(json.dumps(build))
+                app = worker.Worker(root / 'user', ROOT)
+                app.dispatch('settings.set', {'values': {'runtime': str(runtime),
+                    'readbacks': 'precise', 'performance_capture': True}})
+                runtime.write_bytes(b'older native fixture')
+                build.update(runtime_sha256=hashlib.sha256(runtime.read_bytes()).hexdigest(),
+                             readback_policies=['relaxed'], performance_capture=False)
+                receipt.write_text(json.dumps(build))
+                with self.assertRaises(ValueError):
+                    app.dispatch('settings.set', {'values': {'runtime': str(runtime)}})
+                key, value = sequence[0]
+                app.dispatch('settings.set', {'values': {key: value}})
+                self.assertEqual(app.settings()[key], value)
+                with self.assertRaises(ValueError):
+                    order1886.runtime_environment(runtime, root / 'user', app.settings())
+                key, value = sequence[1]
+                app.dispatch('settings.set', {'values': {key: value}})
+                environment = order1886.runtime_environment(runtime, root / 'user', app.settings())
+                self.assertEqual(environment['ORDER1886_READBACKS'], '1')
+                self.assertNotIn('ORDER1886_FRAME_TRACE', environment)
+
     def test_native_trace_records_unicode_paths_and_preserves_existing_files(self):
         header = (ROOT / 'gpu/shim/ps4_frame_trace.h').as_posix()
         native.ReadBackingTests().compile_and_run('#include "' + header + '"\n' + r'''
