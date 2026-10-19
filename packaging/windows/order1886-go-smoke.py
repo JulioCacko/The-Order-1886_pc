@@ -48,6 +48,7 @@ def main():
             dict(version=1,id=1,method="settings.set",params={"values":{"vsync":False,"ui_language":"pt"}}),
             dict(version=1,id=2,method="settings.set",params={"values":{"frame_rate":90}}),
             dict(version=1,id=3,method="state.get",params={}),
+            dict(version=1,id=4,method="updates.preflight",params={}),
         ]
         result = subprocess.run([str(worker),"--state-dir",str(state),"--installation-root",str(root)],
             input="".join(json.dumps(r)+"\n" for r in requests),text=True,encoding="utf-8",
@@ -58,8 +59,9 @@ def main():
         assert replies[2]["result"]["settings"]["ui_language"] == "pt"
         assert len(replies[2]["result"]["pages"]) == 7
         assert len(replies[2]["result"]["languages"]) == 13
+        assert replies[3]["result"]["ready"] is True
         assert not (state / "savedata").exists()
-    print("Go portable smoke passed: manifest, both entry points, Unicode relocation, restricted PATH, worker protocol, autosave, language and rejected settings.")
+    print("Go portable smoke passed: manifest, both entry points, update ABI and clean helper, Unicode relocation, restricted PATH, worker protocol, update preflight, autosave, language and rejected settings.")
 
 
 if __name__ == "__main__":
