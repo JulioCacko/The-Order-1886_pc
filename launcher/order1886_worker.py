@@ -81,7 +81,14 @@ class Worker:
 
     def settings(self):
         defaults = legacy.load_launch_settings(self.state, {})
-        return {**defaults, **legacy.read_settings(self.state / "settings.json")}
+        values = {**defaults, **legacy.read_settings(self.state / "settings.json")}
+        # A change made in the in-game menu lives in runtime.ini; adopt it once so both
+        # surfaces agree instead of the next Play silently discarding it.
+        imported = order1886.menu_settings_import(self.state, values)
+        if imported:
+            values.update(imported)
+            legacy.save_settings(self.state / "settings.json", values)
+        return values
 
     def readback_policy_reason(self, values, policy):
         return self.native_option_reason(values, policy)
