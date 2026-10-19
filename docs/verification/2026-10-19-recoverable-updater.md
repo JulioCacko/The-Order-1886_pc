@@ -235,6 +235,20 @@ executing-plans workflow.
 - Removing the legacy launcher EXE was the agreed scope; the legacy Python payload
   it used (`_internal/`, `launcher/`) still ships as dead weight and is a follow-up.
 
+### Publication
+
+PR #38 merged into `main` as `cdea3dfdfb5dfae50f87b4cc48aec327b5d742ad`
+(2026-10-19 19:20 UTC) after hosted `windows` run `39309947243` passed. Prerelease
+[`v0.1.0-go-preview.7`](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.7)
+was published immediately afterwards with `draft=false`, `prerelease=true`, and all
+three downloaded asset digests matched the local files:
+
+- `order1886-go-windows.zip`: 137,654,217 bytes, SHA256
+  `60c668cbdbd98a43d95c79e26964bd1e5db1d965d18e71cd99d2ec42250b7fba`.
+- A live `-tags live` check then drove the updater's own path against that release:
+  `CheckReleaseOn` selected preview.7, downloaded the real asset, verified receipt,
+  size, source (`969dc19`) and runtime, and staged **2349 files** (18.1 s).
+
 ### Still unqualified
 
 Sudden power loss, a player updating their own live installation (this batch used a
