@@ -7,6 +7,9 @@ on:
       - 'gpu/shim/ps4gpu.cpp'
       - 'gpu/shim/core/emulator_settings.h'
       - 'gpu/shim/ps4_frame_trace.h'
+      - 'gpu/shadps4/video_core/amdgpu/liverpool.cpp'
+      - 'gpu/shadps4/core/libraries/videoout/driver.cpp'
+      - 'tests/test_order1886_gpu_cpu_stats.py'
       - 'gpu/shadps4/video_core/buffer_cache/**'
       - 'order1886.py'
       - 'launcher/order1886_*.py'
@@ -38,3 +41,4 @@ jobs:
           python -m unittest discover -s tests -p test_order1886_read_backing.py -v
           python -m unittest discover -s tests -p test_order1886_readback_policy.py -v
           python -m unittest discover -s tests -p test_order1886_performance_capture.py -v
+          python -m unittest discover -s tests -p test_order1886_gpu_cpu_stats.py -v

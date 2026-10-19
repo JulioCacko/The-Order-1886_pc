@@ -332,7 +332,8 @@ void VideoOutDriver::Flip(const Request& req) {
         last = now;
         // Stall diagnostics: what happened during a long frame.
         static u64 last_gpu_ns, last_images, last_image_bytes, last_buffer_bytes;
-        static u64 last_t[6], last_minflt, last_sigf, last_pc, last_pp, last_rc, last_rp;
+        static u64 last_t[6], last_sigf, last_pc, last_pp, last_rc, last_rp;
+        [[maybe_unused]] static u64 last_minflt;
         const u64 pc = Ps4Stats::protect_calls.load(), pp = Ps4Stats::protect_pages.load(),
                   rc = Ps4Stats::protect_revoke_calls.load(), rp = Ps4Stats::protect_revoke_pages.load();
         const u64 minflt = Ps4Stats::gpu_minor_faults.load(), sigf = Ps4Stats::gpu_signal_faults.load();
@@ -382,7 +383,8 @@ void VideoOutDriver::Flip(const Request& req) {
         const u64 t_now[6] = {Ps4Stats::t_resident.load(), Ps4Stats::t_protect.load(),
                               Ps4Stats::t_image_create.load(), Ps4Stats::t_refresh.load(),
                               Ps4Stats::t_staging.load(), Ps4Stats::t_host_wait.load()};
-        static u64 last_draws, last_dispatches, last_subs, last_sys, last_user, last_invol, last_vol;
+        static u64 last_draws, last_dispatches, last_subs, last_sys, last_user;
+        [[maybe_unused]] static u64 last_invol, last_vol;
         const u64 draws = Ps4Stats::draws.load(), dispatches = Ps4Stats::dispatches.load(),
                   subs = Ps4Stats::submissions.load(), sys_us = Ps4Stats::gpu_sys_us.load(),
                   user_us = Ps4Stats::gpu_user_us.load(), invol = Ps4Stats::gpu_invol_switches.load(),
@@ -421,12 +423,21 @@ void VideoOutDriver::Flip(const Request& req) {
                         (image_bytes - last_image_bytes) / 1e6,
                         (buffer_bytes - last_buffer_bytes) / 1e6);
             std::printf("       %llu draws, %llu dispatches, %llu submissions; GPU thread user %.1f ms, "
-                        "kernel %.1f ms, %llu preempted, %llu waits\n",
+                        "kernel %.1f ms"
+#ifdef _WIN32
+                        "; preemptions/waits unavailable on Windows\n",
+#else
+                        ", %llu preempted, %llu waits\n",
+#endif
                         static_cast<unsigned long long>(draws - last_draws),
                         static_cast<unsigned long long>(dispatches - last_dispatches),
                         static_cast<unsigned long long>(subs - last_subs), (user_us - last_user) / 1e3,
-                        (sys_us - last_sys) / 1e3, static_cast<unsigned long long>(invol - last_invol),
-                        static_cast<unsigned long long>(vol - last_vol));
+                        (sys_us - last_sys) / 1e3
+#ifndef _WIN32
+                        , static_cast<unsigned long long>(invol - last_invol),
+                        static_cast<unsigned long long>(vol - last_vol)
+#endif
+                        );
         }
         if (stall) {
             std::printf("       ms in: resident %.1f, protect %.1f, image create %.1f, "
@@ -434,10 +445,17 @@ void VideoOutDriver::Flip(const Request& req) {
                         (t_now[0] - last_t[0]) / 1e6, (t_now[1] - last_t[1]) / 1e6,
                         (t_now[2] - last_t[2]) / 1e6, (t_now[3] - last_t[3]) / 1e6,
                         (t_now[4] - last_t[4]) / 1e6, (t_now[5] - last_t[5]) / 1e6);
-            std::printf("       GPU thread page faults %llu (process %llu), protection faults %llu; "
+            std::printf(
+#ifdef _WIN32
+                        "       GPU thread/process page faults unavailable on Windows; protection faults %llu; "
+#else
+                        "       GPU thread page faults %llu (process %llu), protection faults %llu; "
+#endif
                         "protect calls %llu (%llu pages), of which write-revoking %llu (%llu pages)\n",
+#ifndef _WIN32
                         static_cast<unsigned long long>(minflt - last_minflt),
                         static_cast<unsigned long long>(proc_flt - last_proc_flt),
+#endif
                         static_cast<unsigned long long>(sigf - last_sigf),
                         static_cast<unsigned long long>(pc - last_pc),
                         static_cast<unsigned long long>(pp - last_pp),
