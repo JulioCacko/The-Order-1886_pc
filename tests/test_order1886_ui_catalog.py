@@ -13,7 +13,7 @@ LITERAL = re.compile(r"\bt\(\s*'((?:[^'\\]|\\.)*)'\s*\)")
 
 def frontend_strings():
     texts = set()
-    for name in ('main.ts', 'updates.ts', 'session-status.ts', 'achievement-list.ts'):
+    for name in ('main.ts', 'updates.ts', 'session-status.ts', 'achievement-list.ts', 'timing-panel.ts'):
         path = FRONTEND / name
         if path.is_file():
             texts.update(match.group(1) for match in LITERAL.finditer(path.read_text(encoding='utf-8')))

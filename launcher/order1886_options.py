@@ -36,7 +36,7 @@ field("display_mode", "Display mode", "graphics", "select", "borderless", "Windo
       [("windowed", "Windowed", ""), ("borderless", "Borderless", ""), ("fullscreen", "Fullscreen", "")])
 field("aspect_ratio", "Framing", "graphics", "select", "original", "Original preserves cinematic framing. The 16:9 patch is executable-specific and experimental.",
       [("original", "Original cinematic aspect", ""), ("16:9", "16:9 — experimental", "")])
-field("presentation_filter", "Upscaling", "graphics", "select", "fsr1", "Presentation scaling does not establish native internal resolution.",
+field("presentation_filter", "Upscaling", "graphics", "select", "fsr1", "Choose Linear / no FSR for the original-resolution path. Presentation scaling does not establish native internal resolution: the scene renders at the size the game chooses, and larger output is not native 4K (docs/order1886-resolution.md).",
       [("linear", "Linear / no FSR", ""), ("fsr1", "FSR 1", ""),
        ("taa", "Native temporal AA", TEMPORAL), ("dlss", "NVIDIA DLSS Super Resolution", TEMPORAL),
        ("fsr3", "AMD FSR 3.1", TEMPORAL), ("fsr4", "AMD FSR 4", TEMPORAL),
