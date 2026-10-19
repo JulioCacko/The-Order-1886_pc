@@ -22,6 +22,46 @@ const journalPath = workspace + "/journal.json"
 const recoveryABI = "order1886-update-2"
 const journalVersion = 2
 
+// Durability contract
+//
+// The journal is the write-ahead record. No installed file is replaced before the
+// phase that promises the replacement exists, and no payload a published journal
+// names was written without being flushed first. Concretely, the code orders:
+//
+//  1. Prepare: every payload (txn-*/previous and txn-*/next) is copied, rehashed and
+//     Sync()ed by copyVerified before the journal that names it is published, so a
+//     published journal never refers to payload content that was not forced to disk.
+//  2. Journal: saveJournal writes a fresh journal-<random>.tmp, Sync()es it, closes
+//     it and only then renames it over journal.json in the same directory. A journal
+//     is therefore either the previous complete record or the new complete record;
+//     a partially written journal exists only as an unreferenced temp file, and an
+//     unreadable journal is refused (see readJournal).
+//  3. Apply and Rollback: replace() copies the replacement into a temp file in the
+//     target's own directory, Sync()es it, and renames it over the target, so a
+//     published file never exposes content that was not forced to disk and every
+//     publish is a same-volume atomic rename.
+//  4. Recovery: each recorded file carries both hashes, so recovery re-derives the
+//     real per-file state from the installation and accepts only "previous" or
+//     "new". A crash between any two renames is recoverable in either direction, and
+//     a file that is touched but neither of those two states stops the transaction
+//     instead of being overwritten or removed.
+//  5. Phase: within one transaction the recorded phase only moves forward
+//     (saveJournal), and no record survives a failed read (readJournal), so the file
+//     on disk is the only authority for what has been promised.
+//
+// What this does not provide: durability of directory entries. Go has no portable,
+// verifiable way to flush a directory on Windows -- an os.Root directory handle is
+// opened read-only and FlushFileBuffers requires write access and is not documented
+// to flush a directory index -- so this code cannot force the renames above, or the
+// MkdirAll of the payload directories, to the platter. The design relies on the
+// filesystem preserving write order, which NTFS does for its metadata journal; that
+// is an assumption, not a proved property. Read under that assumption, a power loss
+// leaves exactly one of: no journal (nothing started, a stale txn-* directory may
+// remain and Retain removes it), a prepared/applying journal (recovery restores the
+// previous tree), or an applied journal (every replacement and the commit reached the
+// disk). On a filesystem that does not preserve write order these guarantees do not
+// hold, and only a real power-loss run on the target volume can qualify them.
+
 type change struct {
 	Path string `json:"path"`
 	Old  string `json:"old_sha256"`
@@ -273,18 +313,35 @@ func beforeChange(a, b change) bool {
 	return a.Path < b.Path
 }
 
+// readJournal replaces the record with the file on disk or with nothing at all. A
+// journal that cannot be parsed or validated must never leave the previous record
+// usable: callers branch on Transaction state, and a torn journal has to be refused
+// rather than papered over by what this handle last held in memory.
 func (t *Transaction) readJournal() error {
-	body, err := readSmall(t.root, journalPath)
+	record, err := loadJournal(t.root)
 	if err != nil {
+		t.record = journal{}
 		return err
 	}
-	if err = json.Unmarshal(body, &t.record); err != nil {
-		return err
+	t.record = record
+	return nil
+}
+
+// loadJournal decodes into a fresh record, so a later journal that omits a field can
+// never inherit it from an earlier one.
+func loadJournal(root *os.Root) (journal, error) {
+	var record journal
+	body, err := readSmall(root, journalPath)
+	if err != nil {
+		return record, err
 	}
-	if err = validateJournal(t.record); err != nil {
-		return err
+	if err = json.Unmarshal(body, &record); err != nil {
+		return journal{}, err
 	}
-	return noLinks(t.root, t.record.Directory)
+	if err = validateJournal(record); err != nil {
+		return journal{}, err
+	}
+	return record, noLinks(root, record.Directory)
 }
 
 func validateJournal(r journal) error {
@@ -377,6 +434,37 @@ func copyVerified(ctx context.Context, source *os.Root, from string, destination
 	return output.Sync()
 }
 
+// phaseRank orders the phases a journal may record. A journal only ever moves
+// forward, so stale in-memory state cannot rewind a promise that is already durable.
+func phaseRank(phase string) int {
+	switch phase {
+	case "prepared":
+		return 0
+	case "applying":
+		return 1
+	case "applied":
+		return 2
+	case "rolling_back":
+		return 3
+	case "rolled_back":
+		return 4
+	}
+	return -1
+}
+
+// durableJournal reports the record the journal on disk holds, which is the only
+// authority for a phase promise; the bool is false when no journal exists yet.
+func (t *Transaction) durableJournal() (journal, bool, error) {
+	record, err := loadJournal(t.root)
+	if os.IsNotExist(err) {
+		return journal{}, false, nil
+	}
+	if err != nil {
+		return journal{}, false, err
+	}
+	return record, true, nil
+}
+
 func (t *Transaction) saveJournal(phase string) (err error) {
 	record := t.record
 	record.Phase = phase
@@ -389,6 +477,16 @@ func (t *Transaction) saveJournal(phase string) (err error) {
 	}
 	if len(body) > maxManifest {
 		return errors.New("recovery metadata is too large")
+	}
+	// Compare against the journal on disk, never against a record that may be stale,
+	// and never replace a recovery record that cannot be read. The ordering applies
+	// within one transaction: a later transaction legitimately starts at "prepared".
+	durable, exists, err := t.durableJournal()
+	if err != nil {
+		return fmt.Errorf("recovery journal cannot be replaced: %w", err)
+	}
+	if exists && durable.Directory == record.Directory && phaseRank(record.Phase) < phaseRank(durable.Phase) {
+		return fmt.Errorf("recovery journal cannot return to %q from %q", record.Phase, durable.Phase)
 	}
 	if err = noLinks(t.root, journalPath); err != nil {
 		return err
