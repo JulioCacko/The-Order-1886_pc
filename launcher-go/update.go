@@ -210,17 +210,19 @@ func (app *App) UpdateCheck() UpdateStatus {
 	callCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	release, err := updates.CheckReleaseOn(callCtx, channel)
-	app.updateMu.Lock()
-	defer app.updateMu.Unlock()
 	if err != nil {
+		app.updateMu.Lock()
 		app.update.State = "failed"
 		app.update.Error = err.Error()
+		app.updateMu.Unlock()
 		return app.updateStatus()
 	}
+	app.updateMu.Lock()
 	app.release = release
 	app.update.Version = release.Tag
 	app.update.Error = ""
 	app.update.State = "available"
+	app.updateMu.Unlock()
 	return app.updateStatus()
 }
 
