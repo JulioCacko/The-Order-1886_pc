@@ -48,3 +48,13 @@ CodeRabbit's preserved-size/timestamp receipt finding also reproduced: the worke
 The graph service was unavailable (`Transport closed`); exact source and caller searches were used for this bounded change. The previously verified `021337Z` archive (SHA256 `bda49f8bc19cf56cef707b01a95d7f33d48c0f5df00c6ac4f9725f0b1bfb9bb1`, 137197153 bytes) predates this correction and is superseded for publication. Final clean-source identities and hosted checks follow after the corrected build.
 
 After the ownership and receipt corrections, the full Python suite passes **363 tests with no skips** and the rebuilt Windows native gate passes **44 checks**. Linux's injected host-map failure is reserved for its hosted run; Windows host-map failures terminate rather than returning a recoverable error.
+
+## Corrected portable candidate
+
+All hosted checks pass at `212a43ddcf4bf4919b98dd75d4ad0350c013dac2`: Linux `39191008762` (including injected recoverable map failure), Windows `39191008621` and `39191006025`, and CodeRabbit. Native SHA256 is `88416337ff76f31c37f9d33224e29449fdd78b3ce8c87bb482e1ad3202b13382`; the clean receipt records native source-file digest `172a7a9e6f19d0153928e02d6cb7da89ec543bd675c9c16586f4935cbb25c7c7`.
+
+Fresh package `out/order1886-go-package/20261019T024211Z/The Order 1886` passes both entry points, relocated Unicode/spaces paths, restricted PATH, worker protocol, autosave, languages and rejected settings. Its actual WebView2 UI renders Home and Performance. A keyboard selection of Selective shows “Saved — applies on next launch” and persists `readbacks: selective` in this QA package's player settings. Older user-owned preview windows were left untouched.
+
+The archive includes only manifest payloads plus the manifest: **2355 entries**, **137198145 bytes**, SHA256 `94d0b4e3fd9d0671c315212515df77d57a5efd96fb091cda376e7f7190ccf10a`. CRC, exact entry set and every archived payload hash pass. Post-launch player settings/WebView state are excluded. The manifest records clean source `212a43d` and the native hash above.
+
+A fresh selective startup on that native build logs flip submissions and reaches its 90-second watchdog after **90.843 seconds**. Receipt: `exit_code=124`, `runtime_exit_code=1`, `timed_out=true`, `forced_stop=true`; gameplay remains unverified. Evidence is in `out/order1886-evidence/selective-readbacks/startup-ownership` and `package-ownership-final.json`. No feature issue is closed by these checks.
