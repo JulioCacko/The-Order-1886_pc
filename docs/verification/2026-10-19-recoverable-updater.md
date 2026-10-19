@@ -163,21 +163,57 @@ real deletion in the field.
 - Frontend: `tsc --noEmit` clean, `vite build` clean, **17 tests** including six new
   update-surface tests (install gating, blocked recovery, progress, failures, busy
   state).
-- Go package `out/order1886-go-package/20261019T190040Z/The Order 1886`:
-  `source_dirty: false`, revision `9f0ca0a`, `update_abi: order1886-update-2`,
-  2349 manifest files; portable smoke passed at a Unicode path with restricted PATH.
-- Candidate archive: **137,646,531 bytes**, SHA256
-  `f7ff3f3abee1d63b5c779733db63e027b16fee12f8caa485b3cb5c4f0bc6f812`, 2350 entries.
-  This is the archive the tagged end-to-end test below actually consumed.
-- Packaged end-to-end (`-tags e2e`, `TestPackagedUpdatePreservesPlayerDataAndRollsBack`):
-  a full copy of the published preview.6 package plus **46 real player files**
-  (savedata, saves backups, trophies, logs, settings, runtime INI) copied read-only
-  from the player's own state directory. Apply replaced the launcher files, deleted
-  `The Order 1886 Legacy.exe`, left every player byte identical (only the OS session
-  lock file appeared), started the updated worker successfully, and rollback
-  restored every package file. Run time 43.6 s.
+- Go package `out/order1886-go-package/20261019T191644Z/The Order 1886`:
+  `source_dirty: false`, revision `969dc19`, `update_abi: order1886-update-2`,
+  2349 manifest files; portable smoke passed at a Unicode path with restricted PATH,
+  including the update preflight and the clean-helper check.
+- Candidate archive: **137,654,217 bytes**, SHA256
+  `60c668cbdbd98a43d95c79e26964bd1e5db1d965d18e71cd99d2ec42250b7fba`, 2350 entries.
+  This is the archive the tagged end-to-end tests below actually consumed.
+- Packaged end-to-end (`-tags e2e`), two tests on the shipped binaries:
+  - `TestPackagedUpdatePreservesPlayerDataAndRollsBack`: a full copy of the
+    published preview.6 package plus **46 real player files** (savedata, saves
+    backups, trophies, logs, settings, runtime INI) copied read-only from the
+    player's own state directory. Apply replaced 95 package files, deleted
+    `The Order 1886 Legacy.exe`, left every player byte identical (only the OS
+    session lock file appeared), started the updated worker successfully, and
+    rollback restored every package file. 38.2 s.
+  - `TestPackagedHelperBinaryApplies`: the **shipped launcher executable** is copied
+    into the update workspace and run as the helper with an argument array; it waits
+    for a parent process that has already exited (exercising the creation-time
+    check), applies the prepared transaction, records its result, and the player
+    files stay identical. 31.0 s.
 - A live `CheckRelease`/local-extraction check and the earlier transaction checks
   above still stand; this batch adds the packaged binaries and the populated tree.
+
+### Fresh whole-branch review and its resolution
+
+A reviewer read the whole branch (`4c68f3b..HEAD`, ten commits), ran `go vet ./...`
+(clean) and `go test ./...` (three packages green), and reported one Critical, four
+Important and two Minor findings. All seven were reproduced and fixed in one pass:
+
+1. **Critical** — the blocked-recovery state the launcher told the player to resolve
+   was unreachable: every worker call is refused while a journal is pending, and the
+   page render depended on one. The update panel is now built from the journal-only
+   update state and rendered as its own recovery screen.
+2. The helper released the installation and session locks only *after* starting the
+   relaunched launcher, which could take the same lock and lose the race. Locks are
+   now released before the relaunch, and the relaunch mode is read from the open
+   transaction instead of reopening it.
+3. A failure between preparing and starting the helper left a prepared journal that
+   blocked the launcher with no remedy; those paths now roll the transaction back.
+4. A session-lock conflict (the game still running) is no longer recorded as a failed
+   recovery, because nothing was touched and the next attempt must stay available.
+5. Rolling back a *completed* update had no caller. Restore now chooses rollback for
+   an applied journal and the pages expose it as "Roll back this update".
+6. Cancel, channel and window context are read and written under their locks.
+7. A close that times out no longer leaves the launcher permanently "closing".
+
+The reviewer separately verified, without finding a defect: deletion ordering and
+rollback restoration, that no path leaves mixed versions with a silent success, the
+HTILE gate and its receipt, path/release/journal validation, lock ordering, and the
+mutex discipline outside the findings above. No second review was requested, per the
+executing-plans workflow.
 
 ### Deliberate deviations from the plan text
 
