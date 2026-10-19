@@ -63,6 +63,8 @@ public:
         if (it == entries.end()) return false;
         WriteLocked(address, size);
         auto& entry = it->second;
+        if (entry.type == Type::HTile &&
+            (entry.layers != 1 || size > std::numeric_limits<std::uint32_t>::max())) return false;
         entry.clear_mask = ~0u;
         entry.size = size;
         entry.shader_written = false;
@@ -100,17 +102,17 @@ public:
     }
 
     std::optional<std::uint32_t> HtileWord(std::uint64_t address, std::uint64_t size) const {
-        if (!size || (address & 3) || (size & 3)) return std::nullopt;
         std::scoped_lock lock{mutex};
-        auto it = entries.upper_bound(address);
-        if (it == entries.begin()) return std::nullopt;
-        --it;
-        const auto& entry = it->second;
-        const auto offset = address - it->first;
-        if (offset > entry.size || size > entry.size - offset) {
-            return std::nullopt;
-        }
-        return UniformWord(entry);
+        return HtileWordLocked(address, size);
+    }
+
+    bool WithHtileWord(std::uint64_t address, std::uint64_t size, auto&& use) const {
+        // Keep validation and GPU ownership publication indivisible with CPU invalidation.
+        std::scoped_lock lock{mutex};
+        const auto word = HtileWordLocked(address, size);
+        if (!word) return false;
+        use(*word);
+        return true;
     }
 
     std::optional<std::uint32_t> HtileExtent(std::uint64_t address) const {
@@ -123,6 +125,16 @@ public:
     }
 
 private:
+    std::optional<std::uint32_t> HtileWordLocked(std::uint64_t address, std::uint64_t size) const {
+        if (!size || (address & 3) || (size & 3)) return std::nullopt;
+        auto it = entries.upper_bound(address);
+        if (it == entries.begin()) return std::nullopt;
+        --it;
+        const auto offset = address - it->first;
+        if (offset > it->second.size || size > it->second.size - offset) return std::nullopt;
+        return UniformWord(it->second);
+    }
+
     struct Entry {
         std::uint64_t owner;
         Type type;
@@ -132,12 +144,10 @@ private:
         bool shader_written{};
     };
     static std::optional<std::uint32_t> UniformWord(const Entry& entry) {
-        if (entry.type != Type::HTile || entry.shader_written || !entry.layers ||
-            entry.layers > 32) return std::nullopt;
-        const std::uint32_t active = entry.layers == 32 ? ~0u : (1u << entry.layers) - 1;
-        const auto cleared = entry.clear_mask & active;
-        // shortcut: mixed slices use real bytes until the HTILE slice layout is verified.
-        if (cleared && cleared != active) return std::nullopt;
+        // shortcut: synthesize one layer until a verified slice layout can preserve mixed clears.
+        if (entry.type != Type::HTile || entry.shader_written || entry.layers != 1 ||
+            entry.size > std::numeric_limits<std::uint32_t>::max()) return std::nullopt;
+        const auto cleared = entry.clear_mask & 1u;
         const std::uint32_t expanded = entry.stencil ? 0xfffff3ffu : 0xfffc000fu;
         return cleared ? expanded & ~0xfu : expanded;
     }

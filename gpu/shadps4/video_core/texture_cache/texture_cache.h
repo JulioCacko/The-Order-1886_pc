@@ -296,6 +296,10 @@ public:
         return surface_metas.HtileWord(address, size);
     }
 
+    bool WithHtileWord(VAddr address, u64 size, auto&& use) const {
+        return surface_metas.WithHtileWord(address, size, use);
+    }
+
     std::optional<u32> HtileReadExtent(VAddr address) const {
         return surface_metas.HtileExtent(address);
     }

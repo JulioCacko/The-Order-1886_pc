@@ -8,7 +8,7 @@ int main() {
     SurfaceMetadata metadata;
     using Type=SurfaceMetadata::Type;
     constexpr std::uint64_t base=0x10000000, size=4096;
-    metadata.Register(base,1,Type::HTile,~0u,2,false);
+    metadata.Register(base,1,Type::HTile,~0u,1,false);
     assert(!metadata.HtileWord(base,size)); // No observed clear range yet.
     assert(metadata.Clear(base,size));
     assert(metadata.HtileExtent(base)==size);
@@ -20,9 +20,7 @@ int main() {
     assert(!metadata.HtileWord(base,3));
     assert(!metadata.HtileWord(base,0));
     assert(metadata.Touch(base,0,false));
-    assert(!metadata.HtileWord(base,size)); // Mixed slices need a real layout.
-    assert(!metadata.HtileExtent(base));
-    assert(metadata.Touch(base,1,false));
+    assert(metadata.HtileExtent(base)==size);
     assert(metadata.HtileWord(base,size)==0xfffc000fu);
     metadata.Write(base+64,4);
     assert(!metadata.HtileWord(base,size)); // Interior shader/CPU writes retain real words.
@@ -52,13 +50,13 @@ int main() {
     assert(metadata.HtileWord(base,size)==0xfffff3ffu);
     metadata.Register(base,2,Type::HTile,~0u,32,true); // Geometry change resets derived state.
     assert(!metadata.HtileWord(base,size));
-    metadata.Clear(base,size);
-    assert(metadata.IsCleared(base,31));
+    assert(!metadata.Clear(base,size));
+    assert(!metadata.IsCleared(base,31));
     assert(!metadata.IsCleared(base,32));
     assert(!metadata.Touch(base,32,false));
     assert(!metadata.HtileWord(base,size));
     metadata.Register(base,3,Type::HTile,~0u,33,false);
-    metadata.Clear(base,size);
+    assert(!metadata.Clear(base,size));
     assert(!metadata.HtileWord(base,size));
 
     metadata.Register(base,4,Type::CMask,~0u,1,false);

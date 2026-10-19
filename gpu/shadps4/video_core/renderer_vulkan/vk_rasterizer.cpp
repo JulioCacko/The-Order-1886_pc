@@ -1912,17 +1912,23 @@ bool Rasterizer::IsComputeMetaClear(const Pipeline* pipeline) {
     // operation so use it as a heuristic for metadata writes that are probably not clears.
     if (!info.has_bitwise_xor) {
         // Assume if a shader writes metadata without address calculation, it is a clear shader.
+        bool cleared = false;
         for (const auto& desc : info.buffers) {
-            const VAddr address = desc.GetSharp(info).base_address;
-            if (!desc.IsSpecial() && desc.is_written &&
-                texture_cache.ClearMeta(address, desc.GetSharp(info).GetSize())) {
-                if (const auto extent = texture_cache.HtileReadExtent(address))
-                    (void)buffer_cache.ObtainBuffer(address, *extent, false);
-                // Assume all slices were updates
-                LOG_TRACE(Render_Vulkan, "Metadata update skipped");
-                return true;
-            }
+            if (!desc.is_written) continue;
+            if (desc.IsSpecial()) return false;
+            const auto sharp = desc.GetSharp(info);
+            if (!texture_cache.ClearMeta(sharp.base_address, sharp.GetSize())) return false;
+            cleared = true;
         }
+        if (!cleared) return false;
+        for (const auto& desc : info.buffers) {
+            if (!desc.is_written) continue;
+            const VAddr address = desc.GetSharp(info).base_address;
+            if (const auto extent = texture_cache.HtileReadExtent(address))
+                (void)buffer_cache.ObtainBuffer(address, *extent, false);
+        }
+        LOG_TRACE(Render_Vulkan, "Metadata update skipped");
+        return true;
     }
     return false;
 }
@@ -3219,6 +3225,7 @@ bool Rasterizer::InvalidateMemory(VAddr addr, u64 size, bool assume_locks) {
         // Not GPU mapped memory, can skip invalidation logic entirely.
         return false;
     }
+    texture_cache.NoteMetaShaderWrite(addr, size);
     texture_cache.ResolveReadbacks(addr, size, assume_locks, VideoCore::ReadbackSource::CpuWrite);
     buffer_cache.InvalidateMemory(addr, size, assume_locks);
     texture_cache.InvalidateMemory(addr, size);
@@ -3286,6 +3293,7 @@ void Rasterizer::RegisterMemory(VAddr addr, u64 size) {
 
 void Rasterizer::UnmapMemory(VAddr addr, u64 size) {
     DrainDrawPipe();
+    texture_cache.NoteMetaShaderWrite(addr, size);
     buffer_cache.InvalidateMemory(addr, size);
     texture_cache.UnmapMemory(addr, size);
     {
