@@ -109,7 +109,25 @@ func fetchMetadata(ctx context.Context, client *http.Client, address string, lim
 // CheckRelease selects the newest published dedicated Go package, including Go previews.
 func CheckRelease(ctx context.Context) (Release, error) { return checkRelease(ctx, nil) }
 
+// Update channels. Only the selected channel may offer a release to a player.
+const (
+	ChannelPreview = "preview"
+	ChannelStable  = "stable"
+)
+
+// CheckReleaseOn reports the newest release on one channel.
+func CheckReleaseOn(ctx context.Context, channel string) (Release, error) {
+	return checkReleaseChannel(ctx, nil, channel)
+}
+
 func checkRelease(ctx context.Context, base *http.Client) (Release, error) {
+	return checkReleaseChannel(ctx, base, ChannelPreview)
+}
+
+func checkReleaseChannel(ctx context.Context, base *http.Client, channel string) (Release, error) {
+	if channel != ChannelPreview && channel != ChannelStable {
+		return Release{}, errors.New("unknown update channel")
+	}
 	client := releaseClient(base)
 	body, err := fetchMetadata(ctx, client, "https://api.github.com/repos/"+repository+"/releases?per_page=100", maxManifest)
 	if err != nil {
@@ -123,6 +141,9 @@ func checkRelease(ctx context.Context, base *http.Client) (Release, error) {
 	for i := range releases {
 		release := &releases[i]
 		if release.Draft || release.Published.IsZero() {
+			continue
+		}
+		if channel == ChannelStable && strings.Contains(release.Tag, "-go-preview.") {
 			continue
 		}
 		for _, asset := range release.Assets {

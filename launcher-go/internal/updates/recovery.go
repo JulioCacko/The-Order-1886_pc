@@ -1,6 +1,7 @@
 package updates
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path"
@@ -103,4 +104,36 @@ func PendingRecovery(directory string) (bool, string, error) {
 		return false, "", err
 	}
 	return true, state, nil
+}
+
+// JournalPhase reads the recorded phase without taking the installation lock, so a
+// caller can refuse work on a clean installation without creating updater files.
+func JournalPhase(directory string) (string, bool, error) {
+	root, err := unlinkedDirectory(directory)
+	if err != nil {
+		return "", false, err
+	}
+	defer root.Close()
+	err = noLinks(root, journalPath)
+	if err == nil {
+		_, err = root.Lstat(journalPath)
+	}
+	if os.IsNotExist(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	body, err := readSmall(root, journalPath)
+	if err != nil {
+		return "", false, err
+	}
+	var record journal
+	if err = json.Unmarshal(body, &record); err != nil {
+		return "", false, err
+	}
+	if err = validateJournal(record); err != nil {
+		return "", false, err
+	}
+	return record.Phase, true, nil
 }

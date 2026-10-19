@@ -18,6 +18,7 @@ func TestLockedWindowsLibraryAutomaticallyRestoresPreviousVersion(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer tx.Close()
+	bindSession(t, tx, root)
 	name, err := windows.UTF16PtrFromString(filepath.Join(root, "_internal", "library.dll"))
 	if err != nil {
 		t.Fatal(err)

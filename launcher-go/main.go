@@ -21,6 +21,9 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	desktop "github.com/wailsapp/wails/v2/pkg/runtime"
+
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/updatehost"
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/updates"
 )
 
 //go:embed all:frontend/dist
@@ -39,6 +42,16 @@ type App struct {
 	startupError    string
 	connectMu       sync.Mutex
 	shutdownStarted bool
+	direct          bool
+
+	updateMu     sync.Mutex
+	update       UpdateStatus
+	release      updates.Release
+	updateCh     string
+	updateStage  string
+	candidate    updatehost.Candidate
+	cancelUpdate context.CancelFunc
+	autoUpdates  bool
 }
 
 func (app *App) event(name string, data json.RawMessage) {
@@ -81,6 +94,10 @@ func (app *App) connect() error {
 	if app.shutdownStarted {
 		return errors.New("Launcher is closing.")
 	}
+	if pending, _, _ := pendingRecovery(app.root); pending {
+		// Never load a worker beside unrecovered package files.
+		return errors.New("An update is waiting to be recovered. Restart the launcher.")
+	}
 	if app.worker != nil {
 		return nil
 	}
@@ -110,7 +127,9 @@ func (app *App) startup(ctx context.Context) {
 	app.ctx = ctx
 	app.mu.Unlock()
 	// Frontend calls report the current connection error and can retry after repair.
-	_ = app.connect()
+	if app.connect() == nil {
+		app.startupUpdateCheck()
+	}
 }
 
 func (app *App) Call(method string, params json.RawMessage) (string, error) {
@@ -143,14 +162,33 @@ func (app *App) Call(method string, params json.RawMessage) (string, error) {
 	return string(result), nil
 }
 
+// Request runs one worker call without the session bookkeeping Call performs.
+func (app *App) Request(ctx context.Context, method string, params json.RawMessage) (json.RawMessage, error) {
+	if err := app.connect(); err != nil {
+		return nil, err
+	}
+	if len(params) == 0 || string(params) == "null" {
+		params = json.RawMessage("{}")
+	}
+	return app.worker.Request(ctx, method, params)
+}
+
 func (app *App) StartupError() string {
 	if err := app.connect(); err != nil {
+		app.connectMu.Lock()
+		blocked := app.startupError
+		app.connectMu.Unlock()
+		if blocked != "" {
+			return blocked
+		}
 		return err.Error()
 	}
 	app.connectMu.Lock()
 	defer app.connectMu.Unlock()
 	return app.startupError
 }
+
+func quitApp(ctx context.Context) { desktop.Quit(ctx) }
 
 func (app *App) shutdown(context.Context) {
 	app.connectMu.Lock()
@@ -241,7 +279,27 @@ func main() {
 	python := flag.String("python", "python", "Python executable for source development only")
 	direct := flag.Bool("direct-play", strings.HasPrefix(strings.ToLower(filepath.Base(executable)), "play "), "Launch saved configuration")
 	probe := flag.Bool("worker-smoke", false, "Check the bundled worker without starting the game")
+	helper := flag.Bool("update-helper", false, "Internal: run one packaged update action")
+	action := flag.String("update-action", "", "Internal: apply, recover or rollback")
+	installed := flag.String("update-installation", "", "Internal: installation to update")
+	parentPID := flag.Int("update-parent-pid", 0, "Internal: launcher process that must exit first")
+	parentClock := flag.String("update-parent-clock", "", "Internal: launcher start time")
+	noRelaunch := flag.Bool("no-relaunch", false, "Internal: do not start the launcher again")
+	confirmRestore := flag.Bool("confirm-restore", false, "Internal: user requested a restore after a failed recovery")
 	flag.Parse()
+	if *helper {
+		run := helperRun{action: *action, installation: *installed, parentPID: *parentPID, noRelaunch: *noRelaunch, confirmRestore: *confirmRestore}
+		if run.installation == "" {
+			run.installation = filepath.Dir(executable)
+		}
+		if *parentClock != "" {
+			if run.parentClock, err = time.Parse(time.RFC3339Nano, *parentClock); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+		}
+		os.Exit(runUpdateHelper(run))
+	}
 	root, err := filepath.Abs(*project)
 	if err != nil {
 		panic(err)
@@ -254,7 +312,21 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	app := &App{root: root, state: stateDir, python: *python}
+	// Recovery runs before Wails and before any Python worker: a mixed package must
+	// never load. The helper performs it, because this executable may be the file
+	// that has to be replaced.
+	pending, blocked, blockedReason := pendingRecovery(root)
+	if pending && !blocked {
+		if err = startRecovery(root); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	app := &App{root: root, state: stateDir, python: *python, direct: *direct}
+	if blocked {
+		app.startupError = blockedReason
+	}
 	if *probe {
 		if err = app.connect(); err == nil {
 			_, err = app.Call("state.get", json.RawMessage("{}"))

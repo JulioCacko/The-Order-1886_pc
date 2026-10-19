@@ -56,7 +56,7 @@ func LockSession(state string) (*os.File, error) {
 	}
 	if err = lockFile(file); err != nil {
 		file.Close()
-		return nil, fmt.Errorf("The Order is already running or being prepared: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrSessionBusy, err)
 	}
 	return file, nil
 }

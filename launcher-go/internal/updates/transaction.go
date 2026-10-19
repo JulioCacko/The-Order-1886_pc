@@ -128,7 +128,7 @@ func openInstallation(directory string) (_ *Transaction, err error) {
 		return nil, err
 	}
 	if err = lockFile(t.lock); err != nil {
-		return nil, fmt.Errorf("another updater is active: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrUpdaterBusy, err)
 	}
 	return t, nil
 }
