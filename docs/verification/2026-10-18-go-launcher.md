@@ -50,5 +50,9 @@ Hardware gates: local RTX 3070 only; update 1.02 and external provider hardware 
 - Impeccable's mechanical detector returned an empty finding list. The reviewer approved the captured desktop appearance for the opt-in preview; it did not certify locale, minimum-size, DPI/theme or missing-WebView2 behavior.
 - The ZIP is `out/order1886-go-package/20261019T001510Z/order1886-go-launcher-preview-windows.zip`, with a sibling SHA256 file. `package-final.json` records archive size/digest and verification of every manifest payload inside the ZIP.
 
-No public push, issue closure or release publication was performed by this batch. Hosted CI execution, manual street/campaign evidence and all unfinished renderer/provider/FG/feature work remain open.
+## Publication
+
+Published at the user's request as [Windows Go launcher preview 1](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.1), explicitly marked prerelease. GitHub's uploaded ZIP digest matches `1896191fc2e5363a037659b9f9989a65a1efc638462da181ca95b5e6011a7662` (137180826 bytes). Preview.4 remains the existing Windows/Linux distribution.
+
+[PR #25](https://github.com/JulioCacko/The-Order-1886_pc/pull/25) merged after both Windows Go workflow runs passed ([push](https://github.com/JulioCacko/The-Order-1886_pc/actions/runs/39181870052), [PR](https://github.com/JulioCacko/The-Order-1886_pc/actions/runs/39181885319)). The tag records `8a8667b733c97fbcbc6cc2d398168d167fd8f53a`; its package retains the exact code/runtime identities above. No feature issue was closed. Manual street/campaign evidence and unfinished renderer/provider/FG/feature work remain open.
 
