@@ -1,0 +1,65 @@
+name: Go launcher preview checks
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'launcher-go/**'
+      - 'launcher/order1886_*.py'
+      - 'scripts/order1886_trophy_history.py'
+      - 'tests/test_order1886_worker.py'
+      - 'tests/test_order1886_trophy_history.py'
+      - '.github/workflows/order1886-go-preview.yml'
+  push:
+    paths:
+      - 'launcher-go/**'
+      - 'launcher/order1886_*.py'
+      - 'scripts/order1886_trophy_history.py'
+      - 'tests/test_order1886_worker.py'
+      - 'tests/test_order1886_trophy_history.py'
+      - '.github/workflows/order1886-go-preview.yml'
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: launcher-go/go.mod
+          cache-dependency-path: launcher-go/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: launcher-go/frontend/package-lock.json
+      - name: Worker and save regressions
+        run: |
+          python -m unittest discover -s tests -p test_order1886_worker.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -m unittest discover -s tests -p test_order1886_trophy_history.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -m unittest discover -s tests -p test_order1886_save_selection.py
+      - name: Frontend checks
+        working-directory: launcher-go/frontend
+        run: |
+          npm ci
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm test
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm audit --audit-level=high
+      - name: Go protocol and application checks
+        working-directory: launcher-go
+        run: |
+          go test ./...
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go vet ./...
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.0 build -clean -skipbindings
+
