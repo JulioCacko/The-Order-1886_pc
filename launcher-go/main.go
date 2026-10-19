@@ -274,7 +274,9 @@ func main() {
 				app.worker.Close()
 			}
 		},
-		Windows: &windows.Options{Theme: windows.SystemDefault},
+		// Separate portable installations must not reuse a live WebView profile.
+		Windows: &windows.Options{Theme: windows.SystemDefault,
+			WebviewUserDataPath: filepath.Join(app.state, "webview")},
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
