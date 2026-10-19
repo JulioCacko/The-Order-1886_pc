@@ -5,7 +5,7 @@
 #include <mutex>
 #ifdef _WIN32
 #include <filesystem>
-#include <string_view>
+#include <string>
 #endif
 
 namespace Ps4PerfStats {
@@ -15,8 +15,8 @@ public:
         if (!path || !*path) return;
 #ifdef _WIN32
         try {
-            const std::filesystem::path filename{
-                std::u8string_view{reinterpret_cast<const char8_t*>(path)}};
+            const std::u8string encoded{path, path + std::char_traits<char>::length(path)};
+            const std::filesystem::path filename{encoded};
             file = _wfopen(filename.c_str(), L"wx");
         } catch (const std::exception&) {
             file = nullptr;
