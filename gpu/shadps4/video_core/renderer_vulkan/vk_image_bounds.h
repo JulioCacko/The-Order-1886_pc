@@ -8,20 +8,33 @@
 #include <limits>
 #include <optional>
 #include "video_core/renderer_vulkan/vk_common.h"
+#include "video_core/texture_cache/image_rejection.h"
 #include <vulkan/vulkan_format_traits.hpp>
 
 namespace Vulkan {
 
+/// The same decision VideoCore::ClassifyImageRequest makes, with the Vulkan limits filled
+/// in. One implementation means the abort messages and the refusal path cannot disagree.
+inline VideoCore::ImageRejection ClassifyImageCreateInfo(const vk::ImageCreateInfo& image,
+                                                         const vk::ImageFormatProperties& limits) {
+    VideoCore::ImageRequestLimits request{};
+    request.width = image.extent.width;
+    request.height = image.extent.height;
+    request.depth = image.extent.depth;
+    request.levels = image.mipLevels;
+    request.layers = image.arrayLayers;
+    request.max_width = limits.maxExtent.width;
+    request.max_height = limits.maxExtent.height;
+    request.max_depth = limits.maxExtent.depth;
+    request.max_levels = limits.maxMipLevels;
+    request.max_layers = limits.maxArrayLayers;
+    request.samples_supported = bool(limits.sampleCounts & image.samples);
+    return VideoCore::ClassifyImageRequest(request);
+}
+
 inline bool ImageFitsFormatLimits(const vk::ImageCreateInfo& image,
                                   const vk::ImageFormatProperties& limits) {
-    return image.extent.width > 0 && image.extent.width <= limits.maxExtent.width &&
-           image.extent.height > 0 && image.extent.height <= limits.maxExtent.height &&
-           image.extent.depth > 0 && image.extent.depth <= limits.maxExtent.depth &&
-           image.mipLevels > 0 && image.mipLevels <= limits.maxMipLevels &&
-           image.mipLevels <= u32(std::bit_width(std::max({image.extent.width, image.extent.height,
-                                                           image.extent.depth}))) &&
-           image.arrayLayers > 0 && image.arrayLayers <= limits.maxArrayLayers &&
-           bool(limits.sampleCounts & image.samples);
+    return ClassifyImageCreateInfo(image, limits) == VideoCore::ImageRejection::None;
 }
 
 // Minimum byte span accessed by a copy, including padded rows/slices but excluding
