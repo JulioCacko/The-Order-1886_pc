@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <atomic>
 #include "common/assert.h"
 #include "common/elf_info.h"
 #include "common/logging/log.h"
@@ -159,7 +160,10 @@ s32 PS4_SYSV_ABI sceVideoOutSubmitFlip(s32 handle, s32 bufferIndex, s32 flipMode
         return ORBIS_VIDEO_OUT_ERROR_INVALID_HANDLE;
     }
 
-    if (flipMode != 1) {
+    // The Order submits mode 3 every frame; retain its warning once without per-frame log I/O.
+    static std::atomic_flag mode_three_reported{};
+    if (flipMode != 1 &&
+        (flipMode != 3 || !mode_three_reported.test_and_set(std::memory_order_relaxed))) {
         LOG_WARNING(Lib_VideoOut, "flipmode = {}", flipMode);
     }
 
