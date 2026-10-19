@@ -90,9 +90,10 @@ class Worker:
             runtime = order1886.find_runtime_path(requested or None)
             if runtime is None:
                 return "Select a verified native runtime declaring support for this option first."
+            stamp = signature(runtime)
             if self._runtime_support is not None:
-                previous, previous_runtime, stamp, reasons = self._runtime_support
-                if requested == previous and runtime == previous_runtime and stamp == signature(runtime):
+                previous, previous_runtime, previous_stamp, reasons = self._runtime_support
+                if requested == previous and runtime == previous_runtime and previous_stamp == stamp:
                     return reasons[option]
             order1886.find_runtime(runtime)
             reasons = {}
@@ -105,7 +106,9 @@ class Worker:
                     reasons[candidate] = ""
                 except ValueError as exc:
                     reasons[candidate] = str(exc)
-            self._runtime_support = requested, runtime, signature(runtime), reasons
+            if signature(runtime) != stamp:
+                return "Runtime files changed while checking options. Try again."
+            self._runtime_support = requested, runtime, stamp, reasons
             return reasons[option]
         except (OSError, ValueError) as exc:
             return "This runtime option is unavailable: " + str(exc)

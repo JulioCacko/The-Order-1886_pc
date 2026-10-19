@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import order1886
 from launcher import order1886_launcher as legacy
@@ -87,6 +88,24 @@ class PerformanceCaptureTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 order1886.runtime_environment(ROOT / 'fixture.exe', ROOT / 'out/state',
                                               {'performance_capture': invalid})
+
+    def test_runtime_replaced_during_capability_validation_does_not_cache_old_support(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runtime = self.fixture(root)
+            receipt = runtime.with_name('runtime-build.json')
+            app = worker.Worker(root / 'user', ROOT)
+            validate = order1886.validate_performance_capture
+            def replace_after_validation(path, enabled):
+                validate(path, enabled)
+                build = json.loads(receipt.read_text())
+                build['performance_capture'] = False
+                receipt.write_text(json.dumps(build))
+            with patch.object(order1886, 'validate_performance_capture', side_effect=replace_after_validation):
+                self.assertTrue(app.native_option_reason({'runtime': str(runtime)}, 'performance_capture'))
+            with self.assertRaises(ValueError):
+                app.dispatch('settings.set', {'values': {'runtime': str(runtime), 'performance_capture': True}})
+            self.assertIs(app.settings()['performance_capture'], False)
 
     def test_native_trace_records_unicode_paths_and_preserves_existing_files(self):
         header = (ROOT / 'gpu/shim/ps4_frame_trace.h').as_posix()
