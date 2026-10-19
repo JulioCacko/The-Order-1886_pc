@@ -20,6 +20,7 @@
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_wait_diagnostics.h"
 #include "video_core/texture_cache/aliasing.h"
+#include "video_core/texture_cache/image_rejection.h"
 #include "video_core/texture_cache/host_compatibility.h"
 #include "video_core/texture_cache/texture_cache.h"
 #include "video_core/texture_cache/tile_manager.h"
@@ -654,6 +655,27 @@ ImageId TextureCache::ResolveDepthOverlap(const ImageInfo& requested_info, Bindi
     return cache_image_id;
 }
 
+u32 TextureCache::MaxArrayLayers() {
+    if (max_array_layers != 0) {
+        return max_array_layers;
+    }
+    // One query per device: the limit depends on the format/type/usage triple, so ask about
+    // a plain sampled 2D colour image, which is the shape this title actually binds.
+    const vk::PhysicalDeviceImageFormatInfo2 format_info{
+        .format = vk::Format::eR8G8B8A8Unorm,
+        .type = vk::ImageType::e2D,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = vk::ImageUsageFlagBits::eSampled,
+    };
+    const auto properties = instance.GetPhysicalDevice().getImageFormatProperties2(format_info);
+    max_array_layers = VideoCore::MinArrayLayers;
+    if (properties.result == vk::Result::eSuccess) {
+        max_array_layers = std::max<u32>(VideoCore::MinArrayLayers,
+                                         properties.value.imageFormatProperties.maxArrayLayers);
+    }
+    LOG_INFO(Render_Vulkan, "Image array-layer ceiling: {}", max_array_layers);
+    return max_array_layers;
+}
 std::tuple<ImageId, int, int> TextureCache::ResolveOverlap(const ImageInfo& image_info,
                                                            BindingType binding,
                                                            ImageId cache_image_id,

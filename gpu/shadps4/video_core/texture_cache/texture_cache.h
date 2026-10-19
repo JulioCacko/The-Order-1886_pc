@@ -239,6 +239,10 @@ public:
     /// the GPU.
     void DiagDumpImage(ImageId image_id, const char* tag);
 
+    /// The device's array-layer ceiling, queried once. A guest descriptor above it cannot
+    /// become a host image, so the binding path refuses it instead of aborting.
+    u32 MaxArrayLayers();
+
     [[nodiscard]] Image& GetImage(ImageId id) {
         auto& image = slot_images[id];
         TouchImage(image);
@@ -438,6 +442,7 @@ private:
     tsl::robin_map<u64, Sampler> samplers;
     std::unordered_set<ImageId> download_images;
     u64 total_used_memory = 0;
+    u32 max_array_layers = 0;
     u64 gc_evictions = 0, gc_downloads = 0; ///< pressure report
     std::chrono::steady_clock::time_point gc_report_time{};
     u64 trigger_gc_memory = 0;
