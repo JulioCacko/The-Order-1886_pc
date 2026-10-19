@@ -131,6 +131,23 @@ func TestFailedRecoveryIsRecordedAndNotRepeatedAutomatically(t *testing.T) {
 	}
 }
 
+func TestRelaunchUsesTheRecordedEntryPointAndState(t *testing.T) {
+	installation := filepath.Join("C:", "Portable 游戏")
+	for _, direct := range []bool{false, true} {
+		command := relaunchCommand(installation, filepath.Join(installation, "user", "order1886"), direct)
+		want := filepath.Join(installation, "The Order 1886.exe")
+		if direct {
+			want = filepath.Join(installation, "Play The Order 1886.exe")
+		}
+		if command.Path != want {
+			t.Fatalf("relaunch used %q, want %q", command.Path, want)
+		}
+		if command.Args[len(command.Args)-2] != "--state-dir" || command.Dir != installation {
+			t.Fatalf("relaunch lost the recorded state or directory: %v %q", command.Args, command.Dir)
+		}
+	}
+}
+
 func TestCleanInstallationHasNoResultAndNeedsNoRecovery(t *testing.T) {
 	installation, _ := TransactionFixture(t)
 	if _, ok, err := ReadResult(installation); err != nil || ok {

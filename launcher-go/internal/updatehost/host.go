@@ -210,7 +210,7 @@ func runApply(ctx context.Context, installation string, options Options, deadlin
 		return result, err
 	}
 	result.Phase = tx.Phase()
-	result.Relaunched = relaunch(installation, state, options.NoRelaunch)
+	result.Relaunched = relaunch(installation, state, options.NoRelaunch, tx)
 	writeResult(installation, result)
 	// Retention never runs before a successful apply, so a failed update keeps
 	// every byte its rollback needs.
@@ -270,7 +270,7 @@ func runRecovery(ctx context.Context, installation string, options Options, dead
 	}
 	result.Phase = tx.Phase()
 	result.Recovered = true
-	result.Relaunched = relaunch(installation, state, options.NoRelaunch)
+	result.Relaunched = relaunch(installation, state, options.NoRelaunch, tx)
 	writeResult(installation, result)
 	_, _ = tx.Retain(2)
 	return result, nil
@@ -310,23 +310,27 @@ func lockSession(ctx context.Context, state string, deadline time.Time) (*os.Fil
 	}
 }
 
-func relaunch(installation, state string, skip bool) bool {
-	if skip {
-		return false
-	}
-	direct := false
-	// Read the recorded mode without holding the transaction: the journal is the
-	// only trusted source, and a missing one simply means the normal launcher.
-	if tx, err := updates.OpenTransaction(installation); err == nil {
-		direct, _ = tx.LaunchMode()
-		tx.Close()
-	}
+// relaunchCommand builds the restart invocation for the entry point that started
+// the update, with the recorded player state and nothing else.
+func relaunchCommand(installation, state string, direct bool) *exec.Cmd {
 	name := "The Order 1886.exe"
 	if direct {
 		name = "Play The Order 1886.exe"
 	}
 	command := exec.Command(filepath.Join(installation, name), "--state-dir", state)
 	command.Dir = installation
+	return command
+}
+
+// relaunch starts the launcher again. The relaunch mode comes from the open
+// transaction: reopening it here would collide with the installation lock this
+// process still holds.
+func relaunch(installation, state string, skip bool, tx *updates.Transaction) bool {
+	if skip {
+		return false
+	}
+	direct, _ := tx.LaunchMode()
+	command := relaunchCommand(installation, state, direct)
 	configureHelperProcess(command)
 	return command.Start() == nil
 }
