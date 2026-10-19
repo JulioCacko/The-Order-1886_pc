@@ -3,8 +3,8 @@
 Reviewed against the acceptance lists in
 [JulioCacko/The-Order-1886_pc](https://github.com/JulioCacko/The-Order-1886_pc/issues).
 Evidence: [verified implementation](verification/2026-10-18-donor-060.md),
-[runtime record](verification/2026-10-18-gold-work.md), current source at `e4d02ff`.
-This is separate from the older public preview.3 download.
+[runtime record](verification/2026-10-18-gold-work.md), release source at `54242e0`.
+Preview.4 adds Windows/Linux packages, selected-save restoration before Play and game system-language forwarding. See the [release receipt](verification/2026-10-18-preview4-release.md).
 
 ## Completed host features
 
@@ -34,7 +34,7 @@ performance are tracked separately.
 | [#17](https://github.com/JulioCacko/The-Order-1886_pc/issues/17) Mods/patches | Partial | Ordered asset overlays pass fixtures; external executable patches, real mods and update preservation remain. |
 | [#18](https://github.com/JulioCacko/The-Order-1886_pc/issues/18) Steam shortcut | Implementation checked; acceptance pending | 24 integration fixtures cover discovery, quoting/Unicode, preservation, atomic writes, running-client refusal and idempotence. A live Steam shortcut launch with saved settings remains unverified; no personal library was changed during review. |
 | [#20](https://github.com/JulioCacko/The-Order-1886_pc/issues/20) In-game UI/text/cache | Partial | Overlay/input plumbing and safe clearing exist; text-dialog applicability and complete in-game focus/settings acceptance remain. |
-| [#21](https://github.com/JulioCacko/The-Order-1886_pc/issues/21) Text/voice | Open | Launcher language does not independently select installed game text/voice. |
+| [#21](https://github.com/JulioCacko/The-Order-1886_pc/issues/21) Text/voice | Partial | Launcher selection now forwards the verified PS4 system-language ID (including pt-BR) on next launch. Matching game assets, visible gameplay acceptance and independent text/voice controls remain required. |
 | [#22](https://github.com/JulioCacko/The-Order-1886_pc/issues/22) Achievements | Partial | ABI unlock IDs/timestamps persist in fixtures; official metadata, names/icons, live UI and real unlock capture remain. |
 | [#23](https://github.com/JulioCacko/The-Order-1886_pc/issues/23) Update 1.02 | Validation pending | The shown 40 FPS rejection does not resolve the separate reported 60 FPS/fullscreen crash. |
 
