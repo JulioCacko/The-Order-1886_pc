@@ -75,3 +75,57 @@ Minor integration boundary: callers must stage beneath a trusted, caller-owned
 parent directory. Creating a directory with mode `0700` inherits Windows ACLs;
 this API does not grant a separate Windows permission boundary. The helper and
 transaction integration must enforce that staging precondition.
+
+## Transaction core (integration still pending)
+
+The Go core now backs up changed manifest-owned files, retains verified new
+payloads and writes a recovery journal before changing installed files. Its
+installation lock rejects concurrent updaters. It refuses source checkouts,
+directory links/junctions, modified package files and unowned path collisions.
+Failed replacement and cancellation attempt rollback. Unknown edits are retained
+and reported instead of being overwritten. A new transaction may follow a
+completed/rolled-back transaction; older transaction directories are retained.
+Backup cleanup/retention still needs integration before shipping.
+
+Candidate packages must advertise `order1886-update-1`. This ABI is not yet added
+to package builds because the actual launcher bootstrap is still outstanding.
+The caller carries `StageArchive`'s returned manifest SHA256 into
+`Identity.ManifestSHA256` before preparation; preparation checks that exact
+manifest again and hashes files during copying. Editing both a staged file and
+its manifest cannot replace the originally verified candidate.
+
+The two Go entry points are replaced before worker/library changes and restored
+last during rollback. The helper must hold the player-session lock and wait for
+the initiating launcher/worker to close before applying or rolling back. The core
+alone does not acquire that player lock or launch a recovery UI. Legacy launcher
+startup during replacement and the complete packaged helper/bootstrap flow
+remain qualification requirements.
+
+Current checks include interruption at each of seven replacement boundaries,
+actual termination of a child updater process followed by lock reacquisition and
+recovery, cancellation/retry, unexpected edits, corrupt backups/stages, a Windows
+library opened without delete sharing, and rejection of a real Windows junction.
+Oversized journals are refused before replacing the previous recovery record.
+These are process-interruption checks; sudden-power-loss durability remains
+unqualified. They do not establish that the packaged launcher recovers yet.
+
+A one-off isolated check copied complete `savedata`, `savedata_backups` and
+`trophies` trees plus settings/runtime INI from the retained 014410Z player
+package: **21 files, 710,512 bytes**. Apply and rollback preserved every copied
+byte and left the source files unchanged. Current-save and backup directories
+were kept separate; no profile data was merged across snapshots. The temporary
+machine-specific check was removed after it passed. Package binaries in this
+check were the deterministic transaction fixtures, so actual packaged-binary
+replacement/locking and runtime visibility of saves remain separate gates.
+
+Final transaction-batch checks: `go test ./... -count=1` and
+`go test -race ./... -count=1` each passed **97 tests, no skips**; `go vet ./...`
+passed. The Linux core test binary cross-compiled successfully; it was not run on
+Linux. A fresh source reviewer independently passed all **84 core tests** and
+found no actionable Critical, Important or Minor defects under the documented
+trusted-directory and stopped-player assumptions. The earlier staging commit
+`9e01f76ce342475ccab1e859f39c1969e97e1f44` also passed hosted Go launcher workflow
+`39284967948`; that result does not cover these later transaction changes.
+
+No application entry point calls this module yet. This source batch does not
+enable updates, change an installed player package or satisfy #9's full acceptance.

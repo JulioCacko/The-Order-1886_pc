@@ -30,6 +30,7 @@ type Identity struct {
 	SHA256         string
 	SourceRevision string
 	RuntimeSHA256  string
+	ManifestSHA256 string
 }
 
 type File struct {
@@ -44,8 +45,10 @@ type RuntimeIdentity struct {
 }
 
 type Manifest struct {
+	SHA256         string          `json:"-"`
 	Product        string          `json:"product"`
 	Launcher       string          `json:"launcher"`
+	UpdateABI      string          `json:"update_abi"`
 	SourceRevision string          `json:"source_revision"`
 	SourceDirty    *bool           `json:"source_dirty"`
 	RuntimeSHA256  string          `json:"runtime_sha256"`
@@ -236,6 +239,10 @@ func StageArchive(ctx context.Context, archive, destination string, identity Ide
 	manifest, err = decodeManifest(body, identity)
 	if err != nil {
 		return manifest, err
+	}
+	manifest.SHA256 = digestBytes(body)
+	if identity.ManifestSHA256 != "" && manifest.SHA256 != identity.ManifestSHA256 {
+		return manifest, errors.New("manifest SHA256 differs from verified release metadata")
 	}
 	owned := make(map[string]string)
 	for _, entry := range manifest.Files {
