@@ -213,6 +213,13 @@ def validate_performance_capture(runtime, enabled):
         raise ValueError('Performance recording requires a matching native runtime declaring capture support. Rebuild or select a newer runtime.')
 
 
+def validate_htile_control(runtime, enabled):
+    if type(enabled) not in (bool, int) or enabled not in (False, True):
+        raise ValueError('HTILE control must be on or off')
+    if enabled and (runtime_identity(runtime).get('build') or {}).get('htile_control') is not True:
+        raise ValueError('HTILE control requires a matching native runtime declaring it. Rebuild or select a newer runtime.')
+
+
 def runtime_process_environment(runtime, inherited=None):
     runtime = Path(runtime).resolve()
     source = os.environ if inherited is None else inherited
@@ -251,6 +258,8 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     validate_readback_policy(runtime, readbacks)
     capture = settings.get('performance_capture', False)
     validate_performance_capture(runtime, capture)
+    htile = settings.get('htile_unqualified', False)
+    validate_htile_control(runtime, htile)
     system_language = settings.get('system_language', 1)
     if type(system_language) is not int or not 0 <= system_language <= 29:
         raise ValueError('System language must be an integer from 0 to 29')
@@ -261,6 +270,9 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
         'ORDER1886_FPS_LIMIT': str(frame_rate),
         'ORDER1886_LANGUAGE': str(system_language),
         'ORDER1886_READBACKS': str({'relaxed': 1, 'selective': 3, 'precise': 2}[readbacks]),
+        # Off by default: the HTILE adaptation is unqualified for gameplay, visuals
+        # and frame cost, so a player can keep it out of the launch path.
+        'ORDER1886_HTILE': '1' if htile else '0',
         # Reuse validated cached pipelines before playback rather than compiling during it.
         'ORDER1886_PIPELINE_BINARIES': '0', 'ORDER1886_BACKGROUND_WARMUP': '0',
         'ORDER1886_PARALLEL_WARMUP': '0',

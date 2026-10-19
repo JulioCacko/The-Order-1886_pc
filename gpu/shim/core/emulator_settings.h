@@ -34,6 +34,15 @@ public:
         }();
         return value;
     }
+    // ORDER1886_HTILE=1 opts into the adapted HTILE metadata path: a metadata clear
+    // may skip its real dispatch, and a buffer read may take the tracked HTILE word.
+    // Off by default because that path has no matched gameplay, visual or frame-cost
+    // qualification yet, and because a scene that renders wrongly must stay fixable
+    // without rebuilding the runtime.
+    bool HtileEnabled() {
+        static const auto value = Number("ORDER1886_HTILE", 0) != 0;
+        return value;
+    }
     // ORDER1886_VBLANK_HZ=0 (uncapped presets): vblank runs at 480 Hz so a finished frame is
     // shown within ~2 ms instead of waiting for the next display-rate vblank (below the display
     // rate frames alternated 10/20 ms at 100 Hz: judder), and GetFrameLimit() caps the rate at

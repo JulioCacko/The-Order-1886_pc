@@ -26,14 +26,29 @@ def main():
         shutil.copytree(package, root)
         state = Path(temporary) / "isolated player"
         environment = dict(os.environ, PATH=str(Path(os.environ["SystemRoot"]) / "System32"), PYTHONPATH="")
+        if (package / "The Order 1886 Legacy.exe").exists():
+            raise ValueError("A Go-only package must not ship the previous launcher.")
+        if manifest.get("update_abi") != "order1886-update-2":
+            raise ValueError("Package does not advertise the update recovery ABI.")
         for name in ("The Order 1886.exe", "Play The Order 1886.exe"):
             subprocess.run([str(root / name), "--worker-smoke", "--state-dir", str(state)],
                            cwd=temporary, env=environment, check=True, timeout=30, capture_output=True)
+        # The helper runs before any window exists; on a clean package it must find
+        # nothing to recover and must not leave a journal behind.
+        recovery = subprocess.run([str(root / "The Order 1886.exe"), "--update-helper",
+                                   "--update-action", "recover", "--update-installation", str(root),
+                                   "--no-relaunch"],
+                                  cwd=temporary, env=environment, timeout=30, capture_output=True)
+        if recovery.returncode:
+            raise ValueError("Update helper refused a clean package: " + recovery.stderr.decode("utf-8", "replace"))
+        if (root / ".order1886-update" / "journal.json").exists():
+            raise ValueError("Update helper wrote a journal for a clean package.")
         worker = root / "bin/order1886-worker.exe"
         requests = [
             dict(version=1,id=1,method="settings.set",params={"values":{"vsync":False,"ui_language":"pt"}}),
             dict(version=1,id=2,method="settings.set",params={"values":{"frame_rate":90}}),
             dict(version=1,id=3,method="state.get",params={}),
+            dict(version=1,id=4,method="updates.preflight",params={}),
         ]
         result = subprocess.run([str(worker),"--state-dir",str(state),"--installation-root",str(root)],
             input="".join(json.dumps(r)+"\n" for r in requests),text=True,encoding="utf-8",
@@ -44,8 +59,9 @@ def main():
         assert replies[2]["result"]["settings"]["ui_language"] == "pt"
         assert len(replies[2]["result"]["pages"]) == 7
         assert len(replies[2]["result"]["languages"]) == 13
+        assert replies[3]["result"]["ready"] is True
         assert not (state / "savedata").exists()
-    print("Go portable smoke passed: manifest, both entry points, Unicode relocation, restricted PATH, worker protocol, autosave, language and rejected settings.")
+    print("Go portable smoke passed: manifest, both entry points, update ABI and clean helper, Unicode relocation, restricted PATH, worker protocol, update preflight, autosave, language and rejected settings.")
 
 
 if __name__ == "__main__":

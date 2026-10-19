@@ -40,6 +40,7 @@ def main():
         'readback_policies': ['relaxed','precise','selective'],
         'performance_capture': True,
         'input_remapping': True,
+        'htile_control': True,
         'runtime_sha256': digest,
         'source_revision': command('git', 'rev-parse', 'HEAD'),
         'source_dirty': bool(command('git', 'status', '--porcelain', '--untracked-files=normal')),

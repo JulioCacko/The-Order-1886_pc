@@ -25,7 +25,7 @@ from launcher.order1886_options import FIELDS, PAGES
 MAX_REQUEST = 64 * 1024
 METHODS = frozenset(("state.get", "settings.set", "settings.reset", "session.start", "session.stop",
                      "saves.list", "saves.backup", "saves.restore", "cache.clear", "mods.list",
-                     "steam.add", "shortcut.create"))
+                     "steam.add", "shortcut.create", "updates.preflight"))
 FIELD_BY_KEY = {item["key"]: item for item in FIELDS}
 
 
@@ -99,10 +99,12 @@ class Worker:
                     return reasons[option]
             order1886.find_runtime(runtime)
             reasons = {}
-            for candidate in ("selective", "precise", "performance_capture"):
+            for candidate in ("selective", "precise", "performance_capture", "htile_control"):
                 try:
                     if candidate == "performance_capture":
                         order1886.validate_performance_capture(runtime, True)
+                    elif candidate == "htile_control":
+                        order1886.validate_htile_control(runtime, True)
                     else:
                         order1886.validate_readback_policy(runtime, candidate)
                     reasons[candidate] = ""
@@ -274,6 +276,12 @@ class Worker:
             values = self.settings()
             return order1886.mods.discover(order1886.mods.resolve_root(values.get("mods_dir", ""), self.installation))
         self.require_idle()
+        if method == "updates.preflight":
+            self.safe_state()
+            self.state.mkdir(parents=True, exist_ok=True)
+            # The helper must reacquire and hold this lock across replacement.
+            with order1886.session_lock(self.state):
+                return {"ready": True}
         if method in ("settings.set", "settings.reset"):
             patch = params.get("values")
             if method == "settings.reset":
@@ -299,6 +307,11 @@ class Worker:
             if ({"runtime", "performance_capture"} & patch.keys() and
                     values.get("performance_capture")):
                 reason = self.native_option_reason(values, "performance_capture")
+                if reason:
+                    raise ValueError(reason)
+            if ({"runtime", "htile_unqualified"} & patch.keys() and
+                    values.get("htile_unqualified")):
+                reason = self.native_option_reason(values, "htile_control")
                 if reason:
                     raise ValueError(reason)
             order1886.mods.validate_config(order1886.mods.resolve_root(values.get("mods_dir", ""), self.installation),

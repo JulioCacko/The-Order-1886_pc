@@ -26,6 +26,32 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(saved["future"], {"x": 1})
         self.assertFalse(result["settings"]["vsync"])
 
+    def test_update_preflight_checks_idle_lock_without_changing_settings(self):
+        self.state.mkdir()
+        settings = self.state / "settings.json"
+        original = '{"future": 73, "mods_enabled": false}'
+        settings.write_text(original, encoding="utf-8")
+        self.assertEqual(self.app.dispatch("updates.preflight", {}), {"ready": True})
+        self.assertEqual(settings.read_text(encoding="utf-8"), original)
+        with worker.order1886.session_lock(self.state):
+            pass
+
+    def test_update_preflight_refuses_busy_or_external_session(self):
+        self.app.busy = True
+        with self.assertRaisesRegex(ValueError, "Stop the current session"):
+            self.app.dispatch("updates.preflight", {})
+        self.app.busy = False
+        self.state.mkdir()
+        with worker.order1886.session_lock(self.state):
+            with self.assertRaisesRegex(RuntimeError, "already running"):
+                self.app.dispatch("updates.preflight", {})
+
+    def test_update_preflight_rejects_state_inside_original_game(self):
+        with patch.object(self.app, "settings", return_value={"game_dir": str(self.root)}):
+            with self.assertRaisesRegex(ValueError, "outside the selected game"):
+                self.app.dispatch("updates.preflight", {})
+        self.assertFalse((self.state / "session.lock").exists())
+
     def test_invalid_and_unavailable_values_do_not_write(self):
         for values in ({"frame_rate": 90}, {"mouse_sensitivity": True},
                        {"mouse_sensitivity": 501}, {"ui_language": "no"},

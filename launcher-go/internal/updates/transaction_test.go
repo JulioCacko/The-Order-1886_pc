@@ -28,12 +28,13 @@ func transactionFixture(t *testing.T) (string, string, Identity) {
 	}
 	archive, identity = packageFixture(t, func(files map[string][]byte, m map[string]any) {
 		m["source_revision"] = strings.Repeat("b", 40)
-		m["update_abi"] = "order1886-update-1"
+		m["update_abi"] = "order1886-update-2"
 		files["The Order 1886.exe"] = []byte("launcher-7")
 		files["Play The Order 1886.exe"] = []byte("launcher-7")
 		files["bin/order1886-worker.exe"] = []byte("worker-7")
 		files["_internal/library.dll"] = []byte("library-7")
 		delete(files, "notices/LICENSE.txt")
+		delete(files, "The Order 1886 Legacy.exe")
 		files["notices/new-license.txt"] = []byte("new-license")
 		var list []map[string]string
 		for name, data := range files {
@@ -66,6 +67,16 @@ func transactionFixture(t *testing.T) (string, string, Identity) {
 	return installed, stage, identity
 }
 
+// bindSession records the player profile a prepared update must recover into. Every
+// installable transaction requires it, so tests that apply an update bind one.
+func bindSession(t *testing.T, tx *Transaction, root string) {
+	t.Helper()
+	if err := tx.BindSession(filepath.Join(root, "user", "order1886")); err != nil {
+		tx.Close()
+		t.Fatal(err)
+	}
+}
+
 func TestJournalNeverCommitsMetadataItCannotRead(t *testing.T) {
 	root, stage, identity := transactionFixture(t)
 	tx, err := PrepareTransaction(context.Background(), root, stage, identity)
@@ -78,7 +89,7 @@ func TestJournalNeverCommitsMetadataItCannotRead(t *testing.T) {
 	for i := 0; i < 7000; i++ {
 		tx.record.Files = append(tx.record.Files, change{Path: "bin/" + strings.Repeat("long/", 120) + fmt.Sprintf("%05d.dll", i), Old: strings.Repeat("0", 64), New: strings.Repeat("1", 64)})
 	}
-	sort.Slice(tx.record.Files, func(i, j int) bool { return beforePath(tx.record.Files[i].Path, tx.record.Files[j].Path) })
+	sort.Slice(tx.record.Files, func(i, j int) bool { return beforeChange(tx.record.Files[i], tx.record.Files[j]) })
 	if err = tx.saveJournal("applying"); err == nil {
 		t.Fatal("committed journal exceeding recovery parser limit")
 	}
@@ -96,24 +107,6 @@ func TestJournalNeverCommitsMetadataItCannotRead(t *testing.T) {
 	}
 }
 
-func beforePath(a, b string) bool {
-	priority := func(s string) int {
-		switch s {
-		case "The Order 1886.exe":
-			return 0
-		case "Play The Order 1886.exe":
-			return 1
-		case "package-manifest.json":
-			return 3
-		}
-		return 2
-	}
-	if priority(a) != priority(b) {
-		return priority(a) < priority(b)
-	}
-	return a < b
-}
-
 func TestTransactionProcessCrashHelper(t *testing.T) {
 	if os.Getenv("ORDER1886_UPDATE_TEST_CHILD") != "1" {
 		return
@@ -126,6 +119,7 @@ func TestTransactionProcessCrashHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	bindSession(t, tx, os.Getenv("ORDER1886_UPDATE_TEST_ROOT"))
 	err = tx.Apply(context.Background(), func(done, total int) {
 		if done == 3 {
 			os.Stdout.WriteString("UPDATE-INTERRUPTION-READY\n")
@@ -229,6 +223,7 @@ func TestTransactionUpdatesAndRollsBackOnlyPackageFiles(t *testing.T) {
 	if got := installedSnapshot(t, root); !reflect.DeepEqual(got, before) {
 		t.Fatal("preparing changed the installation")
 	}
+	bindSession(t, tx, root)
 	if err = tx.Apply(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -243,6 +238,9 @@ func TestTransactionUpdatesAndRollsBackOnlyPackageFiles(t *testing.T) {
 	}
 	if _, ok := after["notices/LICENSE.txt"]; ok {
 		t.Fatal("obsolete owned file remains")
+	}
+	if _, ok := after["The Order 1886 Legacy.exe"]; ok {
+		t.Fatal("retired entry point remains in a Go-only package")
 	}
 	for name, want := range before {
 		if strings.HasPrefix(name, "user/") || strings.HasPrefix(name, "mods/") || strings.HasPrefix(name, "patches/") || strings.HasPrefix(name, "CUSA") || name == "player notes.txt" {
@@ -269,7 +267,7 @@ func TestTransactionUpdatesAndRollsBackOnlyPackageFiles(t *testing.T) {
 }
 
 func TestInterruptedTransactionRecoversAtEveryFileBoundary(t *testing.T) {
-	for boundary := 1; boundary <= 7; boundary++ {
+	for boundary := 1; boundary <= 8; boundary++ {
 		t.Run(string(rune('0'+boundary)), func(t *testing.T) {
 			root, stage, identity := transactionFixture(t)
 			before := installedSnapshot(t, root)
@@ -277,6 +275,7 @@ func TestInterruptedTransactionRecoversAtEveryFileBoundary(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			bindSession(t, tx, root)
 			interrupted := false
 			func() {
 				defer func() {
@@ -320,6 +319,7 @@ func TestCancellationRollsBackAndNewAttemptWorks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	bindSession(t, tx, root)
 	ctx, cancel := context.WithCancel(context.Background())
 	if err = tx.Apply(ctx, func(done, total int) { cancel() }); err == nil {
 		t.Fatal("ignored cancellation")
@@ -333,6 +333,7 @@ func TestCancellationRollsBackAndNewAttemptWorks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Close()
+	bindSession(t, tx, root)
 	if err = tx.Apply(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -382,6 +383,7 @@ func TestTransactionRefusesModifiedFilesAndUnownedCollisions(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer tx.Close()
+			bindSession(t, tx, root)
 			if when == "after-prepare" {
 				os.WriteFile(filepath.Join(root, "_internal", "library.dll"), []byte("new-user-edit"), 0600)
 				before = installedSnapshot(t, root)
@@ -417,6 +419,7 @@ func TestRollbackDoesNotRequireUnusedNewPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Close()
+	bindSession(t, tx, root)
 	if err = tx.Apply(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -525,6 +528,7 @@ func TestRecoveryBootstrapsAreReplacedBeforeWorkerLibraries(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Close()
+	bindSession(t, tx, root)
 	if err = tx.Apply(context.Background(), func(done, total int) {
 		got := installedSnapshot(t, root)
 		if done == 1 && (got["The Order 1886.exe"] != "launcher-7" || got["_internal/library.dll"] != "library-6") {

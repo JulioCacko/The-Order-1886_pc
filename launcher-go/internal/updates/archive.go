@@ -264,7 +264,7 @@ func StageArchive(ctx context.Context, archive, destination string, identity Ide
 	if len(entries) != len(manifest.Files)+1 {
 		return manifest, errors.New("archive contains unmanifested files")
 	}
-	for _, required := range []string{"The Order 1886.exe", "Play The Order 1886.exe", "The Order 1886 Legacy.exe", "bin/order1886-worker.exe", "bin/order1886-runtime.exe", "bin/runtime-build.json"} {
+	for _, required := range []string{"The Order 1886.exe", "Play The Order 1886.exe", "bin/order1886-worker.exe", "bin/order1886-runtime.exe", "bin/runtime-build.json"} {
 		if entries[required] == nil {
 			return manifest, fmt.Errorf("required package file is missing: %s", required)
 		}
