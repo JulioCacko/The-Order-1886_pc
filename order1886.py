@@ -220,6 +220,64 @@ def validate_htile_control(runtime, enabled):
         raise ValueError('HTILE control requires a matching native runtime declaring it. Rebuild or select a newer runtime.')
 
 
+# Live runtime switches. The runtime re-reads the decimal mask in the file named by
+# ORDER1886_TOGGLE_FILE every 250 ms (src/runtime_memory.c) and switches off the
+# optimization each set bit names (gpu/shim/ps4_toggles.h). Only bits the Order renderer
+# still acts on are offered here: SceneHalfRes and the TAA bits are declared in that
+# header but read nowhere, and SceneMipBias only scales TemporalUpscaler::SceneMipBias(),
+# which the Order baseline returns as 0 (order1886_render_baseline.h). Delivering those
+# would offer a control nothing honours.
+EFFECT_TOGGLES = {
+    # Player setting: (mask bit the runtime reads, label used in refusals). The enum mixes
+    # the two spellings, so take the values from it rather than from a bit index:
+    # ThreadedRecording is 16 (1 << 4) and UpdateImageFastPath is 1 << 30.
+    'synchronous_recording': (1 << 4, 'Synchronous command recording'),  # Ps4Toggle::ThreadedRecording
+    'texture_update_locking': (1 << 30, 'Locked texture update checks'),  # Ps4Toggle::UpdateImageFastPath
+}
+EFFECT_TOGGLE_FILE = 'effect-toggles.txt'
+
+
+def validate_effect_toggle_support(runtime):
+    """The selected runtime must declare that it reads the live toggle file it is given."""
+    if (runtime_identity(runtime).get('build') or {}).get('effect_toggles') is not True:
+        raise ValueError('Effect toggles require a matching native runtime declaring the live '
+                         'toggle file. Rebuild or select a newer runtime.')
+
+
+def validate_effect_toggles(runtime, toggles):
+    """Refuse anything but real booleans, and refuse enabling on an undeclaring runtime."""
+    if not isinstance(toggles, dict) or set(toggles) - set(EFFECT_TOGGLES):
+        raise ValueError('Unknown effect toggle')
+    mask = 0
+    for name, (bit, label) in EFFECT_TOGGLES.items():
+        value = toggles.get(name, False)
+        if type(value) is not bool:
+            raise ValueError(f'{label} must be on or off')
+        if value:
+            mask |= bit
+    if mask:
+        validate_effect_toggle_support(runtime)
+    return mask
+
+
+def effect_toggle_mask(runtime, settings):
+    """Resolve the requested switches to the runtime's own mask."""
+    return validate_effect_toggles(runtime, {name: settings.get(name, False)
+                                             for name in EFFECT_TOGGLES})
+
+
+def effect_toggle_environment(user, mask):
+    """Deliver the mask through the file the runtime already re-reads, and nothing else."""
+    path = Path(user) / EFFECT_TOGGLE_FILE
+    if not mask:
+        # An all-off launch is the existing launch path: no file, so no watcher starts.
+        path.unlink(missing_ok=True)
+        return {}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f'{mask}\n', encoding='utf-8')
+    return {'ORDER1886_TOGGLE_FILE': str(path)}
+
+
 def validate_in_game_menu(enabled):
     """The in-game menu stays opt-in: it is unqualified for gameplay on this title."""
     if type(enabled) is not bool:
@@ -285,6 +343,7 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     validate_performance_capture(runtime, capture)
     htile = settings.get('htile_unqualified', False)
     validate_htile_control(runtime, htile)
+    effect_mask = effect_toggle_mask(runtime, settings)
     in_game_menu = validate_in_game_menu(settings.get('in_game_menu', False))
     system_language = settings.get('system_language', 1)
     if type(system_language) is not int or not 0 <= system_language <= 29:
@@ -311,6 +370,9 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     if profile['fps_limit'] is not None:
         env['ORDER1886_FPS_LIMIT'] = str(profile['fps_limit'])
     env['ORDER1886_VBLANK_HZ'] = str(profile['vblank_hz'])
+    # Off by default: the runtime keeps running the paths it already runs, and an
+    # all-off launch sets no toggle file at all.
+    env.update(effect_toggle_environment(user, effect_mask))
     env.update(validate_input_settings(runtime, settings, inherited))
     icon = user / 'window_icon.bmp'
     if icon.is_file():
@@ -459,7 +521,7 @@ def session_lock(user):
         file.close()
 
 
-def main(argv=None):
+def argument_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--game-dir', type=Path, default=default_game_dir())
     parser.add_argument('--runtime', type=Path)
@@ -493,6 +555,18 @@ def main(argv=None):
     parser.add_argument('--mods-dir', default='', help='Folder containing explicitly selected asset mod folders')
     parser.add_argument('--mods-enabled', type=int, choices=[0, 1], default=0)
     parser.add_argument('--mods-order', default='[]', help='JSON list of enabled mod folder names; later entries win')
+    # Live switches the runtime honours through its own toggle file; both are experimental.
+    parser.add_argument('--synchronous-recording', action='store_true',
+                        help='Record Vulkan commands on the submitting thread instead of the '
+                             'recording thread (experimental, unqualified)')
+    parser.add_argument('--texture-update-locking', action='store_true',
+                        help='Take the guest-fault mutex for texture update checks instead of '
+                             'the lock-free flag check (experimental, unqualified)')
+    return parser
+
+
+def main(argv=None):
+    parser = argument_parser()
     args = parser.parse_args(argv)
     if not 10 <= args.mouse_sensitivity <= 500:
         parser.error('--mouse-sensitivity must be from 10 to 500')

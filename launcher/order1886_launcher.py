@@ -82,6 +82,11 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                 "--system-language", str(language)]
     command += ["--readbacks", values.get("readbacks", "relaxed")]
     command += ["--performance-capture", str(int(values.get("performance_capture", False)))]
+    # Live runtime switches stay off the command line unless the player asked for them.
+    if values.get("synchronous_recording"):
+        command += ["--synchronous-recording"]
+    if values.get("texture_update_locking"):
+        command += ["--texture-update-locking"]
     for kind in ('keyboard', 'controller'):
         mapping = values.get(kind + '_bindings', {})
         inputs.validate(mapping, kind)
@@ -228,6 +233,8 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         "mouse_invert_y": bool(saved.get("mouse_invert_y", False)),
         "ui_language": saved.get("ui_language", "en"),
         "htile_unqualified": bool(saved.get("htile_unqualified", False)),
+        "synchronous_recording": bool(saved.get("synchronous_recording", False)),
+        "texture_update_locking": bool(saved.get("texture_update_locking", False)),
         "fps_cap": saved.get("fps_cap", 120),
         "in_game_menu": bool(saved.get("in_game_menu", False)),
         "automatic_updates": bool(saved.get("automatic_updates", False)),
