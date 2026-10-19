@@ -237,6 +237,14 @@ bool FixedRenderSession() {
     return size && size[0];
 }
 
+bool MenuEnabled() {
+    static const bool enabled = [] {
+        const char* value = std::getenv("ORDER1886_SETTINGS_MENU");
+        return value && value[0] == '1';
+    }();
+    return enabled;
+}
+
 
 
 

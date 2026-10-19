@@ -90,7 +90,9 @@ Ps4PerfStats::PresentationCounter presentation_counter;
 std::chrono::steady_clock::time_point last_ui_frame{};
 
 bool SettingsMenuEnabled() {
-    return false;
+    // Opt-in per launch (ORDER1886_SETTINGS_MENU=1): the menu and the settings it edits
+    // live are not gameplay-qualified for this title yet, so it stays closed by default.
+    return Ps4Settings::MenuEnabled();
 }
 
 void SetOpen(bool value) {

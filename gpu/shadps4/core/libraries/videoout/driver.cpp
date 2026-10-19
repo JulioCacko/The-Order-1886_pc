@@ -683,9 +683,16 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
 
     // frame limit (see EmulatorSettings::GetFrameLimit). A request waits in the queue
     // until its slot; slots advance by one period (no drift) but never lag behind by more.
-    // the in-game menu changes the limit live (Ps4Settings::fps_limit); ORDER1886_FPS_LIMIT
-    // and the uncapped presets keep their fixed limit.
-    const auto current_limit = [] { return EmulatorSettings.GetFrameLimit(); };
+    // With the in-game menu enabled, the limit it edits is live (Ps4Settings::fps_limit);
+    // otherwise the launcher's ORDER1886_FPS_LIMIT keeps its fixed value.
+    const auto current_limit = [] {
+        if (Ps4Settings::MenuEnabled()) {
+            const int live = Ps4Settings::Get().fps_limit.load();
+            // ParseFpsLimit already bounds the file value; clamp here for the menu's own edits.
+            return live > 0 ? u32(std::min(live, 240)) : u32(0);
+        }
+        return EmulatorSettings.GetFrameLimit();
+    };
     u32 frame_limit = current_limit();
     auto frame_period = frame_limit ? std::chrono::nanoseconds(1000000000 / frame_limit)
                                     : std::chrono::nanoseconds(0);

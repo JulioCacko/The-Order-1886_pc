@@ -58,6 +58,7 @@ for key, label in (("film_grain", "Film grain"), ("motion_blur", "Motion blur"),
 field("frame_rate", "Game frame rate", "performance", "select", 30, "30 FPS is native. 60 FPS is experimental; Chapter 6/9 QTE checks remain required.",
       [(30, "30 FPS — native", ""), (60, "60 FPS — experimental", ""),
        (90, "90 FPS", PATCH), (0, "Unlocked", PATCH)])
+field("in_game_menu", "In-game settings menu", "performance", "boolean", False, "Off by default. The menu, its tabs and the settings it changes while the game runs are unqualified for this title: input capture, focus and stability have not been verified in gameplay, so enable it only to help test it. Insert or R3+R2 toggles it when enabled.")
 field("fps_cap", "Presentation frame cap", "performance", "number", 120, "Limits how often the runtime presents, not how fast the engine runs (#14). The game frame rate still wins while it is lower, so the default of 120 never changes pacing; lowering it throttles presentation only. This is not a simulation-timing control.", minimum=30, maximum=240)
 field("frame_generation", "Frame generation", "performance", "select", "off", "Generated frames do not increase simulation rate. All three providers remain in the gold plan.",
       [("off", "Off", ""), ("fsr", "AMD FSR Frame Generation", FG),

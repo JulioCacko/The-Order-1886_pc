@@ -220,6 +220,13 @@ def validate_htile_control(runtime, enabled):
         raise ValueError('HTILE control requires a matching native runtime declaring it. Rebuild or select a newer runtime.')
 
 
+def validate_in_game_menu(enabled):
+    """The in-game menu stays opt-in: it is unqualified for gameplay on this title."""
+    if type(enabled) is not bool:
+        raise ValueError('The in-game menu must be on or off')
+    return enabled
+
+
 def validate_fps_cap(settings):
     """Presentation cap only: it can throttle the present thread, never the engine."""
     value = settings.get('fps_cap', 120)
@@ -278,6 +285,7 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     validate_performance_capture(runtime, capture)
     htile = settings.get('htile_unqualified', False)
     validate_htile_control(runtime, htile)
+    in_game_menu = validate_in_game_menu(settings.get('in_game_menu', False))
     system_language = settings.get('system_language', 1)
     if type(system_language) is not int or not 0 <= system_language <= 29:
         raise ValueError('System language must be an integer from 0 to 29')
@@ -296,7 +304,8 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
         'ORDER1886_PARALLEL_WARMUP': '0',
         # Keep unverified speculative SRT work off the normal Order launch path.
         'ORDER1886_PREP_WORKERS': '0',
-        'ORDER1886_SETTINGS_MENU': '0',
+        # Opt-in: the in-game menu and the settings it edits live are unqualified.
+        'ORDER1886_SETTINGS_MENU': '1' if in_game_menu else '0',
         'ORDER1886_STREAM_MEMORY': 'cached', 'PYTHONIOENCODING': 'utf-8',
     })
     if profile['fps_limit'] is not None:
