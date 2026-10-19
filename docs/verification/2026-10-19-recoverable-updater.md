@@ -249,6 +249,78 @@ three downloaded asset digests matched the local files:
   `CheckReleaseOn` selected preview.7, downloaded the real asset, verified receipt,
   size, source (`969dc19`) and runtime, and staged **2349 files** (18.1 s).
 
+### Sudden power loss: what ordering the source proves, and what it does not
+
+The ordering the transaction actually provides is now written down as the durability
+contract at the top of `launcher-go/internal/updates/transaction.go`. It is five
+claims about sequence, all of them readable in the code:
+
+1. Every payload a journal names (`txn-*/previous`, `txn-*/next`) is copied, rehashed
+   and `Sync()`ed by `copyVerified` before the journal referencing it is published.
+2. `saveJournal` writes a fresh `journal-<random>.tmp`, `Sync()`es it, closes it and
+   only then renames it over `journal.json` in the same directory.
+3. `replace` copies the replacement into a temp file in the target's own directory,
+   `Sync()`es it, then renames it over the target, so every publish is a same-volume
+   atomic rename of already-flushed content.
+4. Recovery re-derives each file's real state from its hash and accepts only the
+   recorded previous or new content, so a crash between any two renames is
+   recoverable in either direction and any third state stops the transaction.
+5. Within one transaction the recorded phase only moves forward, and no record
+   survives a failed read.
+
+Claims 2 and 4 together are why no torn journal can be produced by this code: a
+journal is published only by renaming a complete, flushed file, so a partial journal
+can exist only as an unreferenced temp file. The new tests turn that into evidence
+rather than an assertion:
+
+- `TestTornJournalIsRefusedAndLeavesTheInstallationUntouched` writes **every proper
+  prefix** of a live journal (1 byte through `len-1`) and requires the phase reader to
+  refuse each one, the journal file to stay byte-identical, and the installation to
+  stay byte-identical; `PendingRecovery` and `OpenTransaction` refuse representative
+  lengths, and the intact journal stored before the damage still recovers the previous
+  tree.
+- `TestCrashBetweenApplyingJournalAndFirstReplacementRecoversExactTree` covers the
+  window the boundary sweep never reached — the `applying` journal published and
+  nothing replaced — both with intact payloads and with payloads truncated and
+  removed as a partially written payload would leave them. Recovery restores the
+  exact tree, ends in `rolled_back`, needs no second recovery, and the installation
+  accepts the next update.
+- `TestUnreadableJournalLeavesNoUsableTransactionState` and
+  `TestRecordedPhaseOnlyMovesForward` pin the two fail-closed fixes this audit added:
+  a failed read clears the record (it previously left the old phase, file list and
+  player state usable in memory), and `saveJournal` now compares the phase against
+  the record **on disk**, refusing both a rewind and any attempt to overwrite a
+  recovery record it cannot read. A later transaction still legitimately starts at
+  `prepared`, so `TestRetainKeepsInFlightAndNewestCompletedTransaction`,
+  `TestCancellationRollsBackAndNewAttemptWorks` and the documented
+  "a new transaction may follow a completed one" rule are unchanged.
+- `TestRecoveryNeverDeletesPlayerFilesTheManifestDoesNotOwn` adds the ownership arms:
+  a player file created at a path the journal records as an addition, a player edit
+  of a path the journal records as a deletion, an addition the transaction does own,
+  a journal repurposed (with an order-valid control record, so only the path can be
+  the reason) to name player data, and a journal claiming a deletion or addition it
+  holds no verified backup for. In every arm recovery refuses and every player byte
+  is unchanged.
+
+Nothing above needed a journal-version or ABI change, and none of the ordering rules
+the existing tests pin were altered.
+
+**What still requires a real machine.** The contract stops at directory entries: Go
+offers no portable, verifiable directory flush on Windows (an `os.Root` directory
+handle is opened read-only, and `FlushFileBuffers` needs write access and is not
+documented to flush a directory index), so the code cannot force the renames, or the
+`MkdirAll` of the payload directories, to the platter. A directory-flush helper was
+deliberately **not** added: it would be a no-op on the only shipped platform and
+therefore unverifiable. The result is that the "one of three states" reading above is
+conditional on the filesystem preserving write order, which NTFS does for its metadata
+journal and this suite can only assume. Still unqualified, and not closable in source:
+an actual power cut or reset during apply, rollback and each phase transition on the
+target volume; a player updating their **live** installation rather than a copy; an
+installation on a different volume, a FAT32/exFAT USB stick or a network share where
+write order is not preserved and same-directory renames may not be atomic; storage
+that acknowledges `Sync` before the data is on the platter; and whether the OS caches
+or reorders the renames that are the whole guarantee.
+
 ### Still unqualified
 
 Sudden power loss, a player updating their own live installation (this batch used a
