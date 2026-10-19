@@ -9,7 +9,7 @@ PAGES = [
     {"id": "system", "title": "System"},
 ]
 TEMPORAL = "Requires verified Order depth, motion, jitter, history and HUD inputs (#7)."
-RENDERER = "The current Order compatibility profile disables this setting; renderer qualification is pending."
+RENDERER = "This setting is not exposed by the validated Order launch profile yet; backend wiring and qualification are pending."
 PATCH = "No hash-verified recipe for this executable is available yet."
 FG = "Frame-generation presentation, synchronization and latency qualification are pending."
 FIELDS = []
