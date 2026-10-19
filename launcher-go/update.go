@@ -28,6 +28,8 @@ type UpdateStatus struct {
 	Error           string `json:"error"`
 	RecoveryPending bool   `json:"recovery_pending"`
 	RecoveryBlocked bool   `json:"recovery_blocked"`
+	// RollbackAvailable reports that a completed update can still be undone.
+	RollbackAvailable bool `json:"rollback_available"`
 	// InstallAvailable gates the destructive actions. A package may only replace
 	// itself when the helper exists in this build and no update is in flight.
 	InstallAvailable bool   `json:"install_available"`
@@ -157,15 +159,19 @@ func (app *App) updateStatus() UpdateStatus {
 	pending, blocked, _ := pendingRecovery(app.root)
 	status.RecoveryPending = pending
 	status.RecoveryBlocked = blocked
+	if phase, exists, err := updates.JournalPhase(app.root); err == nil {
+		// A completed update can still be rolled back on request.
+		status.RollbackAvailable = exists && phase == "applied"
+	}
 	status.Channel = app.updateCh
 	if status.Channel == "" {
 		status.Channel = updates.ChannelPreview
 	}
-	status.InstallAvailable = app.updateStage != "" && !blocked && !app.busy
+	status.InstallAvailable = app.updateStage != "" && !blocked && !pending && !app.busy
 	if !status.InstallAvailable {
 		switch {
-		case blocked:
-			status.InstallReason = "Recover the interrupted update first."
+		case pending || blocked:
+			status.InstallReason = "Restore the interrupted update before installing another one."
 		case app.busy:
 			status.InstallReason = "Stop the running session before installing an update."
 		default:
@@ -181,12 +187,14 @@ func (app *App) UpdateState() UpdateStatus { return app.updateStatus() }
 // startupUpdateCheck honours automatic_updates as a background version check: it
 // never downloads, never installs and never blocks the window.
 func (app *App) startupUpdateCheck() {
-	app.updateCh = app.updateChannel()
-	app.autoUpdates = app.automaticUpdates()
+	channel := app.updateChannel()
+	automatic := app.automaticUpdates()
 	app.updateMu.Lock()
-	app.update.Automatic = app.autoUpdates
+	app.updateCh = channel
+	app.autoUpdates = automatic
+	app.update.Automatic = automatic
 	app.updateMu.Unlock()
-	if !app.autoUpdates {
+	if !automatic {
 		return
 	}
 	go func() {
@@ -206,7 +214,9 @@ func (app *App) UpdateCheck() UpdateStatus {
 	app.setUpdateLocked("checking")
 	app.updateMu.Unlock()
 	channel := app.updateChannel()
+	app.updateMu.Lock()
 	app.updateCh = channel
+	app.updateMu.Unlock()
 	callCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	release, err := updates.CheckReleaseOn(callCtx, channel)
@@ -245,7 +255,9 @@ func (app *App) UpdateDownload() UpdateStatus {
 	app.update.Error = ""
 	app.updateMu.Unlock()
 	callCtx, cancel := context.WithCancel(context.Background())
+	app.updateMu.Lock()
 	app.cancelUpdate = cancel
+	app.updateMu.Unlock()
 	defer cancel()
 	directory := filepath.Join(app.state, "updates")
 	if err := os.MkdirAll(directory, 0o700); err != nil {
@@ -305,6 +317,20 @@ func (app *App) UpdateInstall() error {
 	if err := updatehost.Prepare(app.root, candidate, app.state, app.direct); err != nil {
 		return err
 	}
+	// Until the helper is running, a failure here must not leave a prepared journal
+	// that blocks every worker call: roll it back before returning.
+	handedOff := false
+	defer func() {
+		if handedOff {
+			return
+		}
+		_, _ = updatehost.Run(context.Background(), updatehost.Options{
+			Installation: app.root,
+			Action:       updatehost.ActionRecover,
+			NoRelaunch:   true,
+			Timeout:      30 * time.Second,
+		})
+	}()
 	helper, err := updatehost.CopySelf(app.root)
 	if err != nil {
 		return err
@@ -326,11 +352,21 @@ func (app *App) UpdateInstall() error {
 	if err = command.Process.Release(); err != nil {
 		return err
 	}
+	handedOff = true
 	return app.closeForUpdate()
 }
 
-// UpdateRestore asks for an explicit recovery after an automatic one failed.
+// UpdateRestore rolls the installation back: recovery for an interrupted update,
+// rollback for a completed one the player wants to undo.
 func (app *App) UpdateRestore() error {
+	action := updatehost.ActionRecover
+	phase, exists, err := updates.JournalPhase(app.root)
+	if err != nil {
+		return err
+	}
+	if exists && phase == "applied" {
+		action = updatehost.ActionRollback
+	}
 	helper, err := updatehost.CopySelf(app.root)
 	if err != nil {
 		return err
@@ -341,7 +377,7 @@ func (app *App) UpdateRestore() error {
 	}
 	command := updatehost.Command(helper, updatehost.Options{
 		Installation:   app.root,
-		Action:         updatehost.ActionRecover,
+		Action:         action,
 		ParentPID:      os.Getpid(),
 		ParentClock:    started,
 		ConfirmRestore: true,
@@ -370,7 +406,8 @@ func (app *App) failUpdate(err error) UpdateStatus {
 }
 
 // closeForUpdate stops the worker and closes the window so the helper can replace
-// this executable. It refuses while a session is busy.
+// this executable. It refuses while a session is busy, and a failure leaves the
+// launcher usable instead of permanently "closing".
 func (app *App) closeForUpdate() error {
 	app.mu.Lock()
 	busy := app.busy
@@ -384,18 +421,26 @@ func (app *App) closeForUpdate() error {
 	}
 	app.connectMu.Lock()
 	worker := app.worker
-	app.shutdownStarted = true
 	app.connectMu.Unlock()
 	if worker != nil {
 		worker.Close()
 		select {
 		case <-worker.done:
 		case <-time.After(15 * time.Second):
-			return errors.New("the Order worker did not stop in time")
+			app.mu.Lock()
+			app.closing = false
+			app.mu.Unlock()
+			return errors.New("the Order worker did not stop in time; close the game and try again")
 		}
 	}
-	if app.ctx != nil {
-		quitApp(app.ctx)
+	app.connectMu.Lock()
+	app.shutdownStarted = true
+	app.connectMu.Unlock()
+	app.mu.Lock()
+	ctx := app.ctx
+	app.mu.Unlock()
+	if ctx != nil {
+		quitApp(ctx)
 	}
 	return nil
 }

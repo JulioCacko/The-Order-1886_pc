@@ -41,6 +41,26 @@ test('a blocked recovery offers restore instead of install', () => {
   assert.equal(updateHeadline({...base, recovery_blocked: true}, t), 'An interrupted update needs your decision');
 });
 
+test('a pending recovery is reachable before any failure is recorded', () => {
+  // The launcher refuses every worker call while a journal is pending, so the
+  // restore action must exist from the journal state alone.
+  const pending = updateSection({...base, recovery_pending: true}, t, escape, false);
+  assert.match(pending, /data-action="update\.restore"/);
+  assert.doesNotMatch(pending, /data-action="update\.install"/);
+});
+
+test('a completed update can be rolled back on request', () => {
+  const completed = updateSection({...base, rollback_available: true}, t, escape, false);
+  assert.match(completed, /data-action="update\.restore"/);
+  assert.match(completed, /Roll back this update/);
+  assert.doesNotMatch(completed, /data-action="update\.install"/);
+});
+
+test('a pending journal blocks installing another update', () => {
+  const staged = updateSection({...base, state: 'staged', install_available: false}, t, escape, false);
+  assert.doesNotMatch(staged, /data-action="update\.install"/);
+});
+
 test('progress and failures are visible', () => {
   const downloading = updateSection({...base, state: 'downloading', downloaded: 5, total: 10}, t, escape, false);
   assert.match(downloading, /<progress value="5" max="10">/);

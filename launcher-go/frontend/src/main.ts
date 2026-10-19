@@ -261,9 +261,24 @@ function bind() {
  document.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button=>button.onclick=()=>void action(button.dataset.action!));
  const backup=document.querySelector<HTMLSelectElement>('#backup');
  if(backup) backup.onchange=()=>{selectedBackup=backup.value;render();};
+ bindConfirmation();
+}
+function bindConfirmation() {
  document.querySelector('#confirm-no')!.addEventListener('click',()=>finishConfirmation(false));
  document.querySelector('#confirm-yes')!.addEventListener('click',()=>finishConfirmation(true));
  document.querySelector<HTMLDialogElement>('#confirm')!.addEventListener('cancel',event=>{event.preventDefault();finishConfirmation(false);});
+}
+// The launcher refuses every worker call while an update is unrecovered, so the
+// recovery screen is built from the journal-only update state: without it a player
+// would see "setup required" and no way to restore.
+function recoveryView(message:string) {
+ root.innerHTML=`<main class="settings-page"><h1 id="recovery-title" tabindex="-1">${escape(t('Update needs your attention'))}</h1>
+ <p role="alert" class="error">${escape(message)}</p>
+ <section class="utility-section">${updateSection(update,t,escape,false)}</section></main>`;
+ document.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button=>button.onclick=()=>void action(button.dataset.action!));
+ document.querySelectorAll<HTMLButtonElement>('[data-link]').forEach(button=>button.onclick=()=>void bridge().OpenLink(button.dataset.link!).catch(error=>flash(String(error),true)));
+ bindConfirmation();
+ document.querySelector<HTMLElement>('#recovery-title')?.focus();
 }
 async function action(name:string) {
  try {
@@ -334,8 +349,19 @@ async function start() {
  try{
   for(let i=0;i<100&&!window.go;i++) await new Promise(resolve=>setTimeout(resolve,100));
   const startup=await bridge().StartupError();
-  await refresh();
   await refreshUpdate();
+  try {
+   await refresh();
+  } catch (error) {
+   // A recovery-blocked launcher refuses the worker on purpose; its update panel
+   // comes from the journal and must still be reachable.
+   if (update?.recovery_blocked || update?.recovery_pending || update?.rollback_available) {
+    recoveryView(startup || String(error));
+    if (startup) flash(startup, true);
+    return;
+   }
+   throw error;
+  }
   if(startup) flash(startup,true);
   window.runtime?.EventsOn('update',(status:unknown)=>{
    update=parseUpdate(JSON.stringify(status));

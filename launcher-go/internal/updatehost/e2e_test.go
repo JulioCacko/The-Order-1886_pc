@@ -148,6 +148,96 @@ func TestPackagedUpdatePreservesPlayerDataAndRollsBack(t *testing.T) {
 		changed, changedPackage)
 }
 
+// TestPackagedHelperBinaryApplies proves the shipped copy runs the real flow: the
+// launcher executable is copied into the workspace, started with an argument array,
+// applies the prepared transaction and records the result. The parent it waits for
+// is a child of this test that has already exited, so the creation-time check is
+// exercised without waiting for the test process itself.
+func TestPackagedHelperBinaryApplies(t *testing.T) {
+	oldPackage := os.Getenv("ORDER1886_E2E_OLD")
+	candidateZip := os.Getenv("ORDER1886_E2E_CANDIDATE")
+	work := os.Getenv("ORDER1886_E2E_WORK")
+	launcher := os.Getenv("ORDER1886_E2E_LAUNCHER")
+	if oldPackage == "" || candidateZip == "" || work == "" || launcher == "" {
+		t.Skip("set ORDER1886_E2E_OLD, ORDER1886_E2E_CANDIDATE, ORDER1886_E2E_WORK and ORDER1886_E2E_LAUNCHER")
+	}
+	installation := filepath.Join(work, "helper-installation")
+	if err := os.RemoveAll(installation); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyTree(oldPackage, installation); err != nil {
+		t.Fatal(err)
+	}
+	before := Snapshot(t, installation)
+	hash := sha256.Sum256(mustRead(t, candidateZip))
+	identity := updates.Identity{
+		Size:           int64(len(mustRead(t, candidateZip))),
+		SHA256:         hex.EncodeToString(hash[:]),
+		SourceRevision: manifestString(t, candidateZip, "source_revision"),
+		RuntimeSHA256:  manifestString(t, candidateZip, "runtime_sha256"),
+	}
+	stage := filepath.Join(work, "helper-stage")
+	if err := os.RemoveAll(stage); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := updates.StageArchive(context.Background(), candidateZip, stage, identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity.ManifestSHA256 = manifest.SHA256
+	state := filepath.Join(installation, "user", "order1886")
+	if err := Prepare(installation, Candidate{Stage: stage, Identity: identity}, state, false); err != nil {
+		t.Fatal(err)
+	}
+	parent := exec.Command("cmd.exe", "/d", "/c", "exit", "0")
+	if err = parent.Start(); err != nil {
+		t.Fatal(err)
+	}
+	parentPID := parent.Process.Pid
+	parentStart, err := ProcessStartTime(parentPID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = parent.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	// Copy the shipped launcher itself: inside `go test` os.Executable is the test
+	// binary, which does not implement helper mode.
+	workspaceDirectory := filepath.Join(installation, filepath.FromSlash(workspace))
+	if err = os.MkdirAll(workspaceDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	helper := filepath.Join(workspaceDirectory, "helper"+executableSuffix())
+	if err = os.WriteFile(helper, mustRead(t, launcher), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	command := Command(helper, Options{
+		Installation: installation, Action: ActionApply,
+		ParentPID: parentPID, ParentClock: parentStart,
+		NoRelaunch: true, Timeout: 2 * time.Minute,
+	})
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("shipped helper failed: %v %s", err, output)
+	}
+	result, ok, err := ReadResult(installation)
+	if err != nil || !ok {
+		t.Fatalf("shipped helper recorded no result: %v", err)
+	}
+	if result.Phase != "applied" || result.Relaunched {
+		t.Fatalf("wrong helper result: %+v", result)
+	}
+	after := Snapshot(t, installation)
+	for name, want := range before {
+		if strings.HasPrefix(name, "user/") && after[name] != want {
+			t.Fatalf("shipped helper changed a player file: %s", name)
+		}
+	}
+	if _, err = Run(context.Background(), Options{Installation: installation, Action: ActionRollback, NoRelaunch: true, Timeout: 2 * time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("shipped helper applied %s from the copied binary", result.StateDirectory)
+}
+
 func mustRead(t *testing.T, name string) []byte {
 	t.Helper()
 	body, err := os.ReadFile(name)

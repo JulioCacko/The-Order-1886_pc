@@ -1,7 +1,7 @@
 export type UpdateStatus = {
   state: string; version: string; downloaded: number; total: number;
   channel: string; automatic: boolean; error: string;
-  recovery_pending: boolean; recovery_blocked: boolean;
+  recovery_pending: boolean; recovery_blocked: boolean; rollback_available: boolean;
   install_available: boolean; install_reason: string;
 };
 
@@ -12,6 +12,7 @@ export function parseUpdate(raw: string): UpdateStatus {
     total: value.total ?? 0, channel: value.channel ?? 'preview', automatic: value.automatic ?? false,
     error: value.error ?? '', recovery_pending: value.recovery_pending ?? false,
     recovery_blocked: value.recovery_blocked ?? false,
+    rollback_available: value.rollback_available ?? false,
     install_available: value.install_available ?? false, install_reason: value.install_reason ?? '',
   };
 }
@@ -29,8 +30,7 @@ function megabytes(bytes: number) {
 export function updateHeadline(status: UpdateStatus | null, t: (value: string) => string) {
   if (!status) return t('Update state unavailable');
   if (status.recovery_blocked) return t('An interrupted update needs your decision');
-  if (status.recovery_pending) return t('Restoring the previous version');
-  switch (status.state) {
+  if (status.recovery_pending) return t('Restoring the previous version');  switch (status.state) {
     case 'checking': return t('Checking for updates…');
     case 'available': return `${t('Update available')}: ${status.version}`;
     case 'downloading': return `${t('Downloading')} ${percent(status)}%`;
@@ -44,6 +44,8 @@ export function updateSection(status: UpdateStatus | null, t: (value: string) =>
                                escape: (value: unknown) => string, disabled: boolean) {
   const busy = disabled || status === null;
   const blocked = status?.recovery_blocked ?? false;
+  const recoverable = blocked || (status?.recovery_pending ?? false);
+  const rollbackable = status?.rollback_available ?? false;
   const actions: string[] = [];
   actions.push(`<button data-action="update.check"${busy ? ' disabled' : ''}>${escape(t('Check for updates'))}</button>`);
   if (status?.state === 'available') {
@@ -55,8 +57,10 @@ export function updateSection(status: UpdateStatus | null, t: (value: string) =>
   if (status?.state === 'staged' && status.install_available) {
     actions.push(`<button class="danger" data-action="update.install"${busy ? ' disabled' : ''}>${escape(t('Install and restart'))}</button>`);
   }
-  if (blocked) {
+  if (recoverable) {
     actions.push(`<button class="danger" data-action="update.restore"${disabled ? ' disabled' : ''}>${escape(t('Restore previous version'))}</button>`);
+  } else if (rollbackable) {
+    actions.push(`<button data-action="update.restore"${disabled ? ' disabled' : ''}>${escape(t('Roll back this update'))}</button>`);
   }
   actions.push(`<button data-link="releases">${escape(t('View releases'))}</button>`);
   const progress = status?.state === 'downloading'

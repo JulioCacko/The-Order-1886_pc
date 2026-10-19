@@ -196,8 +196,9 @@ func runApply(ctx context.Context, installation string, options Options, deadlin
 	result.StateDirectory = state
 	session, err := lockSession(ctx, state, deadline)
 	if err != nil {
+		// The game still holds the session lock: nothing was touched, so this is not
+		// a failed update and must not block a later attempt.
 		result.Message = err.Error()
-		result.RecoveryFailed = true
 		writeResult(installation, result)
 		return result, err
 	}
@@ -210,11 +211,28 @@ func runApply(ctx context.Context, installation string, options Options, deadlin
 		return result, err
 	}
 	result.Phase = tx.Phase()
-	result.Relaunched = relaunch(installation, state, options.NoRelaunch, tx)
-	writeResult(installation, result)
 	// Retention never runs before a successful apply, so a failed update keeps
 	// every byte its rollback needs.
 	_, _ = tx.Retain(2)
+	return finish(installation, state, tx, session, options, result)
+}
+
+// finish records the outcome, releases both locks, and only then starts the
+// launcher again: the new process takes the same installation lock at startup, so
+// relaunching while this one still holds it would race into "updater busy".
+func finish(installation, state string, tx *updates.Transaction, session *os.File, options Options, result Result) (Result, error) {
+	direct, _ := tx.LaunchMode()
+	result.StateDirectory = state
+	writeResult(installation, result)
+	if session != nil {
+		_ = session.Close()
+	}
+	_ = tx.Close()
+	result.Relaunched = relaunch(installation, state, options.NoRelaunch, direct)
+	if result.Relaunched || options.NoRelaunch {
+		// Record the relaunch attempt too, so the next start can report it.
+		writeResult(installation, result)
+	}
 	return result, nil
 }
 
@@ -271,8 +289,9 @@ func runRecovery(ctx context.Context, installation string, options Options, dead
 	result.StateDirectory = state
 	session, err := lockSession(ctx, state, deadline)
 	if err != nil {
+		// Nothing was touched: a busy session must not be recorded as a failed
+		// recovery that blocks the next attempt.
 		result.Message = err.Error()
-		result.RecoveryFailed = true
 		writeResult(installation, result)
 		return result, err
 	}
@@ -286,10 +305,8 @@ func runRecovery(ctx context.Context, installation string, options Options, dead
 	}
 	result.Phase = tx.Phase()
 	result.Recovered = true
-	result.Relaunched = relaunch(installation, state, options.NoRelaunch, tx)
-	writeResult(installation, result)
 	_, _ = tx.Retain(2)
-	return result, nil
+	return finish(installation, state, tx, session, options, result)
 }
 
 func openPending(ctx context.Context, installation string, deadline time.Time) (*updates.Transaction, error) {
@@ -338,14 +355,13 @@ func relaunchCommand(installation, state string, direct bool) *exec.Cmd {
 	return command
 }
 
-// relaunch starts the launcher again. The relaunch mode comes from the open
-// transaction: reopening it here would collide with the installation lock this
-// process still holds.
-func relaunch(installation, state string, skip bool, tx *updates.Transaction) bool {
+// relaunch starts the launcher again. Callers pass the recorded relaunch mode and
+// must already have released both locks: the new process takes the installation
+// lock as it starts.
+func relaunch(installation, state string, skip bool, direct bool) bool {
 	if skip {
 		return false
 	}
-	direct, _ := tx.LaunchMode()
 	command := relaunchCommand(installation, state, direct)
 	configureHelperProcess(command)
 	return command.Start() == nil
