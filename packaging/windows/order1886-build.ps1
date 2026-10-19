@@ -103,7 +103,7 @@ try {
     New-Item -ItemType Directory -Force -Path $scriptData | Out-Null
     # This is the complete source/data closure of the Order preparation path.
     # Do not ship unrelated patch, resource or title helpers.
-    foreach ($name in @('prepare.py', 'link_modules.py', 'link_libc.py', 'save_backup.py', 'order1886_frame_rate.py', 'order1886_display.py', 'order1886_cache.py', 'order1886_steam.py', 'order1886_mods.py')) {
+    foreach ($name in @('prepare.py', 'link_modules.py', 'link_libc.py', 'save_backup.py', 'order1886_frame_rate.py', 'order1886_display.py', 'order1886_cache.py', 'order1886_steam.py', 'order1886_mods.py', 'order1886_input.py')) {
         Copy-Item -LiteralPath (Join-Path "$projectRoot/scripts" $name) -Destination (Join-Path $scriptData $name)
     }
     $pythonSource = Join-Path $stage 'python-source'
@@ -118,7 +118,7 @@ try {
         Copy-Item -LiteralPath (Join-Path "$projectRoot/launcher" $name) -Destination (Join-Path "$pythonSource/launcher" $name)
         $pythonSources["launcher/$name"] = Get-SHA256 (Join-Path "$pythonSource/launcher" $name)
     }
-    foreach ($name in @('prepare.py', 'link_modules.py', 'link_libc.py', 'save_backup.py', 'order1886_frame_rate.py', 'order1886_display.py', 'order1886_cache.py', 'order1886_steam.py', 'order1886_mods.py')) {
+    foreach ($name in @('prepare.py', 'link_modules.py', 'link_libc.py', 'save_backup.py', 'order1886_frame_rate.py', 'order1886_display.py', 'order1886_cache.py', 'order1886_steam.py', 'order1886_mods.py', 'order1886_input.py')) {
         $pythonSources["scripts/$name"] = Get-SHA256 (Join-Path $scriptData $name)
     }
     $versionFile = Join-Path $stage 'version-info.txt'

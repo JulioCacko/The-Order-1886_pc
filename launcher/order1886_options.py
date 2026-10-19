@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Explicit player settings; availability describes the actual Order launch path."""
 from launcher.order1886_lang import LANGUAGES
+from scripts.order1886_input import BUTTONS, UNBOUND
 
 PAGES = [
     {"id": "home", "title": "Home"}, {"id": "graphics", "title": "Graphics"},
@@ -80,7 +81,12 @@ field("mouse_look", "Mouse camera", "controls", "boolean", True, "Map mouse move
 field("mouse_sensitivity", "Mouse sensitivity", "controls", "number", 100, "Camera sensitivity in percent.", minimum=10, maximum=500)
 field("mouse_invert_y", "Invert vertical camera", "controls", "boolean", False, "Invert vertical mouse movement.")
 field("vibration", "Controller vibration", "controls", "boolean", True, "Independent vibration configuration is pending runtime validation.", reason=RENDERER)
-field("input_remapping", "Keyboard / controller bindings", "controls", "text", "", "Complete remapping and direct-camera acceptance remain tracked in #4.", reason=PATCH)
+for kind, label in (("keyboard", "Keyboard buttons"), ("controller", "Controller buttons")):
+    field(kind + "_bindings", label, "controls", "bindings", {},
+          "Choose the host input for each PS4 digital button. Default restores the original source. Shared inputs press all assigned buttons; keyboard stick keys, mouse buttons and overlay shortcuts stay active. Physical sticks, analog triggers and real touch input are unchanged. Applies on next launch.",
+          choices=[(UNBOUND, "No digital source", "Select a matching native runtime to remove a digital binding.")],
+          input_kind=kind, buttons=[{"id": key, "label": title, "default": []} for key, title in BUTTONS.items()])
+field("input_remapping", "Stick axes and analog trigger remapping", "controls", "text", "", "Keyboard stick axes, physical analog triggers and real touch input are not independently remappable yet (#4).", reason=RENDERER)
 field("ui_language", "Launcher language", "system", "select", "en", "Apply the launcher catalog immediately. Game language changes take effect on its next launch when assets are installed.",
       [(key, title, "") for key, title in LANGUAGES.items()])
 field("game_text_language", "Game text language", "game", "select", "follow", "Independent text selection remains tracked in #21.",

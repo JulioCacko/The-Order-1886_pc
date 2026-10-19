@@ -104,6 +104,7 @@ static SDL_Gamepad *current_gamepad(void) {
  * changed per PS4 button with ORDER1886_PAD_MAP (gamepad) and ORDER1886_KEY_MAP (keyboard), e.g.
  * ORDER1886_KEY_MAP="cross=Q,square=Left Shift" or ORDER1886_PAD_MAP="cross=b,circle=a": comma-separated
  * <ps4 button>=<SDL key or gamepad button name>. A mapped PS4 button loses its default sources.
+ * Keyboard scancode:<id> supports punctuation/aliases; none removes a digital source.
  * touchpad_left (alias touchpad) and touchpad_right are the two sides of the touchpad click:
  * Back/View (Share on a DualSense) is the right click. Sticks, triggers, the real
  * touchpad click and the overlay shortcuts are not remapped. */
@@ -133,11 +134,94 @@ static ButtonMap key_map={{
     {SDL_SCANCODE_I,BTN_UP}, {SDL_SCANCODE_K,BTN_DOWN}, {SDL_SCANCODE_J,BTN_LEFT}, {SDL_SCANCODE_L,BTN_RIGHT},
 },17};
 
+static void input_json_string(const char *text) {
+    putchar('"');
+    for (const unsigned char *p=(const unsigned char *)text; *p; ++p) {
+        if (*p=='"' || *p=='\\') putchar('\\');
+        if (*p<32) printf("\\u%04x",*p);
+        else putchar(*p);
+    }
+    putchar('"');
+}
+static const char *input_key_name(int code,char buffer[128]) {
+    const char *name=SDL_GetScancodeName((SDL_Scancode)code);
+    if (!name || !*name) return "";
+    if ((int)SDL_GetScancodeFromName(name)==code) return name;
+    snprintf(buffer,128,"%s [%d]",name,code); /* Distinguish SDL's Return/Return2 alias. */
+    return buffer;
+}
+static void input_defaults(const ButtonMap *map,uint32_t ps,bool keyboard) {
+    putchar('[');
+    bool first=true;
+    for (size_t i=0;i<map->count;++i) if (map->entries[i].ps==ps) {
+        char buffer[128];
+        const char *name=keyboard ? input_key_name(map->entries[i].source,buffer)
+            : SDL_GetGamepadStringForButton((SDL_GamepadButton)map->entries[i].source);
+        if (!first) putchar(',');
+        first=false;
+        input_json_string(name ? name : "");
+    }
+    putchar(']');
+}
+/* Query before SDL/game initialization so launchers validate the exact parser's names. */
+void runtime_pad_input_options(void) {
+    fputs("{\"version\":1,\"unbinding\":true,\"buttons\":[",stdout);
+    bool first=true;
+    for (size_t i=0;i<sizeof(ps_names)/sizeof(*ps_names);++i) {
+        if (!strcmp(ps_names[i].name,"touchpad")) continue; /* left-click alias */
+        if (!first) putchar(',');
+        first=false;
+        fputs("{\"id\":",stdout); input_json_string(ps_names[i].name);
+        fputs(",\"keyboard_default\":",stdout); input_defaults(&key_map,ps_names[i].ps,true);
+        fputs(",\"controller_default\":",stdout); input_defaults(&pad_map,ps_names[i].ps,false);
+        putchar('}');
+    }
+    fputs("],\"keyboard_sources\":[",stdout);
+    first=true;
+    for (int i=1;i<SDL_SCANCODE_COUNT;++i) {
+        char buffer[128];
+        const char *name=input_key_name(i,buffer);
+        if (!*name) continue;
+        if (!first) putchar(',');
+        first=false; input_json_string(name);
+    }
+    fputs("],\"keyboard_scancodes\":{",stdout);
+    first=true;
+    for (int i=1;i<SDL_SCANCODE_COUNT;++i) {
+        char buffer[128];
+        const char *name=input_key_name(i,buffer);
+        if (!*name) continue;
+        if (!first) putchar(',');
+        first=false; input_json_string(name); printf(":%d",i);
+    }
+    fputs("},\"controller_sources\":[",stdout);
+    first=true;
+    for (int i=0;i<SDL_GAMEPAD_BUTTON_COUNT;++i) {
+        const char *name=SDL_GetGamepadStringForButton((SDL_GamepadButton)i);
+        if (!name || !*name) continue;
+        if (!first) putchar(',');
+        first=false; input_json_string(name);
+    }
+    puts("]}");
+}
+
 static char *trim(char *text) {
     while (*text==' ' || *text=='\t') ++text;
     char *end=text+strlen(text);
     while (end>text && (end[-1]==' ' || end[-1]=='\t' || end[-1]=='\r' || end[-1]=='\n')) *--end=0;
     return text;
+}
+
+static int keyboard_source(const char *name) {
+    if (!strncmp(name,"scancode:",9)) {
+        char *end;
+        if (name[9]<'0' || name[9]>'9') return SDL_SCANCODE_UNKNOWN;
+        long code=strtol(name+9,&end,10);
+        if (*end || code<=SDL_SCANCODE_UNKNOWN || code>=SDL_SCANCODE_COUNT ||
+            !*SDL_GetScancodeName((SDL_Scancode)code)) return SDL_SCANCODE_UNKNOWN;
+        return (int)code;
+    }
+    return (int)SDL_GetScancodeFromName(name);
 }
 
 /* Applies a ORDER1886_PAD_MAP/ORDER1886_KEY_MAP value; returns how many entries were used. Bad entries are
@@ -162,15 +246,16 @@ static int apply_button_map(ButtonMap *map, const char *spec, bool keyboard) {
         entry=next;
         uint32_t ps=0;
         for (size_t i=0;i<sizeof(ps_names)/sizeof(*ps_names);++i) if (!SDL_strcasecmp(button,ps_names[i].name)) ps=ps_names[i].ps;
-        const int source=!*name ? -1 : keyboard ? (int)SDL_GetScancodeFromName(name) : (int)SDL_GetGamepadButtonFromString(name);
-        if (!ps || source<=(keyboard ? (int)SDL_SCANCODE_UNKNOWN : (int)SDL_GAMEPAD_BUTTON_INVALID)) {
+        const bool unbound=!SDL_strcasecmp(name,"none");
+        const int source=!*name || unbound ? -1 : keyboard ? keyboard_source(name) : (int)SDL_GetGamepadButtonFromString(name);
+        if (!ps || (!unbound && source<=(keyboard ? (int)SDL_SCANCODE_UNKNOWN : (int)SDL_GAMEPAD_BUTTON_INVALID))) {
             printf("Runtime: pad map: ignored '%s=%s'\n",button,name);
             continue;
         }
         size_t kept=0;
         for (size_t i=0;i<map->count;++i) if (map->entries[i].ps!=ps) map->entries[kept++]=map->entries[i];
         map->count=kept;
-        if (map->count<sizeof(map->entries)/sizeof(*map->entries)) map->entries[map->count++]=(ButtonSource){source,ps};
+        if (!unbound && map->count<sizeof(map->entries)/sizeof(*map->entries)) map->entries[map->count++]=(ButtonSource){source,ps};
         ++used;
     }
     return used;

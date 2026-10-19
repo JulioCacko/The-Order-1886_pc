@@ -69,6 +69,39 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(self.app.dispatch("state.get", {})["settings"]["frame_rate"], 90)
         self.assertEqual(path.read_text(), text)
 
+    def test_custom_bindings_are_validated_before_autosave_and_restore(self):
+        catalog = {'keyboard_sources': ['Q', 'Space'], 'controller_sources': ['a', 'b'],
+                   'unbinding': True,
+                   'keyboard_scancodes': {'Q': 20, 'Space': 44},
+                   'buttons': [{'id': key, 'keyboard_default': [], 'controller_default': []}
+                               for key in worker.order1886.inputs.BUTTONS]}
+        with patch.object(worker.order1886, 'find_runtime', return_value=Path('fixture-runtime.exe')), \
+             patch.object(worker.order1886, 'input_catalog', return_value=catalog):
+            self.app.dispatch('settings.set', {'values': {'keyboard_bindings': {'cross': 'Q'}}})
+            previous = (self.state / 'settings.json').read_bytes()
+            with self.assertRaises(ValueError):
+                self.app.dispatch('settings.set', {'values': {'keyboard_bindings': {'cross': 'NotAKey'}}})
+            self.assertEqual((self.state / 'settings.json').read_bytes(), previous)
+        with patch.object(worker.legacy, 'validate_launch_game', wraps=worker.legacy.validate_launch_game), \
+             patch.object(worker.order1886, 'inspect_game', return_value={}), \
+             patch.object(worker.order1886, 'find_runtime', return_value=Path('fixture-runtime.exe')), \
+             patch.object(worker.order1886, 'input_catalog', side_effect=ValueError('input inventory failed')), \
+             patch.object(worker.order1886.save_backup, 'restore') as restore:
+            with self.assertRaisesRegex(ValueError, 'input inventory failed'):
+                self.app.dispatch('session.start', {'backup': 'selected', 'confirmed': True})
+            restore.assert_not_called()
+
+    def test_invalid_keyboard_and_controller_maps_can_be_repaired_independently(self):
+        self.state.mkdir()
+        for first, second in (('keyboard_bindings', 'controller_bindings'),
+                              ('controller_bindings', 'keyboard_bindings')):
+            path = self.state / 'settings.json'
+            path.write_text(json.dumps({first: {'cross': 'Unknown Input'}, second: 'malformed', 'future': 7}))
+            self.app.dispatch('settings.set', {'values': {first: {}}})
+            self.assertEqual(json.loads(path.read_text())[second], 'malformed')
+            self.app.dispatch('settings.set', {'values': {second: {}}})
+            self.assertEqual(json.loads(path.read_text())['future'], 7)
+
     def test_mutating_actions_require_confirmation(self):
         for method in ("saves.restore", "cache.clear"):
             with self.subTest(method=method), self.assertRaises(ValueError):

@@ -57,6 +57,8 @@ Controls use restrained 5–7px corners. Plain divided settings rows carry the o
 
 Play/Stop is persistent. Autosave reports valid changes and retains previous values on failure. Unavailable choices stay visible with reasons. Confirmations protect save restoration and cache clearing. A selected save backup is an explicit pending restore before Play, not an implied in-game checkpoint load.
 
+Digital input mappings use labeled per-button selectors grouped by keyboard or controller. Default restores native sources; No digital source removes the digital assignment. Actual source names/defaults come from the matching native runtime. Physical axes, analog triggers, mouse and touch input remain active as described. Autosaves run sequentially; queued button edits merge from the latest confirmed state. Session actions wait until queued saves finish.
+
 ## Do's and Don'ts
 
 - Reuse canonical official assets through `scripts/copy-assets.mjs`; preserve source bytes.

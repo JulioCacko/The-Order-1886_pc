@@ -429,6 +429,10 @@ static int cpu_supported(char *missing, size_t size) {
 
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
+    if (argc == 2 && !strcmp(argv[1], "--input-options")) {
+        runtime_pad_input_options();
+        return 0;
+    }
     if (argc == 2 && !strcmp(argv[1], "--runtime-info")) {
         puts("{\"runtime_abi\":\"order1886-native-1\",\"title_id\":\"CUSA00076\","
              "\"prepared_format\":\"PS4BOOT5\",\"renderer_profile\":\"native-ps4\"}");
@@ -437,7 +441,7 @@ int main(int argc, char **argv) {
     if (argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h"))) {
         puts("The Order: 1886 native PS4 runtime\n"
              "Usage: order1886-runtime.exe image --app0 game --user state [--check-imports] [--cpu-only]\n"
-             "       order1886-runtime.exe --runtime-info");
+             "       order1886-runtime.exe --runtime-info | --input-options");
         return 0;
     }
 #ifndef _WIN32

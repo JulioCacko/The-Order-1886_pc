@@ -9,7 +9,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
-    "test": "tsc --target ES2022 --module ESNext --outDir .test-build src/session-status.ts src/achievement-list.ts src/view-state.ts && node --test tests/session-status.test.mjs tests/achievement-list.test.mjs tests/view-state.test.mjs"
+    "test": "tsc --target ES2022 --module ESNext --outDir .test-build src/session-status.ts src/achievement-list.ts src/view-state.ts src/input-bindings.ts src/settings-save.ts && node --test tests/session-status.test.mjs tests/achievement-list.test.mjs tests/view-state.test.mjs tests/input-bindings.test.mjs tests/settings-save.test.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3",
