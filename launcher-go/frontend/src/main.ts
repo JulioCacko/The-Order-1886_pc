@@ -1,10 +1,13 @@
 import './style.css';
 import {completionNotice} from './session-status';
+import {achievementRows, unlockDate, type TrophyArtwork} from './achievement-list';
+import {replaceView} from './view-state';
 
 type Choice = {value:string|number; label:string; available:boolean; reason:string};
 type Field = {key:string;label:string;page:string;kind:string;default:unknown;description:string;
   available:boolean;reason:string;minimum?:number;maximum?:number;choices?:Choice[]};
 type Snapshot = {trophies:{id:number;unlocked_at:number}[];trophy_error:string;settings:Record<string,any>;fields:Field[];pages:{id:string;title:string}[];
+  trophy_catalog?:TrophyArtwork[];trophy_catalog_error?:string;
   languages:Record<string,string>;translations:Record<string,string>;game:{ready:boolean;message:string;metadata:Record<string,unknown>};
   busy:boolean;backups:string[];logs:string[];logfile:string;state_dir:string;last_exit:number|null;acceptance:string};
 type AppBridge = {Call:(method:string,params:Record<string,unknown>)=>Promise<string>;
@@ -131,12 +134,28 @@ function home() {
  <p class="quiet-copy">${snapshot.game.ready?`APP_VER ${escape(snapshot.game.metadata.APP_VER)} · VERSION ${escape(snapshot.game.metadata.VERSION)}`:escape(snapshot.game.message)}</p>
  <button class="quiet" data-page="game">${escape(t('Manage game and saves'))}</button></div></section>`;
 }
+function achievementsPage() {
+ const catalog=snapshot.trophy_catalog??[];
+ const rows=achievementRows(snapshot.trophies,catalog);
+ const earned=new Set(snapshot.trophies.map(item=>item.id));
+ const count=catalog.filter(item=>earned.has(item.id)).length;
+ return `<section class="settings-page"><h1 id="achievements-heading" tabindex="-1">${escape(t('Achievements'))}</h1>
+ <p class="quiet-copy">${escape(t('Local unlock history and artwork from your installed game. Names and descriptions are encrypted and unavailable. Locked artwork stays hidden.'))}</p>
+ ${snapshot.trophy_error?`<p role="alert" class="error">${escape(snapshot.trophy_error)}</p>`:catalog.length?`<p id="achievement-progress">${count} / ${catalog.length} ${escape(t('installed achievements earned'))}</p><progress value="${count}" max="${catalog.length}" aria-labelledby="achievement-progress"></progress>`:''}
+ ${snapshot.trophy_catalog_error?`<p class="quiet-copy">${escape(t(snapshot.trophy_catalog_error))}</p>`:''}
+ ${rows.length?`<ol class="trophy-list">${rows.map(item=>{
+  const date=item.unlocked_at===undefined?null:unlockDate(item.unlocked_at,snapshot.settings.ui_language);
+  const status=snapshot.trophy_error?'Unlock status unavailable':item.unlocked_at===undefined?'Locked':'Unlocked';
+  return `<li>${item.icon?`<img src="${escape(item.icon)}" alt="" width="64" height="64" loading="lazy" decoding="async">`:`<span class="trophy-placeholder" aria-hidden="true">${icon('achievements')}</span>`}
+  <div class="trophy-copy"><strong>${escape(t('Trophy'))} ${item.id}</strong><span>${escape(t(status))}</span></div>
+  ${date?`<time datetime="${date.iso}">${escape(date.text)}</time>`:item.unlocked_at!==undefined?`<span class="quiet-copy">${escape(t('Unlock time unavailable'))}</span>`:''}</li>`;
+ }).join('')}</ol>`:`<p class="empty-state">${escape(t('No earned trophies recorded yet. Unlocks appear here when the game writes them.'))}</p>`}</section>`;
+}
 function settingsPage() {
  const matching=snapshot.fields.filter(field=>query?
   `${field.label} ${field.description} ${field.reason} ${field.choices?.map(c=>c.label).join(' ')}`.toLowerCase().includes(query.toLowerCase()):
   field.page===page);
- if(page==='achievements'&&!query) return `<section class="settings-page"><h1>${escape(t('Achievements'))}</h1><p class="quiet-copy">${escape(t('Live local trophy IDs and first-unlock times. Official names and artwork are not yet available.'))}</p>
- ${snapshot.trophy_error?`<p role="alert" class="error">${escape(snapshot.trophy_error)}</p>`:snapshot.trophies.length?`<ol class="trophy-list">${snapshot.trophies.map(item=>`<li><strong>${escape(t('Trophy'))} ${item.id}</strong><time>${escape(String(item.unlocked_at))} ${escape(t('UTC epoch seconds'))}</time></li>`).join('')}</ol>`:`<p class="empty-state">${escape(t('No earned trophies recorded yet. Unlocks appear here when the game writes them.'))}</p>`}</section>`;
+ if(page==='achievements'&&!query) return achievementsPage();
  return `<section class="settings-page"><div class="section-heading"><div><h1>${escape(query?t('Search settings'):t(snapshot.pages.find(p=>p.id===page)!.title))}</h1>
  <p>${escape(query?`${matching.length} ${t('matching options')}`:t('Valid changes save automatically. Game settings take effect on the next launch.'))}</p></div>
  ${!query&&matching.some(f=>f.available)?`<button class="quiet" data-action="reset"${snapshot.busy?' disabled':''}>${escape(t('Reset section'))}</button>`:''}</div>
@@ -152,23 +171,23 @@ function render() {
  document.documentElement.lang=locale==='pt'?'pt-BR':locale;
  document.documentElement.dir=locale==='ar'?'rtl':'ltr';
  const pageTitle=snapshot.pages.find(p=>p.id===page)?.title??'Home';
- root.innerHTML=`<div class="shell"><aside class="sidebar"><a href="#" class="brand" data-page="home" aria-label="The Order: 1886 Home"><img src="/assets/logo-stacked.png" alt="The Order: 1886"></a>
- <nav aria-label="${escape(t('Main navigation'))}">${snapshot.pages.map(item=>`<button data-page="${item.id}" class="nav-item ${page===item.id&&!query?'selected':''}"${page===item.id&&!query?' aria-current="page"':''}>${icon(item.id)}<span>${escape(t(item.title))}</span></button>`).join('')}</nav>
+ replaceView(root,`<div class="shell"><aside class="sidebar"><a href="#" class="brand" data-page="home" aria-label="The Order: 1886 Home"><img src="/assets/logo-stacked.png" alt="The Order: 1886"></a>
+ <nav aria-label="${escape(t('Main navigation'))}">${snapshot.pages.map(item=>`<button id="nav-${item.id}" data-page="${item.id}" class="nav-item ${page===item.id&&!query?'selected':''}"${page===item.id&&!query?' aria-current="page"':''}>${icon(item.id)}<span>${escape(t(item.title))}</span></button>`).join('')}</nav>
  <div class="sidebar-bottom"><span>CUSA00076</span><span>${escape(t('Development preview'))}</span><button class="quiet" data-link="releases">${escape(t('View releases'))}</button></div></aside>
  <main><header class="topbar"><span class="current-section">${escape(t(pageTitle))}</span><label class="search">${icon('search')}<span class="sr-only">${escape(t('Search all settings'))}</span><input id="search" type="search" placeholder="${escape(t('Search all settings'))}" value="${escape(query)}" autocomplete="off"></label><span class="session-status">${escape(t(disconnected?'Connection lost':snapshot.busy?'Running':starting?'Starting…':'Idle'))}</span></header>
  <div id="content" class="content">${page==='home'&&!query?home():settingsPage()}</div>
  <footer class="launchbar"><div><p id="feedback" class="${noticeError?'error':''}" role="status" aria-live="polite">${escape(notice||t(snapshot.busy?'Session running. Settings are locked.':'Changes are saved automatically.'))}</p>
  <p class="launch-context">${escape(selectedBackup?t('Selected backup will be restored after confirmation.'):t('Original game files and player data are protected.'))}</p></div>
  <button id="launch" class="primary" data-action="play"${saving||starting||disconnected?' disabled':''}>${escape(t(snapshot.busy?'Stop':'Play'))}</button></footer></main></div>
- <dialog id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-detail"><h2 id="confirm-title"></h2><p id="confirm-detail"></p><div class="actions"><button id="confirm-no">${escape(t('Cancel'))}</button><button id="confirm-yes" class="primary"></button></div></dialog>`;
+ <dialog id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-detail"><h2 id="confirm-title"></h2><p id="confirm-detail"></p><div class="actions"><button id="confirm-no">${escape(t('Cancel'))}</button><button id="confirm-yes" class="primary"></button></div></dialog>`);
  bind();
  if(focusKey) {
   const next=document.querySelector<HTMLInputElement>(`[data-setting="${focusKey}"]`);
-  next?.focus();
+  next?.focus({preventScroll:true});
   if(selection&&next?.type==='text') next.setSelectionRange(selection[0],selection[1]);
  }
 }
-function navigate(next:string) { page=next;query='';render();document.querySelector<HTMLElement>('#content h1')?.setAttribute('tabindex','-1');document.querySelector<HTMLElement>('#content h1')?.focus(); }
+function navigate(next:string) { page=next;query='';render();document.querySelector<HTMLElement>('#content')?.scrollTo(0,0);document.querySelector<HTMLElement>('#content h1')?.setAttribute('tabindex','-1');document.querySelector<HTMLElement>('#content h1')?.focus(); }
 async function refresh() { snapshot=await call<Snapshot>('state.get');render(); }
 async function save(key:string,value:unknown) {
  saving=true;

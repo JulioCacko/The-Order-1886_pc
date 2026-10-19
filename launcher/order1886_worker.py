@@ -140,8 +140,17 @@ class Worker:
             trophies = order1886_trophy_history.read(self.state)
         except (OSError, ValueError) as exc:
             trophies, trophy_error = [], str(exc)
+        trophy_catalog, trophy_catalog_error = [], ""
+        if readiness["ready"]:
+            try:
+                trophy_catalog = order1886_trophy_history.catalog(game, {row["id"] for row in trophies})
+            except (OSError, ValueError) as exc:
+                trophy_catalog_error = "Installed achievement artwork is unavailable: " + str(exc)
+        else:
+            trophy_catalog_error = "Select a valid game folder to show installed achievement artwork."
         return {"version": 1, "settings": values, "fields": fields, "pages": PAGES,
                 "trophies": trophies, "trophy_error": trophy_error,
+                "trophy_catalog": trophy_catalog, "trophy_catalog_error": trophy_catalog_error,
                 "languages": LANGUAGES, "translations": table(values.get("ui_language", "en")),
                 "game": readiness, "state_dir": str(self.state), "installation": str(self.installation),
                 "busy": self.busy, "logfile": str(self.logfile) if self.logfile else "",
