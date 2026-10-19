@@ -1914,7 +1914,10 @@ bool Rasterizer::IsComputeMetaClear(const Pipeline* pipeline) {
         // Assume if a shader writes metadata without address calculation, it is a clear shader.
         for (const auto& desc : info.buffers) {
             const VAddr address = desc.GetSharp(info).base_address;
-            if (!desc.IsSpecial() && desc.is_written && texture_cache.ClearMeta(address)) {
+            if (!desc.IsSpecial() && desc.is_written &&
+                texture_cache.ClearMeta(address, desc.GetSharp(info).GetSize())) {
+                if (const auto extent = texture_cache.HtileReadExtent(address))
+                    buffer_cache.ObtainBuffer(address, *extent, false);
                 // Assume all slices were updates
                 LOG_TRACE(Render_Vulkan, "Metadata update skipped");
                 return true;
@@ -2920,7 +2923,15 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
              regs.depth_control.depth_write_enable) ||
             texture_cache.IsMetaCleared(htile_address, slice);
         const bool is_stencil_clear = regs.depth_render_control.stencil_clear_enable;
-        texture_cache.TouchMeta(htile_address, slice, false);
+        if (regs.depth_control.depth_enable && regs.depth_control.depth_write_enable) {
+            bool changed = false;
+            for (u32 layer = 0; layer < image_view.info.range.extent.layers; ++layer)
+                changed |= texture_cache.TouchMeta(htile_address, slice + layer, false);
+            if (changed) {
+                if (const auto extent = texture_cache.HtileReadExtent(htile_address))
+                    buffer_cache.ObtainBuffer(htile_address, *extent, false);
+            }
+        }
         ASSERT(desc.view_info.range.extent.levels == 1 && !image.binding.needs_rebind);
 
         const bool has_stencil = image.info.props.has_stencil;
@@ -3143,10 +3154,10 @@ void Rasterizer::FillBuffer(VAddr address, u32 num_bytes, u32 value, bool is_gds
     ASSERT_MSG(address % 4 == 0 && num_bytes % 4 == 0,
                "FillBuffer address and size must be a multiple of 4 bytes");
     if (!is_gds) {
-        texture_cache.ClearMeta(address);
         if (!buffer_cache.IsRegionGpuModified(address, num_bytes)) {
             u32* buffer = std::bit_cast<u32*>(address);
             std::fill(buffer, buffer + (num_bytes / sizeof(u32)), value);
+            texture_cache.FillMeta(address, num_bytes, value);
             return;
         }
     }
@@ -3157,15 +3168,18 @@ void Rasterizer::FillBuffer(VAddr address, u32 num_bytes, u32 value, bool is_gds
         return buffer_cache.ObtainBuffer(address, num_bytes, true);
     }();
     runtime.FillBuffer(buffer, offset, num_bytes, value);
+    if (!is_gds) texture_cache.FillMeta(address, num_bytes, value);
 }
 
 void Rasterizer::CopyBuffer(VAddr dst, VAddr src, u32 num_bytes, bool dst_gds, bool src_gds) {
     DrainDrawPipe();
     if (!dst_gds && !buffer_cache.IsRegionGpuModified(dst, num_bytes)) {
         if (!src_gds && !buffer_cache.IsRegionGpuModified(src, num_bytes) &&
-            !texture_cache.FindImageFromRange(src, num_bytes)) {
+            !texture_cache.FindImageFromRange(src, num_bytes) &&
+            !texture_cache.HtileReadValue(src, num_bytes)) {
             // Both buffers were not transferred to GPU yet. Can safely copy in host memory.
             std::memcpy(std::bit_cast<void*>(dst), std::bit_cast<void*>(src), num_bytes);
+            texture_cache.NoteMetaShaderWrite(dst, num_bytes);
             return;
         }
     }

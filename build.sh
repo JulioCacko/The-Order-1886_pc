@@ -36,7 +36,7 @@ MINGW*|MSYS*)
                trophy-history audio-downmix cpu-check isa-emulate isa-stub tsc-clock
                png-decode aliasing depth-stencil-state async-compiler warmup-inbox
                wave-stats pass-census frame-capture async-pipeline-cache
-               async-fetch-snapshot readback-queue wait-diagnostics readback-sources page-state selective-readbacks)
+               async-fetch-snapshot readback-queue wait-diagnostics readback-sources page-state selective-readbacks htile-metadata)
         ninja -C out/gpu "${tests[@]/%/-test}"
         for test in "${tests[@]}"; do
             case $test in
@@ -115,13 +115,14 @@ echo "Built $PWD/out/order1886-runtime"
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -Igpu/shadps4 tools/gpu_capabilities.c "${libraries[@]}" -o out/ps4-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
-    cmake --build out/gpu --target order-shader-math-test order-spirv-test pipeline-binary-cache-test amd-paths-test mouse-look-test selective-readbacks-test
+    cmake --build out/gpu --target order-shader-math-test order-spirv-test pipeline-binary-cache-test amd-paths-test mouse-look-test selective-readbacks-test htile-metadata-test
     out/gpu/order-shader-math-test
     out/gpu/order-spirv-test
     out/gpu/pipeline-binary-cache-test
     out/gpu/amd-paths-test
     out/gpu/mouse-look-test
     for mode in 0 1 2 3 999; do ORDER1886_READBACKS=$mode out/gpu/selective-readbacks-test; done
+    out/gpu/htile-metadata-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_runtime.c "${runtime[@]}" out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/runtime-test
