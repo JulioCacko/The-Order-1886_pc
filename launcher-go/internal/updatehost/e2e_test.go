@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -88,7 +87,7 @@ func TestPackagedUpdatePreservesPlayerDataAndRollsBack(t *testing.T) {
 		t.Fatal("the retired launcher survived the update")
 	}
 	for _, name := range []string{"The Order 1886.exe", "Play The Order 1886.exe"} {
-		if after[name] == "" {
+		if data, ok := after[name]; !ok || data == "" {
 			t.Fatalf("missing entry point after update: %s", name)
 		}
 	}
@@ -102,12 +101,16 @@ func TestPackagedUpdatePreservesPlayerDataAndRollsBack(t *testing.T) {
 		}
 		changed++
 	}
+	// The helper must create nothing under the player profile except the OS-owned
+	// session lock it has to hold while it replaces files.
+	allowed := "user/order1886/session.lock"
 	for name := range after {
-		if strings.HasPrefix(name, "user/") && before[name] == "" {
+		if _, existed := before[name]; strings.HasPrefix(name, "user/") && !existed && name != allowed {
 			t.Fatalf("update created a player file: %s", name)
 		}
 	}
-	// The updated installation must actually start its own worker.
+	// The updated installation must actually start its own worker. The worker may
+	// create its own player-side notices, which are not package files.
 	smoke := exec.Command(filepath.Join(installation, "The Order 1886.exe"), "--worker-smoke", "--state-dir", state)
 	smoke.Dir = installation
 	if output, err := smoke.CombinedOutput(); err != nil {
@@ -120,10 +123,29 @@ func TestPackagedUpdatePreservesPlayerDataAndRollsBack(t *testing.T) {
 	if !rolledBack.Recovered || rolledBack.Phase != "rolled_back" {
 		t.Fatalf("rollback did not complete: %+v", rolledBack)
 	}
-	if got := Snapshot(t, installation); !reflect.DeepEqual(got, before) {
-		t.Fatalf("rollback did not restore the previous package: %v", snapshotDiff(before, got))
+	restored := Snapshot(t, installation)
+	for name, want := range before {
+		if got, ok := restored[name]; !ok || got != want {
+			t.Fatalf("rollback did not restore %s", name)
+		}
 	}
-	t.Logf("updated %d player files, %d package files changed, apply and rollback preserved every player byte", changed, len(after))
+	for name := range restored {
+		if _, existed := before[name]; existed || strings.HasPrefix(name, "user/") {
+			continue
+		}
+		t.Fatalf("rollback left a package file behind: %s", name)
+	}
+	changedPackage := 0
+	for name, want := range before {
+		if strings.HasPrefix(name, "user/") {
+			continue
+		}
+		if after[name] != want {
+			changedPackage++
+		}
+	}
+	t.Logf("updated %d player files and %d package files; apply and rollback preserved every player byte",
+		changed, changedPackage)
 }
 
 func mustRead(t *testing.T, name string) []byte {

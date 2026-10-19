@@ -219,23 +219,39 @@ func runApply(ctx context.Context, installation string, options Options, deadlin
 }
 
 func runRecovery(ctx context.Context, installation string, options Options, deadline time.Time, result Result) (Result, error) {
-	pending, _, err := updates.PendingRecovery(installation)
+	phase, exists, err := updates.JournalPhase(installation)
 	if err != nil {
 		result.Message = err.Error()
 		result.RecoveryFailed = true
 		writeResult(installation, result)
 		return result, err
 	}
-	if !pending {
+	if !exists {
 		result.Message = "no interrupted update needs recovery"
 		writeResult(installation, result)
 		return result, nil
 	}
-	if previous, ok, previousErr := ReadResult(installation); previousErr == nil && ok && previous.RecoveryFailed && !options.ConfirmRestore {
-		result.Message = "the previous recovery attempt failed; choose restore manually"
-		result.RecoveryFailed = true
+	if phase == "rolled_back" {
+		// The previous version is already restored; nothing to do.
+		result.Message = "the previous version is already restored"
+		result.Recovered = true
 		writeResult(installation, result)
-		return result, errors.New(result.Message)
+		return result, nil
+	}
+	if options.Action == ActionRecover && phase == "applied" {
+		// A completed update is not an interrupted one; rolling it back is an
+		// explicit action, not startup recovery.
+		result.Message = "no interrupted update needs recovery"
+		writeResult(installation, result)
+		return result, nil
+	}
+	if options.Action == ActionRecover && !options.ConfirmRestore {
+		if previous, ok, previousErr := ReadResult(installation); previousErr == nil && ok && previous.RecoveryFailed {
+			result.Message = "the previous recovery attempt failed; choose restore manually"
+			result.RecoveryFailed = true
+			writeResult(installation, result)
+			return result, errors.New(result.Message)
+		}
 	}
 	tx, err := openPending(ctx, installation, deadline)
 	if err != nil {
