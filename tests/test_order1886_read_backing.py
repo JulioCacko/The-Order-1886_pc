@@ -29,7 +29,8 @@ class ReadBackingTests(unittest.TestCase):
             command = [compiler, '-std=c++23' if cxx else '-std=c11', '-O2', '-UNDEBUG',
                        '-Wall', '-Wextra', '-Werror', '-pthread', '-I' + str(ROOT / 'src'), str(source_path)]
             if os.name == 'nt' and not cxx:
-                command += [str(ROOT / 'src/compat_win.c'), '-lonecore', '-lws2_32']
+                command += [str(ROOT / 'src/compat_win.c'), '-lonecore', '-lws2_32',
+                            '-Wl,--disable-high-entropy-va']
             result = subprocess.run(command + ['-o', str(exe)], env=environment,
                                     capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -42,6 +43,9 @@ class ReadBackingTests(unittest.TestCase):
 
     def test_gpu_ownership_retires_before_mapping_replacement(self):
         self.compile_and_run(ROOT / 'tests/test_memory_ownership.c')
+
+    def test_protected_memory_api_outputs_publish_outside_internal_locks(self):
+        self.compile_and_run(ROOT / 'tests/test_memory_output_publication.c')
 
     def test_actual_upload_copy_uses_backing_interface(self):
         text = (ROOT / 'gpu/shim/ps4gpu.cpp').read_text(encoding='utf-8')
