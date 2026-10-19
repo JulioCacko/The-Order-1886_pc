@@ -229,6 +229,7 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         "ui_language": saved.get("ui_language", "en"),
         "htile_unqualified": bool(saved.get("htile_unqualified", False)),
         "fps_cap": saved.get("fps_cap", 120),
+        "in_game_menu": bool(saved.get("in_game_menu", False)),
         "automatic_updates": bool(saved.get("automatic_updates", False)),
         "update_channel": saved.get("update_channel", "preview"),
         "mods_dir": saved.get("mods_dir", ""),

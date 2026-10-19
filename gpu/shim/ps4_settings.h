@@ -104,6 +104,10 @@ Values& Get();
 
 /// Reads the file, then the environment overrides. Called once at start.
 void Load();
+/// The in-game menu is opt-in through ORDER1886_SETTINGS_MENU=1. The menu, its tabs and
+/// the live settings it edits are not gameplay-qualified for this title, so a launch that
+/// does not ask for it behaves exactly as before.
+bool MenuEnabled();
 /// Checks the loaded choice before the first frame; unsupported FSR 4 uses FSR 3.1.
 void ConfigureUpscalerSupport(bool fsr4, bool fsr411);
 /// After device creation: DLSS availability; a DLSS setting falls back to FSR 3.1 without it.
