@@ -44,7 +44,9 @@ class CatalogTests(unittest.TestCase):
                                      in formatter.parse(text) if field is not None)
         for locale in lang.LANGUAGES:
             catalog = lang.table(locale)
-            self.assertEqual(set(catalog), set(lang.KEYS), locale)
+            # UI_KEYS covers the Go frontend and the settings catalogue; those keys exist
+            # in every language with the English text until a reviewed translation lands.
+            self.assertEqual(set(catalog), set(lang.KEYS) | set(lang.UI_KEYS), locale)
             for key, value in catalog.items():
                 with self.subTest(locale=locale, key=key):
                     self.assertTrue(value.strip())

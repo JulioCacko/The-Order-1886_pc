@@ -3,9 +3,11 @@
 
 Donor revision: 52e4988f54b0626447563874bf8695633b1a4302 (GPL-2.0-or-later).
 Order uses an explicit saved language, English by default, rather than OS locale.
-See order1886_lang_data.py for per-language reused keys and translation provenance.
+See order1886_lang_data.py for per-language reused keys and translation provenance,
+and order1886_lang_ui.py for the keys the Go frontend and the settings catalogue show.
 """
 from launcher.order1886_lang_data import KEYS, TRANSLATIONS
+from launcher.order1886_lang_ui import UI_KEYS
 
 
 LANGUAGES = {
@@ -16,15 +18,39 @@ LANGUAGES = {
 _tables = {}
 
 
+def catalogue(language):
+    """Every key the launcher can show, using the English text as the fallback.
+
+    The base tables were written for the previous Tk launcher. UI_KEYS covers the Go
+    frontend and the settings catalogue, whose strings were previously not catalogued
+    at all and therefore silently fell back to English in every language.
+    """
+    language = language if isinstance(language, str) and language in LANGUAGES else "en"
+    texts = KEYS if language == "en" else TRANSLATIONS[language]
+    if len(texts) != len(KEYS):
+        raise ValueError(f"launcher translation {language}: {len(texts)} texts for {len(KEYS)} keys")
+    merged = dict(zip(KEYS, texts))
+    for key in UI_KEYS:
+        merged.setdefault(key, key)
+    return merged
+
+
 def table(language):
     """English text to translation; unknown languages use the English catalog."""
     language = language if isinstance(language, str) and language in LANGUAGES else "en"
     if language not in _tables:
-        texts = KEYS if language == "en" else TRANSLATIONS[language]
-        if len(texts) != len(KEYS):
-            raise ValueError(f"launcher translation {language}: {len(texts)} texts for {len(KEYS)} keys")
-        _tables[language] = dict(zip(KEYS, texts))
+        _tables[language] = catalogue(language)
     return _tables[language]
+
+
+def untranslated(language):
+    """Keys still shown in English for this language; the count can only go down.
+
+    English is the source language, so it has nothing untranslated by definition.
+    """
+    if language not in LANGUAGES or language == "en":
+        return []
+    return sorted(key for key in UI_KEYS if table(language).get(key) == key)
 
 
 def translate(text, language="en", **values):
