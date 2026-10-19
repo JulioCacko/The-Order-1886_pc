@@ -69,8 +69,32 @@ static void concurrent_remaps(void) {
     for (size_t i=0;i<sizeof(out);++i) assert(!out[i]);
 }
 
+static void split_backing_offsets(void) {
+    memset(backing_base+5*PAGE,0x51,PAGE);
+    memset(backing_base+6*PAGE,0x62,PAGE);
+    for (int kind=KIND_RESERVED;kind<=KIND_FLEXIBLE;++kind) {
+        write_lock();
+        vma_count=0;
+        assert(!vma_insert(0,(Vma){base,base+2*PAGE,kind,3,0,5*PAGE}));
+        /* mprotect and partial unmap use carve/split_at. The remaining right
+         * fragment must still address its own physical page. */
+        assert(!split_at(base+PAGE));
+        write_unlock();
+        unsigned char out[PAGE];
+        runtime_memory_read_backing(base+PAGE,out,sizeof(out));
+        for (size_t i=0;i<sizeof(out);++i)
+            assert(out[i]==(kind==KIND_RESERVED ? 0 : 0x62));
+        write_lock();
+        vma_erase(0,1);
+        write_unlock();
+        runtime_memory_read_backing(base+PAGE,out,sizeof(out));
+        for (size_t i=0;i<sizeof(out);++i)
+            assert(out[i]==(kind==KIND_RESERVED ? 0 : 0x62));
+    }
+}
+
 int main(void) {
-    fixture(); sparse_and_protected_reads(); concurrent_remaps();
+    fixture(); sparse_and_protected_reads(); concurrent_remaps(); split_backing_offsets();
     puts("PASS: protected backing reads, sparse zero fill, remap and concurrency");
     return 0;
 }
