@@ -34,6 +34,7 @@ import order1886_frame_rate as timing
 import order1886_display as display
 import order1886_mods as mods
 import order1886_input as inputs
+import order1886_patches as patch_catalogue
 
 TITLE_ID = 'CUSA00076'
 RUNTIME_ABI = 'order1886-native-1'
@@ -154,12 +155,14 @@ def write_json(path, value):
     temporary.replace(path)
 
 
-def prepare_game(game, out, frame_rate=30, aspect_ratio='original'):
+def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=()):
     game, out = Path(game).resolve(), Path(out).resolve()
     metadata = inspect_game(game)
     # Prevent accidental writes to the extracted game, even with custom CLI arguments.
     if out == game or game in out.parents:
         raise ValueError('Prepared images must be stored outside the game folder.')
+    # Refuse an unusable selection before any work: a recipe is bound to this build.
+    selected_patches = patch_catalogue.select(patches, metadata)
     profile = timing.validate_source(game / 'eboot.bin', frame_rate, metadata)
     display_profile = display.validate_source(game / 'eboot.bin', aspect_ratio, metadata)
     fingerprint = {name: sha256(game / name) for name in REQUIRED_FILES}
@@ -168,7 +171,8 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original'):
     fingerprint.update(frame_rate=profile['engine_fps'], host_fps_limit=profile['host_fps_limit'],
                        frame_rate_recipe_sha256=profile['recipe_sha256'], runtime_abi=RUNTIME_ABI,
                        preparation_schema=3, aspect_ratio=aspect_ratio,
-                       display_recipe_sha256=display_profile['recipe_sha256'])
+                       display_recipe_sha256=display_profile['recipe_sha256'],
+                       patches=patch_catalogue.patch_fingerprint(selected_patches))
     manifest = out / 'prepared.json'
     try:
         previous = json.loads(manifest.read_text(encoding='utf-8'))
@@ -187,10 +191,14 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original'):
     prepare.prepare(game, out)
     profile = timing.apply_prepared(out / 'boot.bin', profile)
     display_profile = display.apply_prepared(out / 'boot.bin', display_profile)
+    # Catalogued recipes edit the derived image, never the guest executable; the fingerprint
+    # already binds that image to the eboot.bin hash it was produced from.
+    applied_patches = patch_catalogue.apply_to_prepared(out / 'boot.bin', selected_patches, metadata)
     link_modules.link(game, out)
     result = {'game': str(game), 'title_id': metadata['TITLE_ID'], 'inputs': fingerprint,
               'frame_rate_profile': profile,
               'display_profile': display_profile,
+              'catalogue_patches': applied_patches,
               'image_sha256': sha256(image), 'status': 'prepared; gameplay unverified'}
     write_json(manifest, result)
     return result
@@ -555,6 +563,8 @@ def argument_parser():
     parser.add_argument('--mods-dir', default='', help='Folder containing explicitly selected asset mod folders')
     parser.add_argument('--mods-enabled', type=int, choices=[0, 1], default=0)
     parser.add_argument('--mods-order', default='[]', help='JSON list of enabled mod folder names; later entries win')
+    parser.add_argument('--patches', default='',
+                        help='Comma-separated catalogued patch ids applied inside the prepared image; empty applies none')
     # Live switches the runtime honours through its own toggle file; both are experimental.
     parser.add_argument('--synchronous-recording', action='store_true',
                         help='Record Vulkan commands on the submitting thread instead of the '
@@ -610,7 +620,9 @@ def main(argv=None):
                 emit_status(timing.WARNING, fallback=diagnostic_log)
             if args.aspect_ratio == '16:9':
                 emit_status(display.WARNING, fallback=diagnostic_log)
-            prepared = prepare_game(game, user / 'prepared', frame_rate=args.frame_rate, aspect_ratio=args.aspect_ratio)
+            selected = [name.strip() for name in str(args.patches).split(',') if name.strip()]
+            prepared = prepare_game(game, user / 'prepared', frame_rate=args.frame_rate,
+                                    aspect_ratio=args.aspect_ratio, patches=selected)
             if args.aspect_ratio == '16:9' and not (prepared.get('display_profile', {}).get('applied') is True
                     and prepared['display_profile'].get('source_verified') is True
                     and prepared['display_profile'].get('recipe_sha256') == display.recipe_sha256('16:9')):
