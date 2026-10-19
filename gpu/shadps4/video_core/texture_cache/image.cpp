@@ -207,10 +207,12 @@ Image::Image(const Vulkan::Instance& instance, Vulkan::Runtime& runtime_,
         .initialLayout = vk::ImageLayout::eUndefined,
     };
 
-    if (!ImageFitsFormatLimits(image_ci, format_limits)) {
-        UNREACHABLE_MSG("Image exceeds device format limits: address={:#x} format={} "
+    if (const auto rejection = ClassifyImageCreateInfo(image_ci, format_limits);
+        rejection != VideoCore::ImageRejection::None) {
+        UNREACHABLE_MSG("Image rejected ({}): address={:#x} format={} "
                         "extent={}x{}x{} max_extent={}x{}x{} levels={}/{} layers={}/{} samples={}",
-                        info.guest_address, vk::to_string(supported_format), image_ci.extent.width,
+                        VideoCore::DescribeImageRejection(rejection), info.guest_address,
+                        vk::to_string(supported_format), image_ci.extent.width,
                         image_ci.extent.height, image_ci.extent.depth, format_limits.maxExtent.width,
                         format_limits.maxExtent.height, format_limits.maxExtent.depth,
                         image_ci.mipLevels, format_limits.maxMipLevels, image_ci.arrayLayers,
