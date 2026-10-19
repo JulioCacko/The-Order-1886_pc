@@ -29,7 +29,7 @@ MINGW*|MSYS*)
     fi
     cp out/gpu/order1886-runtime.exe out/gpu/ps4-gpu-capabilities.exe out/
     if [[ ${1:-} == --test ]]; then
-        tests=(runtime sema runtime-keys event-flag memory-hooks memory-read-backing services content
+        tests=(runtime sema runtime-keys event-flag memory-hooks memory-read-backing memory-ownership services content
                order-render-baseline srt-descriptor-validation pad pad-map frame-trace
                perf-overlay order-shader-math order-spirv pipeline-binary-cache
                pipeline-binary-initialization amd-paths mouse-look mp3 videodec
@@ -130,6 +130,8 @@ if [[ ${1:-} == --test ]]; then
     out/file-mods-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_memory_read_backing.c -o out/memory-read-backing-test
     out/memory-read-backing-test
+    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_memory_ownership.c -o out/memory-ownership-test
+    out/memory-ownership-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_sema.c "${runtime[@]}" out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/sema-test
     out/sema-test
     "$CC" -std=c11 -D_GNU_SOURCE -O2 -g -Wall -Wextra -Werror -I. -Isrc tests/test_content.c src/runtime_content.c -o out/content-test

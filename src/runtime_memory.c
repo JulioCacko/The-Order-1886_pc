@@ -63,6 +63,8 @@ _Static_assert(sizeof(BatchEntry)==32,"PS4 batch map entry layout");
  * runtime_memory_gpu_protect on the same thread. Readers nest because glibc's
  * default rwlock prefers readers; a thread holding it exclusively skips relocking. */
 static pthread_rwlock_t lock=PTHREAD_RWLOCK_INITIALIZER;
+/* Keep backing stable across GPU callbacks without holding the VM table lock. */
+static pthread_mutex_t mapping_lock=PTHREAD_MUTEX_INITIALIZER;
 static __thread unsigned exclusive_depth;
 /* Odd while a writer holds the lock; readers' region caches are valid for one even value. */
 static uint64_t table_generation;
@@ -381,6 +383,21 @@ static void drop_range(uintptr_t start, uintptr_t end) {
     }
     vma_erase(i,n);
 }
+/* Caller holds mapping_lock and the VM write lock; downloads need the latter released. */
+static void retire_gpu_locked(uintptr_t start, uintptr_t end) {
+    if (!hook_unmap) return;
+    write_unlock();
+    flush_hooks(); /* A preceding batch operation may still have a MAP queued. */
+    write_lock();
+    for (size_t i=vma_index(start); i<vma_count && vmas[i].start<end; ++i) {
+        if (vmas[i].kind==KIND_RESERVED) continue;
+        uintptr_t a=vmas[i].start>start ? vmas[i].start : start;
+        uintptr_t b=vmas[i].end<end ? vmas[i].end : end;
+        write_unlock();
+        hook_unmap(a,b-a);
+        write_lock();
+    }
+}
 /* Places a host mapping; with MAP_FIXED it replaces what the guest had there. */
 static int32_t place(void **inout, uint64_t size, int prot, int flags, uint64_t alignment,
                      int kind, int type, uint64_t phys) {
@@ -392,7 +409,16 @@ static int32_t place(void **inout, uint64_t size, int prot, int flags, uint64_t 
         address=find_free(address,size,alignment);
         if (!address) return NO_MEMORY;
     }
-    if (host_map(address,size,host_prot(prot),kind==KIND_RESERVED,phys)) return NO_MEMORY;
+    retire_gpu_locked(address,address+size);
+    if (host_map(address,size,host_prot(prot),kind==KIND_RESERVED,phys)) {
+        for (size_t i=vma_index(address); i<vma_count && vmas[i].start<address+size; ++i) {
+            if (vmas[i].kind==KIND_RESERVED) continue;
+            uintptr_t a=vmas[i].start>address ? vmas[i].start : address;
+            uintptr_t b=vmas[i].end<address+size ? vmas[i].end : address+size;
+            queue_hook(HOOK_MAP,a,b-a);
+        }
+        return NO_MEMORY;
+    }
     void *mapped=(void *)address;
     drop_range(address,address+size);
     if (vma_insert(vma_index(address),(Vma){address,address+size,kind,prot,type,phys})) return NO_MEMORY;
@@ -457,10 +483,12 @@ static int32_t map_direct_locked(void **out, uint64_t size, int prot, int flags,
     return result;
 }
 static ABI int32_t direct_map(void **out, uint64_t size, int prot, int flags, int64_t physical, uint64_t alignment) {
+    pthread_mutex_lock(&mapping_lock);
     write_lock();
     int32_t result=map_direct_locked(out,size,prot,flags,physical,alignment);
     write_unlock();
     flush_hooks();
+    pthread_mutex_unlock(&mapping_lock);
     if (!result) printf("Runtime: mapped direct memory %p, size=%" PRIu64 ", prot=0x%x\n", *out, size, prot);
     return result;
 }
@@ -471,11 +499,7 @@ static ABI int32_t direct_map_named(void **out, uint64_t size, int prot, int fla
 static int32_t unmap_locked(uintptr_t start, uint64_t size) {
     if (start%PAGE || !size) return INVALID;
     uint64_t end=start+align_up(size,PAGE);
-    for (size_t i=vma_index(start); i<vma_count && vmas[i].start<end; ++i)
-        if (vmas[i].kind!=KIND_RESERVED) {
-            uintptr_t a=vmas[i].start>start ? vmas[i].start : start, b=vmas[i].end<end ? vmas[i].end : end;
-            queue_hook(HOOK_UNMAP,a,b-a);
-        }
+    retire_gpu_locked(start,end);
     for (size_t i=vma_index(start); i<vma_count && vmas[i].start<end; ++i) {
         uintptr_t a=vmas[i].start>start ? vmas[i].start : start, b=vmas[i].end<end ? vmas[i].end : end;
         if (host_unmap(a,b-a)) return INVALID;
@@ -484,20 +508,19 @@ static int32_t unmap_locked(uintptr_t start, uint64_t size) {
     return 0;
 }
 static ABI int32_t direct_unmap(void *address, uint64_t size) {
-    /* The GPU forgets the range before it disappears (as shadPS4's early GPU unmap). */
-    if (hook_unmap && !((uintptr_t)address%PAGE) && size) hook_unmap((uintptr_t)address,align_up(size,PAGE));
+    pthread_mutex_lock(&mapping_lock);
     write_lock();
-    size_t before=pending_count;
     int32_t result=unmap_locked((uintptr_t)address,size);
-    pending_count=before; /* already notified above */
     write_unlock();
+    pthread_mutex_unlock(&mapping_lock);
     return result;
 }
 static ABI int32_t direct_release(uint64_t start, uint64_t size) {
     if (start % PAGE || size % PAGE) return INVALID;
     if (!size) return 0;
+    pthread_mutex_lock(&mapping_lock);
     write_lock();
-    if (!direct_range_allocated(start,size)) { write_unlock(); return INVALID; }
+    if (!direct_range_allocated(start,size)) { write_unlock(); pthread_mutex_unlock(&mapping_lock); return INVALID; }
     /* Mappings of released physical pages disappear with them. */
     for (size_t i=0; i<vma_count;) {
         Vma v=vmas[i];
@@ -524,6 +547,7 @@ static ABI int32_t direct_release(uint64_t start, uint64_t size) {
     host_discard(start,size); /* zero on reuse */
     write_unlock();
     flush_hooks();
+    pthread_mutex_unlock(&mapping_lock);
     return 0;
 }
 static int32_t map_flexible_locked(void **inout, uint64_t size, int prot, int flags) {
@@ -536,10 +560,12 @@ static int32_t map_flexible_locked(void **inout, uint64_t size, int prot, int fl
     return result;
 }
 static ABI int32_t map_flexible(void **inout, uint64_t size, int prot, int flags) {
+    pthread_mutex_lock(&mapping_lock);
     write_lock();
     int32_t result=map_flexible_locked(inout,size,prot,flags);
     write_unlock();
     flush_hooks();
+    pthread_mutex_unlock(&mapping_lock);
     if (!result) printf("Runtime: mapped flexible memory %p, size=%" PRIu64 ", prot=0x%x\n", *inout, size, prot);
     else fprintf(stderr,"Runtime: flexible map of %" PRIu64 " bytes failed (0x%x), in use=%" PRIu64 "\n",
                  size, (unsigned)result, flexible_bytes);
@@ -562,12 +588,14 @@ static ABI int32_t posix_msync(void *address, uint64_t size, int flags) { (void)
 static ABI int32_t reserve_range(void **inout, uint64_t size, int flags, uint64_t alignment) {
     if (!alignment) alignment=PAGE;
     if (!inout || !size || size%PAGE || !valid_alignment(alignment)) return INVALID;
+    pthread_mutex_lock(&mapping_lock);
     write_lock();
     if ((flags & MAP_FIXED_FLAG) && overlaps((uintptr_t)*inout,(uintptr_t)*inout+size,0)) {
-        write_unlock(); return NO_MEMORY;
+        write_unlock(); pthread_mutex_unlock(&mapping_lock); return NO_MEMORY;
     }
     int32_t result=place(inout,size,0,flags,alignment,KIND_RESERVED,0,0);
     write_unlock();
+    pthread_mutex_unlock(&mapping_lock);
     if (!result) printf("Runtime: reserved virtual range %p, size=%" PRIu64 "\n", *inout, size);
     return result;
 }
@@ -584,10 +612,12 @@ static int32_t protect_locked(uintptr_t start, uint64_t size, int prot, int type
     return 0;
 }
 static ABI int32_t kernel_mprotect(const void *address, uint64_t size, int prot) {
+    pthread_mutex_lock(&mapping_lock);
     write_lock();
     int32_t result=protect_locked((uintptr_t)address,size,prot,-1);
     write_unlock();
     flush_hooks();
+    pthread_mutex_unlock(&mapping_lock);
     return result;
 }
 static ABI int32_t query_protection(void *address, void **start, void **end, uint32_t *prot) {
@@ -637,6 +667,7 @@ static ABI int32_t direct_memory_type(uint64_t phys, int *type, void **start, vo
 static ABI int32_t batch_map2(BatchEntry *entries, int count, int *processed, int flags) {
     if (!entries || count<0) return INVALID;
     int32_t result=0; int done=0;
+    pthread_mutex_lock(&mapping_lock);
     write_lock();
     for (; done<count; ++done) {
         BatchEntry *e=&entries[done];
@@ -652,6 +683,7 @@ static ABI int32_t batch_map2(BatchEntry *entries, int count, int *processed, in
     }
     write_unlock();
     flush_hooks();
+    pthread_mutex_unlock(&mapping_lock);
     if (processed) *processed=done;
     return result;
 }
@@ -747,11 +779,13 @@ void runtime_memory_set_gpu_hooks(GpuRange map, GpuRange unmap, GpuRange invalid
     const char *toggles=getenv("ORDER1886_TOGGLE_FILE");
     static pthread_t watcher;
     if (toggles && !watcher) pthread_create(&watcher,NULL,toggle_watcher,(void *)toggles);
+    pthread_mutex_lock(&mapping_lock);
     write_lock();
     hook_map=map; hook_unmap=unmap; hook_invalidate=invalidate;
     for (size_t i=0;i<vma_count;++i) if (vmas[i].kind!=KIND_RESERVED) queue_hook(HOOK_MAP,vmas[i].start,vmas[i].end-vmas[i].start);
     write_unlock();
     flush_hooks();
+    pthread_mutex_unlock(&mapping_lock);
 }
 /* Writes through the backing view; 0 when part of the range has no backing. */
 int runtime_memory_write_backing(uintptr_t address, const void *data, uint64_t size) {

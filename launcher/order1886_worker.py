@@ -80,8 +80,9 @@ class Worker:
     def readback_policy_reason(self, values, policy):
         requested = values.get("runtime", "")
         def signature(runtime):
+            receipt = runtime.with_name("runtime-build.json")
             return tuple((p.stat().st_size, p.stat().st_mtime_ns)
-                         for p in (runtime, runtime.with_name("runtime-build.json")))
+                         for p in (runtime, receipt)) + (order1886.sha256(receipt),)
         try:
             runtime = order1886.find_runtime_path(requested or None)
             if runtime is None:

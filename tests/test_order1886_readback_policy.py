@@ -83,6 +83,28 @@ class ReadbackPolicyTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 order1886.validate_readback_policy(ROOT/'fixture.exe','selective')
 
+    def test_capabilities_refresh_when_receipt_metadata_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            runtime=root/'runtime.exe'
+            runtime.write_bytes(b'native fixture')
+            receipt=runtime.with_name('runtime-build.json')
+            build={'runtime_sha256':hashlib.sha256(runtime.read_bytes()).hexdigest(),
+                   'game_profile':'order1886','runtime_abi':order1886.RUNTIME_ABI,
+                   'readback_policies':['relaxed','selective']}
+            receipt.write_text(json.dumps(build))
+            stamp=receipt.stat()
+            app=worker.Worker(root/'user',ROOT)
+            values={'runtime':str(runtime)}
+            self.assertFalse(app.readback_policy_reason(values,'selective'))
+            build['readback_policies']=['relaxed','unclaimed']
+            receipt.write_text(json.dumps(build))
+            os.utime(receipt,ns=(stamp.st_atime_ns,stamp.st_mtime_ns))
+            self.assertEqual(receipt.stat().st_size,stamp.st_size)
+            self.assertTrue(app.readback_policy_reason(values,'selective'))
+            with self.assertRaises(ValueError):
+                app.dispatch('settings.set',{'values':{**values,'readbacks':'selective'}})
+
     def test_default_capabilities_refresh_when_bin_shadows_out(self):
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as temporary:

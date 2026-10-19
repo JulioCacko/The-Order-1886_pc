@@ -12,6 +12,7 @@ on:
       - 'tests/test_selective_readbacks.cpp'
       - 'tests/test_order1886_readback_policy.py'
       - 'tests/test_memory_read_backing.c'
+      - 'tests/test_memory_ownership.c'
       - 'tests/test_order1886_read_backing.py'
       - '.github/workflows/order1886-memory-regressions.yml'
 permissions:

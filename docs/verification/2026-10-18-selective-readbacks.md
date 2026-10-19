@@ -34,3 +34,17 @@ Base CUSA00076 startup ran in separate fresh state/cache directories with 30 FPS
 ## Limits
 
 These fixtures establish CPU tracking and launch plumbing, not aiming focus, current visual quality, GPU lifecycle stability or an FPS improvement. Synchronous selective/precise modes may add waits. The existing relaxed default is retained pending matched gameplay measurements. HTILE, deferred readbacks, temporal providers, frame generation and the remaining gold features/gates remain open.
+
+## Mapping ownership correction
+
+A final bounded review reproduced stale GPU ownership after `MAP_FIXED` using the actual VM implementation and a simulated GPU publication callback. Replacement emitted MAP without retiring the old binding; a later unmap could publish old GPU bytes into the new physical allocation while a live alias of the old allocation remained stale. This was an existing mapping-lifetime defect, not proof of a gameplay crash cause.
+
+Mapping changes now serialize across retirement, host replacement and registration. The old binding is retired while its original backing remains present, with the VM table lock released so the GPU publication thread can acquire it. The mapping transaction mutex stays held across the callback. Ordinary unmap, batch unmap and physical release share that ordering. Queued batch MAP notifications drain before retirement, and a recoverable host-map failure restores registration for the surviving mapping.
+
+The permanent production-source regression failed before the correction and passes afterward. It checks live physical aliases, rejected no-overwrite requests, MAP/retire ordering within a batch, physical release, two competing mapping threads and publication on another thread. Linux additionally injects a recoverable host-map failure. The test runs in both the Python gate and the native build gate. The Windows native gate now has 44 checks.
+
+CodeRabbit's preserved-size/timestamp receipt finding also reproduced: the worker could retain unsupported readback choices. The cache signature now includes the small receipt's SHA256; the regression verifies refresh and rejected persistence. This is treated as an availability-contract defect because the launcher must not accept an unsupported setting. No native executable hash check was removed.
+
+The graph service was unavailable (`Transport closed`); exact source and caller searches were used for this bounded change. The previously verified `021337Z` archive (SHA256 `bda49f8bc19cf56cef707b01a95d7f33d48c0f5df00c6ac4f9725f0b1bfb9bb1`, 137197153 bytes) predates this correction and is superseded for publication. Final clean-source identities and hosted checks follow after the corrected build.
+
+After the ownership and receipt corrections, the full Python suite passes **363 tests with no skips** and the rebuilt Windows native gate passes **44 checks**. Linux's injected host-map failure is reserved for its hosted run; Windows host-map failures terminate rather than returning a recoverable error.
