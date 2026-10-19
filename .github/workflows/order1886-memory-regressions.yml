@@ -23,6 +23,7 @@ on:
       - 'tests/test_memory_read_backing.c'
       - 'tests/test_memory_ownership.c'
       - 'tests/test_htile_metadata.cpp'
+      - 'tests/test_memory_output_publication.c'
       - 'tests/test_order1886_read_backing.py'
       - '.github/workflows/order1886-memory-regressions.yml'
 permissions:
