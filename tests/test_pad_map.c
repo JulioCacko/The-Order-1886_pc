@@ -20,7 +20,11 @@ static uint32_t pressed_by(const ButtonMap *map, int source) {
     return ps;
 }
 
-int main(void) {
+int main(int argc,char **argv) {
+    if (argc==2 && !strcmp(argv[1],"--input-options")) {
+        runtime_pad_input_options();
+        return 0;
+    }
     ButtonMap keys=key_map;
     assert(apply_button_map(&keys,NULL,true)==0 && apply_button_map(&keys,"",true)==0);
     assert(keys.count==key_map.count);
@@ -36,6 +40,25 @@ int main(void) {
     assert(apply_button_map(&again,"CIRCLE=left shift,circle=Left Ctrl",true)==2);
     assert(pressed_by(&again,SDL_SCANCODE_LCTRL)==BTN_CIRCLE);
     assert(pressed_by(&again,SDL_SCANCODE_LSHIFT)==0);
+    ButtonMap equals=key_map;
+    assert(apply_button_map(&equals,"cross==",true)==1);
+    assert(pressed_by(&equals,SDL_SCANCODE_EQUALS)==BTN_CROSS);
+    ButtonMap comma=key_map;
+    if (apply_button_map(&comma,"cross=scancode:54",true)!=1 ||
+        pressed_by(&comma,SDL_SCANCODE_COMMA)!=BTN_CROSS) {
+        fputs("FAIL: numeric scancode must map comma to Cross\n",stderr);
+        return 1;
+    }
+    ButtonMap invalid_code=key_map;
+    assert(apply_button_map(&invalid_code,"cross=scancode:0,cross=scancode:512,cross=scancode:-1,cross=scancode:999999999999999999999999",true)==0);
+    assert(pressed_by(&invalid_code,SDL_SCANCODE_SPACE)==BTN_CROSS);
+    ButtonMap unbound=key_map;
+    if (apply_button_map(&unbound,"cross=none",true)!=1 ||
+        pressed_by(&unbound,SDL_SCANCODE_SPACE)!=0 ||
+        pressed_by(&unbound,SDL_SCANCODE_Q)!=BTN_TRIANGLE) {
+        fputs("FAIL: unbinding must remove only the selected digital source\n",stderr);
+        return 1;
+    }
 
     /* Bad entries are skipped and leave the defaults alone. */
     ButtonMap bad=key_map;

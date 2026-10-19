@@ -53,6 +53,8 @@ def validate_patch(values):
                 raise ValueError(item["label"] + " must be a valid path or text.")
         elif kind == "order":
             order1886.mods.validate_config(Path("."), False, value)
+        elif kind == "bindings":
+            order1886.inputs.validate(value, item["input_kind"])
 
 
 class Worker:
@@ -116,7 +118,31 @@ class Worker:
     def snapshot(self):
         values = self.settings()
         fields = copy.deepcopy(FIELDS)
+        try:
+            runtime = order1886.find_runtime(values.get("runtime") or None)
+            if runtime is None:
+                raise ValueError("Select a verified native runtime to choose custom inputs.")
+            input_catalog, input_reason = order1886.input_catalog(runtime), ""
+        except (OSError, ValueError) as exc:
+            input_catalog, input_reason = None, str(exc)
         for item in fields:
+            if item["kind"] == "bindings":
+                item["reason"] = input_reason
+                if input_catalog is not None:
+                    kind = item["input_kind"]
+                    defaults = {row["id"]: row[kind + "_default"] for row in input_catalog["buttons"]}
+                    for button in item["buttons"]:
+                        button["default"] = defaults[button["id"]]
+                    item["choices"] = [{"value": name, "label": name,
+                                        "available": not bool(order1886.inputs.source_reason(name, kind)),
+                                        "reason": order1886.inputs.source_reason(name, kind)}
+                                       for name in input_catalog[kind + "_sources"]]
+                    item["choices"].insert(0, {"value": order1886.inputs.UNBOUND,
+                                               "label": "No digital source", "available": True, "reason": ""})
+                try:
+                    order1886.inputs.validate(values.get(item["key"], {}), item["input_kind"], input_catalog)
+                except ValueError as exc:
+                    item["reason"] = "Saved bindings need attention: " + str(exc) + " Reset this section or replace invalid inputs."
             if item["key"] == "performance_capture":
                 reason = self.native_option_reason(values, "performance_capture")
                 item.update(available=not bool(reason) or values.get("performance_capture") is True,
@@ -259,6 +285,12 @@ class Worker:
                          if f["page"] == page and f["available"]}
             validate_patch(patch)
             values = {**self.settings(), **patch}
+            mapping_keys = {kind + '_bindings' for kind in ('keyboard', 'controller')}
+            if mapping_keys & patch.keys() or 'runtime' in patch:
+                selected = {key: values.get(key, {}) for key in mapping_keys
+                            if key in patch or 'runtime' in patch}
+                runtime = order1886.find_runtime(values.get('runtime') or None) if any(selected.values()) else None
+                order1886.validate_input_settings(runtime, selected)
             if ({"runtime", "readbacks"} & patch.keys() and
                     values.get("readbacks") in ("selective", "precise")):
                 reason = self.readback_policy_reason(values, values["readbacks"])

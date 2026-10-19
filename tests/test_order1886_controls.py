@@ -3,7 +3,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 import order1886
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +13,27 @@ SPEC.loader.exec_module(launcher)
 
 
 class ControlSettingsTests(unittest.TestCase):
+    def test_legacy_verify_reports_invalid_bindings_without_leaving_session_busy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / 'state'
+            state.mkdir()
+            path = state / 'settings.json'
+            original = '{"future":7}'
+            path.write_text(original)
+            app = launcher.DesktopLauncher.__new__(launcher.DesktopLauncher)
+            app.state, app.root, app.busy = state, Mock(), False
+            app.values = dict(game_dir=str(Path(directory) / 'game'), display_mode='windowed',
+                              vsync=True, show_fps=False, keyboard_bindings=None)
+            app.language, app.log_text, app.events = 'en', None, Mock()
+            app.current_page = 'home'
+            app.commit_home, app.draw, app.show_logs = Mock(return_value=True), Mock(), Mock()
+            with patch('tkinter.messagebox.showerror') as error, patch.object(launcher.threading, 'Thread') as thread:
+                app.run('verify')
+                self.assertFalse(app.busy)
+                error.assert_called_once()
+                thread.assert_not_called()
+                self.assertEqual(path.read_text(), original)
+
     def test_mouse_settings_reach_backend(self):
         values = dict(game_dir='game', display_mode='windowed', vsync=True, show_fps=False,
                       mouse_look=False, mouse_sensitivity=175, mouse_invert_y=True)

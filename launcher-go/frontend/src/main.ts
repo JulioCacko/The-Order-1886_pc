@@ -2,10 +2,13 @@ import './style.css';
 import {completionNotice} from './session-status';
 import {achievementRows, unlockDate, type TrophyArtwork} from './achievement-list';
 import {replaceView} from './view-state';
+import {withBinding} from './input-bindings';
+import {createSettingsSaver} from './settings-save';
 
 type Choice = {value:string|number; label:string; available:boolean; reason:string};
 type Field = {key:string;label:string;page:string;kind:string;default:unknown;description:string;
-  available:boolean;reason:string;minimum?:number;maximum?:number;choices?:Choice[]};
+  available:boolean;reason:string;minimum?:number;maximum?:number;choices?:Choice[];
+  input_kind?:string;buttons?:{id:string;label:string;default:string[]}[]};
 type Snapshot = {trophies:{id:number;unlocked_at:number}[];trophy_error:string;settings:Record<string,any>;fields:Field[];pages:{id:string;title:string}[];
   trophy_catalog?:TrophyArtwork[];trophy_catalog_error?:string;
   languages:Record<string,string>;translations:Record<string,string>;game:{ready:boolean;message:string;metadata:Record<string,unknown>};
@@ -25,7 +28,8 @@ let notice = '';
 let noticeError = false;
 let starting = false;
 let disconnected = false;
-let saving = false;
+let saving = 0;
+const queueSettingsSave=createSettingsSaver(key=>snapshot.settings[key],commitSetting);
 let confirmation:((value:boolean)=>void)|null = null;
 const root = document.querySelector<HTMLDivElement>('#app')!;
 const escape = (value:unknown) => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
@@ -78,21 +82,34 @@ function control(field:Field) {
   if(field.kind==='boolean') return `<input type="checkbox" ${label}${disabled}${value?' checked':''}>`;
   if(field.kind==='select') return `<select ${label}${disabled}>${field.choices!.map(choice=>
     `<option value="${escape(String(choice.value))}"${value===choice.value?' selected':''}${!choice.available?' disabled':''}>${escape(t(choice.label))}${!choice.available?' — '+escape(t('Unavailable')):''}</option>`).join('')}</select>`;
+  if(field.kind==='bindings') {
+   const mapping=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+   return `<fieldset id="field-${field.key}" class="binding-grid" aria-describedby="help-${field.key}"><legend class="sr-only">${escape(t(field.label))}</legend>${field.buttons!.map(button=>{
+    const id=`field-${field.key}-${button.id}`;
+    const selected=typeof mapping[button.id]==='string'?mapping[button.id]:'';
+    const known=field.choices!.some(choice=>choice.value===selected);
+    const fallback=button.default.length?button.default.join(' / '):field.reason?'':field.input_kind==='controller'&&['l2','r2'].includes(button.id)?t('Physical trigger remains active'):t('No digital source');
+    return `<label for="${id}">${escape(t(button.label))}</label><select id="${id}" data-setting="${field.key}" data-binding="${button.id}" aria-describedby="help-${field.key}"${disabled}>
+     <option value=""${!selected?' selected':''}>${escape(t('Default'))}${fallback?' ('+escape(fallback)+')':''}</option>
+     ${selected&&!known?`<option value="${escape(selected)}" selected disabled>${escape(selected)} — ${escape(t('Unavailable'))}</option>`:''}
+     ${field.choices!.map(choice=>`<option value="${escape(choice.value)}"${selected===choice.value?' selected':''}${!choice.available?' disabled':''}>${escape(t(choice.label))}${!choice.available?' — '+escape(t('Unavailable')):''}</option>`).join('')}</select>`;
+   }).join('')}</fieldset>`;
+  }
   if(field.kind==='order') return `<textarea ${label}${disabled} rows="3" spellcheck="false">${escape((value as string[]).join('\n'))}</textarea>`;
   if(field.kind==='number') return `<input type="number" ${label}${disabled} value="${escape(value)}" min="${field.minimum}" max="${field.maximum}" step="1">`;
   return `<div class="path-input"><input type="text" ${label}${disabled} value="${escape(value)}" autocomplete="off" spellcheck="false">${['directory','file'].includes(field.kind)?`<button data-browse="${field.key}"${disabled} aria-label="${escape(t('Browse')+' '+t(field.label))}">${escape(t('Browse'))}</button>`:''}</div>`;
 }
 function fieldRow(field:Field) {
  const unavailable=field.choices?.filter(c=>!c.available)??[];
- return `<div class="setting-row ${!field.available?'unavailable':''}" data-field-row="${field.key}">
-  <div class="setting-copy"><label for="field-${field.key}">${escape(t(field.label))}</label>
+ return `<div class="setting-row ${field.kind==='bindings'?'binding-row ':''}${!field.available?'unavailable':''}" data-field-row="${field.key}">
+  <div class="setting-copy">${field.kind==='bindings'?`<h2>${escape(t(field.label))}</h2>`:`<label for="field-${field.key}">${escape(t(field.label))}</label>`}
   <p id="help-${field.key}">${escape(t(field.description))}</p>
   ${field.reason?`<p class="availability">${escape(t(field.reason))}</p>`:''}
   ${unavailable.length?`<details class="availability"><summary>${escape(t('Additional modes'))}</summary><ul>${unavailable.map(c=>`<li><strong>${escape(t(c.label))}</strong>: ${escape(t(c.reason))}</li>`).join('')}</ul></details>`:''}</div>
   <div class="setting-control">${control(field)}</div></div>`;
 }
 function actionButton(action:string,title:string,destructive=false) {
- return `<button data-action="${action}" class="${destructive?'danger':''}"${snapshot.busy||starting||disconnected?' disabled':''}>${escape(t(title))}</button>`;
+ return `<button data-action="${action}" class="${destructive?'danger':''}"${snapshot.busy||starting||disconnected||saving?' disabled':''}>${escape(t(title))}</button>`;
 }
 function gameActions() {
  return `<section class="utility-section"><h2>${escape(t('Save backups'))}</h2>
@@ -158,7 +175,7 @@ function settingsPage() {
  if(page==='achievements'&&!query) return achievementsPage();
  return `<section class="settings-page"><div class="section-heading"><div><h1>${escape(query?t('Search settings'):t(snapshot.pages.find(p=>p.id===page)!.title))}</h1>
  <p>${escape(query?`${matching.length} ${t('matching options')}`:t('Valid changes save automatically. Game settings take effect on the next launch.'))}</p></div>
- ${!query&&matching.some(f=>f.available)?`<button class="quiet" data-action="reset"${snapshot.busy?' disabled':''}>${escape(t('Reset section'))}</button>`:''}</div>
+ ${!query&&matching.some(f=>f.available)?`<button class="quiet" data-action="reset"${snapshot.busy||saving?' disabled':''}>${escape(t('Reset section'))}</button>`:''}</div>
  ${matching.length?matching.map(fieldRow).join(''):`<p class="empty-state">${escape(t('No matching settings. Try a different search.'))}</p>`}
  ${page==='game'&&!query?gameActions():''}${page==='system'&&!query?systemActions():''}</section>`;
 }
@@ -176,13 +193,13 @@ function render() {
  <div class="sidebar-bottom"><span>CUSA00076</span><span>${escape(t('Development preview'))}</span><button class="quiet" data-link="releases">${escape(t('View releases'))}</button></div></aside>
  <main><header class="topbar"><span class="current-section">${escape(t(pageTitle))}</span><label class="search">${icon('search')}<span class="sr-only">${escape(t('Search all settings'))}</span><input id="search" type="search" placeholder="${escape(t('Search all settings'))}" value="${escape(query)}" autocomplete="off"></label><span class="session-status">${escape(t(disconnected?'Connection lost':snapshot.busy?'Running':starting?'Starting…':'Idle'))}</span></header>
  <div id="content" class="content">${page==='home'&&!query?home():settingsPage()}</div>
- <footer class="launchbar"><div><p id="feedback" class="${noticeError?'error':''}" role="status" aria-live="polite">${escape(notice||t(snapshot.busy?'Session running. Settings are locked.':'Changes are saved automatically.'))}</p>
+ <footer class="launchbar"><div><p id="feedback" class="${noticeError?'error':''}" role="status" aria-live="polite">${escape(noticeError?notice:saving?t('Saving settings…'):notice||t(snapshot.busy?'Session running. Settings are locked.':'Changes are saved automatically.'))}</p>
  <p class="launch-context">${escape(selectedBackup?t('Selected backup will be restored after confirmation.'):t('Original game files and player data are protected.'))}</p></div>
  <button id="launch" class="primary" data-action="play"${saving||starting||disconnected?' disabled':''}>${escape(t(snapshot.busy?'Stop':'Play'))}</button></footer></main></div>
  <dialog id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-detail"><h2 id="confirm-title"></h2><p id="confirm-detail"></p><div class="actions"><button id="confirm-no">${escape(t('Cancel'))}</button><button id="confirm-yes" class="primary"></button></div></dialog>`);
  bind();
  if(focusKey) {
-  const next=document.querySelector<HTMLInputElement>(`[data-setting="${focusKey}"]`);
+  const next=(focused?.id?document.getElementById(focused.id):document.querySelector(`[data-setting="${focusKey}"]`)) as HTMLInputElement|null;
   next?.focus({preventScroll:true});
   if(selection&&next?.type==='text') next.setSelectionRange(selection[0],selection[1]);
  }
@@ -190,12 +207,17 @@ function render() {
 function navigate(next:string) { page=next;query='';render();document.querySelector<HTMLElement>('#content')?.scrollTo(0,0);document.querySelector<HTMLElement>('#content h1')?.setAttribute('tabindex','-1');document.querySelector<HTMLElement>('#content h1')?.focus(); }
 async function refresh() { snapshot=await call<Snapshot>('state.get');render(); }
 async function save(key:string,value:unknown) {
- saving=true;
+ saving++;
+ flash(t('Saving settings…'));
+ document.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button=>button.disabled=true);
+ try { await queueSettingsSave(key,value); }
+ finally {saving--;render();}
+}
+async function commitSetting(key:string,value:unknown) {
  try {
   snapshot=await call<Snapshot>('settings.set',{values:{[key]:value}});
-  notice=t('Saved — applies on next launch.');noticeError=false;render();
- } catch(error) { render();flash(String(error),true); }
- finally {saving=false;document.querySelectorAll<HTMLButtonElement>('[data-action="play"]').forEach(b=>b.disabled=starting||disconnected);}
+  notice=t('Saved — applies on next launch.');noticeError=false;
+ } catch(error) { notice=String(error);noticeError=true; }
 }
 function bind() {
  document.querySelectorAll<HTMLElement>('[data-page]').forEach(button=>button.onclick=event=>{event.preventDefault();navigate(button.dataset.page!);});
@@ -211,6 +233,10 @@ function bind() {
   if(field.kind==='number') value=Number(input.value);
   if(field.kind==='select') value=field.choices!.find(c=>String(c.value)===input.value)!.value;
   if(field.kind==='order') value=input.value.split('\n').map(x=>x.trim()).filter(Boolean);
+  if(field.kind==='bindings') {
+   const button=input.dataset.binding!,source=input.value;
+   value=(current:unknown)=>withBinding(current,button,source);
+  }
   void save(field.key,value);
  });
  document.querySelectorAll<HTMLButtonElement>('[data-browse]').forEach(button=>button.onclick=async()=>{
@@ -228,9 +254,10 @@ function bind() {
 }
 async function action(name:string) {
  try {
+  if(saving){flash(t('Wait for settings to finish saving.'));return;}
   if(name==='play'&&snapshot.busy){await call('session.stop');flash(t('Stopping session…'));return;}
   if(['play','verify','prepare'].includes(name)) {
-   if(starting||disconnected) return;
+   if(starting||disconnected||saving) return;
    setStarting(true);
    try {
    const params:Record<string,unknown>={mode:name==='play'?'play':name};

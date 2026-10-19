@@ -1,0 +1,47 @@
+name: Native input mapping regressions
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/runtime_pad.c'
+      - 'src/runtime.h'
+      - 'src/probe.c'
+      - 'scripts/order1886_input.py'
+      - 'order1886.py'
+      - 'tests/test_pad_map.c'
+      - 'tests/test_pad.c'
+      - 'tests/test_order1886_input.py'
+      - '.github/workflows/order1886-input-regressions.yml'
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          release: false
+          update: true
+          install: git
+          pacboy: toolchain:p pkgconf:p sdl3:p
+      - name: Compile and exercise actual SDL input fixtures
+        run: |
+          set -euo pipefail
+          mkdir -p out/gpu
+          clang -std=c11 -I. $(pkg-config --cflags sdl3) tests/test_pad_map.c -o out/gpu/pad-map-test.exe $(pkg-config --libs sdl3) -pthread
+          clang -std=c11 -I. $(pkg-config --cflags sdl3) tests/test_pad.c -o out/gpu/pad-test.exe $(pkg-config --libs sdl3) -pthread
+          out/gpu/pad-map-test.exe
+          out/gpu/pad-test.exe
+          printf 'MSYS2_ROOT=%s\n' "$(cygpath -w /)" >> "$(cygpath -u "$GITHUB_ENV")"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Validate inventory, CLI and native environment contract
+        shell: pwsh
+        run: python -m unittest discover -s tests -p test_order1886_input.py -v

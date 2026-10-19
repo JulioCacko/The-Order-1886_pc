@@ -33,6 +33,7 @@ import save_backup
 import order1886_frame_rate as timing
 import order1886_display as display
 import order1886_mods as mods
+import order1886_input as inputs
 
 TITLE_ID = 'CUSA00076'
 RUNTIME_ABI = 'order1886-native-1'
@@ -212,6 +213,36 @@ def validate_performance_capture(runtime, enabled):
         raise ValueError('Performance recording requires a matching native runtime declaring capture support. Rebuild or select a newer runtime.')
 
 
+def runtime_process_environment(runtime, inherited=None):
+    runtime = Path(runtime).resolve()
+    source = os.environ if inherited is None else inherited
+    env = {k: v for k, v in source.items()
+           if not k.upper().startswith('ORDER1886_') or k == 'ORDER1886_DIAG_RESOURCE_SHARPS'}
+    env['PATH'] = str(runtime.parent) + os.pathsep + env.get('PATH', '')
+    if os.name == 'nt' and not getattr(sys, 'frozen', False) and ROOT / 'out' in runtime.parents:
+        dependencies = Path(source.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
+        if dependencies.is_dir():
+            env['PATH'] = str(runtime.parent) + os.pathsep + str(dependencies) + os.pathsep + source.get('PATH', '')
+    return env
+
+
+def input_catalog(runtime, inherited=None):
+    if (runtime_identity(runtime).get('build') or {}).get('input_remapping') is not True:
+        raise ValueError('Custom bindings require a matching native runtime declaring input remapping support.')
+    return inputs.read_catalog(runtime, runtime_process_environment(runtime, inherited))
+
+
+def validate_input_settings(runtime, settings, inherited=None):
+    maps = {kind: settings.get(kind + '_bindings', {}) for kind in ('keyboard', 'controller')}
+    for kind, mapping in maps.items():
+        inputs.validate(mapping, kind)
+    if any(maps.values()) and runtime is None:
+        raise ValueError('Select a verified native runtime before using custom bindings.')
+    catalog = input_catalog(runtime, inherited) if any(maps.values()) else None
+    return {('ORDER1886_KEY_MAP' if kind == 'keyboard' else 'ORDER1886_PAD_MAP'):
+            inputs.encode(mapping, kind, catalog) for kind, mapping in maps.items()}
+
+
 def runtime_environment(runtime, user, settings=None, inherited=None):
     runtime, user = Path(runtime).resolve(), Path(user).resolve()
     settings = settings or {}
@@ -223,9 +254,7 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     system_language = settings.get('system_language', 1)
     if type(system_language) is not int or not 0 <= system_language <= 29:
         raise ValueError('System language must be an integer from 0 to 29')
-    source = os.environ if inherited is None else inherited
-    env = {k: v for k, v in source.items()
-           if not k.upper().startswith('ORDER1886_') or k == 'ORDER1886_DIAG_RESOURCE_SHARPS'}
+    env = runtime_process_environment(runtime, inherited)
     env.update({
         'ORDER1886_CONFIG': str(user / 'runtime.ini'), 'ORDER1886_USER_DIR': str(user),
         'ORDER1886_GPU_USER_DIR': str(user / 'gpu' / SHADER_CACHE_ABI), 'ORDER1886_GAME_PROFILE': 'order1886',
@@ -241,12 +270,7 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
         'ORDER1886_VBLANK_HZ': '60',
         'ORDER1886_STREAM_MEMORY': 'cached', 'PYTHONIOENCODING': 'utf-8',
     })
-    env['PATH'] = str(runtime.parent) + os.pathsep + env.get('PATH', '')
-    if os.name == 'nt' and not getattr(sys, 'frozen', False) and ROOT / 'out' in runtime.parents:
-        # Source builds link CLANG64 DLLs. Portable packages carry their own closure in bin/.
-        dependencies = Path(source.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
-        if dependencies.is_dir():
-            env['PATH'] = str(runtime.parent) + os.pathsep + str(dependencies) + os.pathsep + source.get('PATH', '')
+    env.update(validate_input_settings(runtime, settings, inherited))
     icon = user / 'window_icon.bmp'
     if icon.is_file():
         env['ORDER1886_WINDOW_ICON'] = str(icon)
@@ -421,6 +445,8 @@ def main(argv=None):
     parser.add_argument('--mouse-sensitivity', type=int, default=100,
                         help='Mouse-to-stick sensitivity, 10 to 500 percent (default: 100)')
     parser.add_argument('--mouse-invert-y', type=int, choices=[0, 1], default=0)
+    parser.add_argument('--keyboard-bindings', default='{}', help='JSON object mapping PS4 digital buttons to SDL key names')
+    parser.add_argument('--controller-bindings', default='{}', help='JSON object mapping PS4 digital buttons to SDL gamepad button names')
     parser.add_argument('--mods-dir', default='', help='Folder containing explicitly selected asset mod folders')
     parser.add_argument('--mods-enabled', type=int, choices=[0, 1], default=0)
     parser.add_argument('--mods-order', default='[]', help='JSON list of enabled mod folder names; later entries win')
@@ -430,6 +456,10 @@ def main(argv=None):
     if not math.isfinite(args.timeout) or args.timeout < 0:
         parser.error('--timeout must be a finite nonnegative number')
     try:
+        for kind in ('keyboard', 'controller'):
+            mapping = json.loads(getattr(args, kind + '_bindings'))
+            inputs.validate(mapping, kind)
+            setattr(args, kind + '_bindings', mapping)
         args.mods_dir = str(mods.resolve_root(args.mods_dir, ROOT))
         game, user = mods.safe_path(args.game_dir), mods.safe_path(args.state_dir)
         mods.safe_path(user / 'session.lock')
@@ -457,6 +487,8 @@ def main(argv=None):
             runtime = None if args.prepare_only else find_runtime(args.runtime)
             if not args.prepare_only and runtime is None:
                 raise ValueError('Order runtime not found in this installation. Build build.sh or explicitly select a runtime in Settings.')
+            if runtime is not None:
+                validate_input_settings(runtime, vars(args))
             if args.frame_rate == 60:
                 emit_status(timing.WARNING, fallback=diagnostic_log)
             if args.aspect_ratio == '16:9':

@@ -15,7 +15,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ('prepare', 'link_modules', 'link_libc', 'save_backup', 'order1886_frame_rate',
-           'order1886_display', 'order1886_cache', 'order1886_steam', 'order1886_mods')
+           'order1886_display', 'order1886_cache', 'order1886_steam', 'order1886_mods', 'order1886_input')
 SYSTEM_LIBS = re.compile(r'^(?:ld-linux|lib(?:c|m|pthread|dl|rt|resolv|util)\.so|libnss_)')
 
 

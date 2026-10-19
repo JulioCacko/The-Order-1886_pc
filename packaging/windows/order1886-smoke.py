@@ -37,7 +37,7 @@ def main():
               "package": str(package), "tested_copy": str(copied), "checks": {}}
     report_path = work / "smoke-report.json"
     manifest = json.loads((copied / "package-manifest.json").read_text(encoding="utf-8-sig"))
-    expected_scripts = {"prepare.py", "link_modules.py", "link_libc.py", "save_backup.py", "order1886_frame_rate.py", "order1886_display.py", "order1886_cache.py", "order1886_steam.py", "order1886_mods.py"}
+    expected_scripts = {"prepare.py", "link_modules.py", "link_libc.py", "save_backup.py", "order1886_frame_rate.py", "order1886_display.py", "order1886_cache.py", "order1886_steam.py", "order1886_mods.py", "order1886_input.py"}
     actual_scripts = {p.name for p in (copied / "_internal/scripts").iterdir()}
     expected_art = {"order1886.ico", "ARTWORK.txt", "launcher-art.jpg", "launcher-art.png", "launcher-art.txt",
                     "play-brass.png", "logo-horizontal.png", "logo-stacked.png", "app-icon.png", "BRANDING.txt"}

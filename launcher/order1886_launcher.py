@@ -64,7 +64,7 @@ def save_settings(path: Path, values: dict) -> None:
 
 def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                     stop_file: Path | None = None) -> list[str]:
-    from order1886 import SYSTEM_LANGUAGES
+    from order1886 import SYSTEM_LANGUAGES, inputs
     locale = values.get("ui_language", "en")
     language = SYSTEM_LANGUAGES.get(locale, 1) if isinstance(locale, str) else 1
     command = ([sys.executable, "--run-backend"] if FROZEN else
@@ -82,6 +82,10 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                 "--system-language", str(language)]
     command += ["--readbacks", values.get("readbacks", "relaxed")]
     command += ["--performance-capture", str(int(values.get("performance_capture", False)))]
+    for kind in ('keyboard', 'controller'):
+        mapping = values.get(kind + '_bindings', {})
+        inputs.validate(mapping, kind)
+        command += ['--' + kind + '-bindings', json.dumps(mapping, ensure_ascii=False)]
     if values.get("runtime"):
         command += ["--runtime", values["runtime"]]
     if mode == "play":
@@ -258,6 +262,9 @@ class _QuickPlayEvents:
 def validate_launch_game(game: Path, values: dict) -> None:
     """Use the backend's exact patch guards before creating a play session."""
     import order1886
+    custom = any(values.get(kind + '_bindings', {}) for kind in ('keyboard', 'controller'))
+    runtime = order1886.find_runtime(values.get('runtime') or None) if custom else None
+    order1886.validate_input_settings(runtime, values)
     order1886.mods.validate_config(order1886.mods.resolve_root(values.get("mods_dir", ""), ROOT), values.get("mods_enabled", False),
                                   values.get("mod_order", []))
     game = (game if game.is_absolute() else ROOT / game).resolve()
@@ -857,6 +864,8 @@ class Launcher:
         if not self.commit_home():
             return
         try:
+            stop_file = self.state / f"session-stop-{uuid.uuid4().hex}"
+            command = backend_command(dict(self.values), mode, self.state, stop_file)
             if mode == "play":
                 validate_launch_game(Path(self.values["game_dir"]), dict(self.values, ui_language=self.language))
             save_settings(self.state / "settings.json", self.values)
@@ -866,7 +875,7 @@ class Launcher:
             return
         self.busy = True
         self.session_cancel = threading.Event()
-        self.stop_file = self.state / f"session-stop-{uuid.uuid4().hex}"
+        self.stop_file = stop_file
         self.session_started = time.time()
         self.session_mode = mode
         self.log_buffer = []
@@ -881,7 +890,6 @@ class Launcher:
             self.show_logs()
         token = self.stop_file.stem.removeprefix("session-stop-")
         logfile = self.state / "logs" / f"launcher-{time.strftime('%Y%m%d-%H%M%S')}-{token[:8]}.log"
-        command = backend_command(dict(self.values), mode, self.state, self.stop_file)
         self.session_thread = threading.Thread(target=session_worker,
             args=(command, logfile, self.events, self.session_cancel, self.stop_file, mode),
             daemon=True)
