@@ -74,6 +74,10 @@ struct Texture {
 };
 struct Rasterizer {
     Texture texture_cache;
+    struct Memory { u64 maximum=UINT64_MAX;
+        u64 ClampRangeSize(u64,u64 n) { return n<maximum ? n : maximum; }
+    } vm;
+    Memory* memory=&vm;
     struct BufferCache { Texture* texture; unsigned fills{};
         auto ObtainBuffer(u64 address,u32 size,bool written) {
             assert(!written && texture->metadata.HtileWord(address,size));
@@ -100,6 +104,10 @@ int main() {
     oversized.texture_cache.metadata.Register(0x1000,1,Type::HTile);
     large.info.buffers[0].sharp.size=u64{1}<<32;
     assert(!oversized.IsComputeMetaClear(&large) && !oversized.buffer_cache.fills);
+    Rasterizer unmapped; Pipeline partial;
+    unmapped.texture_cache.metadata.Register(0x1000,1,Type::HTile);
+    unmapped.vm.maximum=8;
+    assert(!unmapped.IsComputeMetaClear(&partial) && !unmapped.buffer_cache.fills);
     for(bool unsupported_first:{false,true}) {
         Rasterizer mixed; Pipeline multiple;
         mixed.texture_cache.metadata.Register(0x1000,1,Type::HTile,~0u,33);

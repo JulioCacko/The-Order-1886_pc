@@ -1917,6 +1917,8 @@ bool Rasterizer::IsComputeMetaClear(const Pipeline* pipeline) {
             if (!desc.is_written) continue;
             if (desc.IsSpecial()) return false;
             const auto sharp = desc.GetSharp(info);
+            if (memory->ClampRangeSize(sharp.base_address, sharp.GetSize()) != sharp.GetSize())
+                return false;
             if (!texture_cache.ClearMeta(sharp.base_address, sharp.GetSize())) return false;
             cleared = true;
         }
