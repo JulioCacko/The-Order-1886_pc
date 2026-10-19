@@ -27,6 +27,7 @@
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_hle.h"
+#include "video_core/texture_cache/image_rejection.h"
 #include "video_core/texture_cache/image_view.h"
 #include "video_core/texture_cache/texture_cache.h"
 
@@ -2334,6 +2335,23 @@ void Rasterizer::BindTextures(const Shader::Info& stage, const PreparedStage* pr
                         "data_format={}, num_format={}",
                         tsharp.Address(), tsharp.pitch, tsharp.width, static_cast<u32>(data_fmt),
                         static_cast<u32>(num_fmt));
+            bind_null();
+            continue;
+        }
+
+        // A guest descriptor can decode to more array layers than the device allows. That used
+        // to abort the process when the image was created (texture_cache/image.cpp); a null
+        // binding is an already-supported state here, so refuse the binding and say why once.
+        if (VideoCore::ExceedsArrayLayerLimit(tsharp.NumLayers(), texture_cache.MaxArrayLayers())) {
+            static std::atomic<unsigned> refused{};
+            if (refused.fetch_add(1, std::memory_order_relaxed) < 8) {
+                LOG_WARNING(Render_Vulkan,
+                            "Refusing an image binding with {} array layers (device allows {}): "
+                            "address={:#x} levels={} format={}",
+                            tsharp.NumLayers(), texture_cache.MaxArrayLayers(),
+                            tsharp.Address(), tsharp.NumLevels(),
+                            static_cast<u32>(tsharp.GetDataFmt()));
+            }
             bind_null();
             continue;
         }

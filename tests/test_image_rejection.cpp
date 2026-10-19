@@ -90,6 +90,13 @@ int main() {
     huge.required_bytes = (1ull << 33) + 1;
     assert(ClassifyImageRequest(huge) == ImageRejection::ExceedsResourceSize);
 
+    // The binding path refuses an impossible array size instead of aborting: the same decision
+    // image creation used, expressed where a null binding is already a supported state.
+    assert(VideoCore::ExceedsArrayLayerLimit(8029, 2048));
+    assert(!VideoCore::ExceedsArrayLayerLimit(2048, 2048));
+    assert(VideoCore::ExceedsArrayLayerLimit(2049, 2048));
+    assert(VideoCore::ExceedsArrayLayerLimit(0, 2048));
+    assert(VideoCore::MinArrayLayers == 256);
     // Classification is reported, and every value has a distinct name for the log.
     assert(std::strcmp(DescribeImageRejection(ImageRejection::None), "accepted") == 0);
     const char* names[] = {

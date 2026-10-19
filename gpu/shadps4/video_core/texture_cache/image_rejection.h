@@ -66,6 +66,16 @@ struct ImageRequestLimits {
     uint64_t max_resource_bytes = 0;
 };
 
+/// True when a guest array size cannot be a host image. A descriptor that decodes to more
+/// layers than the device allows used to abort the process in image.cpp; the binding path
+/// can refuse it instead, because a null texture binding is already a supported state.
+constexpr bool ExceedsArrayLayerLimit(uint32_t layers, uint32_t max_layers) {
+    return layers == 0 || layers > max_layers;
+}
+
+/// Vulkan guarantees at least 256 array layers for 2D images; a device that reports less is
+/// broken, so never accept a limit below the floor.
+constexpr uint32_t MinArrayLayers = 256;
 /// The format-limit decision, mirrored by Vulkan::ImageFitsFormatLimits.
 constexpr ImageRejection ClassifyImageRequest(const ImageRequestLimits& request) {
     if (request.width == 0 || request.width > request.max_width) {
