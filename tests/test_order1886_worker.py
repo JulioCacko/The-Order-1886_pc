@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from launcher import order1886_worker as worker
+from tests.test_order1886_trophy_history import trophy_archive, PNG
 
 
 class WorkerTests(unittest.TestCase):
@@ -41,6 +42,24 @@ class WorkerTests(unittest.TestCase):
         self.assertFalse(fields["frame_generation"]["available"])
         self.assertTrue(fields["frame_generation"]["reason"])
         self.assertEqual(len(result["languages"]), 13)
+
+    def test_trophy_artwork_failure_does_not_hide_unlock_history(self):
+        game = self.root / 'game'
+        archive = game / 'sce_sys/trophy/trophy00.trp'
+        archive.parent.mkdir(parents=True)
+        archive.write_bytes(trophy_archive([('TROP001.PNG', PNG, 0)]))
+        earned = [{'id': 1, 'unlocked_at': 1700000000}]
+        with patch.object(self.app, 'settings', return_value={'game_dir': str(game)}), \
+             patch.object(worker.order1886, 'inspect_game', return_value={'TITLE_ID': 'CUSA00076'}), \
+             patch('scripts.order1886_trophy_history.read', return_value=earned):
+            result = self.app.snapshot()
+            self.assertEqual(result['trophy_catalog'][0]['id'], 1)
+            self.assertTrue(result['trophy_catalog'][0]['icon'].startswith('data:image/png;base64,'))
+            archive.write_bytes(b'corrupt')
+            result = self.app.snapshot()
+            self.assertEqual(result['trophies'], earned)
+            self.assertEqual(result['trophy_catalog'], [])
+            self.assertTrue(result['trophy_catalog_error'])
 
     def test_unrecognized_saved_values_are_not_silently_rewritten(self):
         self.state.mkdir()

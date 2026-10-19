@@ -32,9 +32,9 @@ Windows needs WebView2. Startup was checked on the development machine with WebV
 
 ## Current boundaries
 
-The source catalogue contains 44 fields and 16 mapped player settings. The GPU readback selector keeps the existing relaxed default; selective/precise require a matching native receipt and remain experimental. Other requested modes remain visible with reasons and cannot be saved as working renderer options. Their presence is not a gold claim. The published Go preview 1 retains its original catalogue/runtime.
+The source catalogue contains 45 fields and 17 mapped player settings. The GPU readback selector keeps the existing relaxed default; selective/precise require a matching native receipt and remain experimental. Other requested modes remain visible with reasons and cannot be saved as working renderer options. Their presence is not a gold claim. Older Go previews retain their original catalogue/runtime.
 
-The 13 existing language catalogs and game-language forwarding are reused. Newly written UI copy still needs translation/native-speaker review. Independent game text/voice selection remains open. Local trophy IDs and timestamps use the native store's checksum; official names/icons and a real unlock capture remain open.
+The 13 existing language catalogs and game-language forwarding are reused. Newly written UI copy still needs translation/native-speaker review. Independent game text/voice selection remains open. Local trophy IDs and timestamps use the native store's checksum. Installed TRP artwork supplies locked/earned entries and progress; earned entries show their images and readable localized dates. Encrypted names/descriptions and a real unlock capture remain open. See [achievement evidence](../docs/verification/2026-10-19-achievements.md).
 
 See [verification](../docs/verification/2026-10-18-go-launcher.md) for exact evidence and remaining gold work.
 
