@@ -8,7 +8,15 @@ import math
 from pathlib import Path
 
 
-def summarize(events):
+def measure(events):
+    """Validate one trace and return its raw render-work measurements.
+
+    This is the only place the trace format is interpreted: loading boundaries split the
+    run into segments, a repeated render serial is not a rendered frame, and the guest
+    clock must increase strictly. Anything else that reads a trace (percentiles per
+    threshold, comparisons, the launcher's report method) must call this rather than
+    re-read the CSV, so every number keeps one definition.
+    """
     segments, current = [], []
     previous = None
     for event in events:
@@ -46,15 +54,25 @@ def summarize(events):
             last = sample
         if segment[-1]['timestamp_ns'] > last['timestamp_ns']:
             intervals.append((segment[-1]['timestamp_ns'] - last['timestamp_ns']) / 1e6)
-    seconds = elapsed_ns / 1e9
+    return {
+        'segments': len(segments), 'measured_seconds': elapsed_ns / 1e9,
+        'intervals_ms': intervals, 'guest_intervals': guest_intervals,
+        'rendered_intervals': rendered_intervals, 'repeated_render_serials': repeats,
+    }
+
+
+def summarize(events):
+    data = measure(events)
+    seconds, intervals = data['measured_seconds'], data['intervals_ms']
+    rendered_intervals = data['rendered_intervals']
     ordered = sorted(intervals)
     p99 = ordered[math.ceil(len(ordered) * .99) - 1] if ordered else None
     fps = rendered_intervals / seconds if seconds else None
     return {
-        'segments': len(segments), 'measured_seconds': seconds,
-        'guest_flip_fps': guest_intervals / seconds if seconds else None,
+        'segments': data['segments'], 'measured_seconds': seconds,
+        'guest_flip_fps': data['guest_intervals'] / seconds if seconds else None,
         'render_work_fps': fps, 'p99_ms': p99, 'worst_ms': max(ordered) if ordered else None,
-        'repeated_render_serials': repeats,
+        'repeated_render_serials': data['repeated_render_serials'],
         'timing_gate_passed': bool(seconds >= 1800 and fps is not None and fps >= 59
                                    and p99 is not None and p99 <= 20),
         'milestone_accepted': False,

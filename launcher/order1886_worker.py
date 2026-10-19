@@ -25,7 +25,7 @@ from launcher.order1886_options import FIELDS, PAGES
 MAX_REQUEST = 64 * 1024
 METHODS = frozenset(("state.get", "settings.set", "settings.reset", "session.start", "session.stop",
                      "saves.list", "saves.backup", "saves.restore", "cache.clear", "mods.list",
-                     "steam.add", "shortcut.create", "updates.preflight"))
+                     "steam.add", "shortcut.create", "updates.preflight", "performance.report"))
 FIELD_BY_KEY = {item["key"]: item for item in FIELDS}
 
 
@@ -264,6 +264,22 @@ class Worker:
         self.thread.start()
         return {"started": True, "logfile": str(self.logfile)}
 
+    def report(self, params):
+        """Summarize this state's newest frame traces. Read-only, and it decides nothing."""
+        from scripts import order1886_perf_report as perf
+        count = params.get("count", 1)
+        if type(count) is not int or not 1 <= count <= perf.MAX_TRACES:
+            raise ValueError("A performance report reads between 1 and %d recordings at a time."
+                             % perf.MAX_TRACES)
+        logs = self.state / "logs"
+        paths = sorted(logs.glob("performance-*.csv"),
+                       key=lambda path: path.stat().st_mtime_ns, reverse=True)
+        if not paths:
+            raise ValueError("No performance recording found: %s holds no performance-*.csv. "
+                             "Turn on System > Record performance data, play the scene, and quit the "
+                             "game normally so the trace is closed." % logs)
+        return perf.summarize(paths[:count])
+
     def dispatch(self, method, params):
         if method not in METHODS:
             raise ValueError("Unknown worker method.")
@@ -271,6 +287,8 @@ class Worker:
             raise ValueError("Request params must be an object.")
         if method == "state.get":
             return self.snapshot()
+        if method == "performance.report":
+            return self.report(params)
         if method == "session.start":
             return self.start(params)
         if method == "session.stop":
