@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import io
 import json
 import os
@@ -66,6 +67,7 @@ class Worker:
         self.logfile = None
         self.last_exit = None
         self.log_tail = []
+        self._readback_support = None
         # Legacy helper defaults remain unchanged; explicit installation/state paths
         # support both source runs and a worker under the portable bin directory.
         legacy.ROOT = self.installation
@@ -75,8 +77,41 @@ class Worker:
         defaults = legacy.load_launch_settings(self.state, {})
         return {**defaults, **legacy.read_settings(self.state / "settings.json")}
 
+    def readback_policy_reason(self, values, policy):
+        requested = values.get("runtime", "")
+        def signature(runtime):
+            return tuple((p.stat().st_size, p.stat().st_mtime_ns)
+                         for p in (runtime, runtime.with_name("runtime-build.json")))
+        try:
+            runtime = order1886.find_runtime_path(requested or None)
+            if runtime is None:
+                return "Select a native runtime declaring this readback policy first."
+            if self._readback_support is not None:
+                previous, previous_runtime, stamp, reasons = self._readback_support
+                if requested == previous and runtime == previous_runtime and stamp == signature(runtime):
+                    return reasons[policy]
+            order1886.find_runtime(runtime)
+            reasons = {}
+            for candidate in ("selective", "precise"):
+                try:
+                    order1886.validate_readback_policy(runtime, candidate)
+                    reasons[candidate] = ""
+                except ValueError as exc:
+                    reasons[candidate] = str(exc)
+            self._readback_support = requested, runtime, signature(runtime), reasons
+            return reasons[policy]
+        except (OSError, ValueError) as exc:
+            return "This readback policy is unavailable: " + str(exc)
+
     def snapshot(self):
         values = self.settings()
+        fields = copy.deepcopy(FIELDS)
+        for item in fields:
+            if item["key"] == "readbacks":
+                for choice in item["choices"]:
+                    if choice["value"] in ("selective", "precise"):
+                        reason = self.readback_policy_reason(values, choice["value"])
+                        choice.update(available=not bool(reason), reason=reason)
         game = Path(values.get("game_dir") or order1886.default_game_dir())
         if not game.is_absolute():
             game = self.installation / game
@@ -91,7 +126,7 @@ class Worker:
             trophies = order1886_trophy_history.read(self.state)
         except (OSError, ValueError) as exc:
             trophies, trophy_error = [], str(exc)
-        return {"version": 1, "settings": values, "fields": FIELDS, "pages": PAGES,
+        return {"version": 1, "settings": values, "fields": fields, "pages": PAGES,
                 "trophies": trophies, "trophy_error": trophy_error,
                 "languages": LANGUAGES, "translations": table(values.get("ui_language", "en")),
                 "game": readiness, "state_dir": str(self.state), "installation": str(self.installation),
@@ -201,6 +236,10 @@ class Worker:
                          if f["page"] == page and f["available"]}
             validate_patch(patch)
             values = {**self.settings(), **patch}
+            if values.get("readbacks") in ("selective", "precise"):
+                reason = self.readback_policy_reason(values, values["readbacks"])
+                if reason:
+                    raise ValueError(reason)
             order1886.mods.validate_config(order1886.mods.resolve_root(values.get("mods_dir", ""), self.installation),
                                           values.get("mods_enabled", False), values.get("mod_order", []))
             legacy.save_settings(self.state / "settings.json", values)

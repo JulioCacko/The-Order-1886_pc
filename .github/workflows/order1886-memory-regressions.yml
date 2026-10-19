@@ -5,6 +5,12 @@ on:
     paths:
       - 'src/runtime_memory.c'
       - 'gpu/shim/ps4gpu.cpp'
+      - 'gpu/shim/core/emulator_settings.h'
+      - 'gpu/shadps4/video_core/buffer_cache/**'
+      - 'order1886.py'
+      - 'launcher/order1886_*.py'
+      - 'tests/test_selective_readbacks.cpp'
+      - 'tests/test_order1886_readback_policy.py'
       - 'tests/test_memory_read_backing.c'
       - 'tests/test_order1886_read_backing.py'
       - '.github/workflows/order1886-memory-regressions.yml'
@@ -16,6 +22,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Install header-test dependencies
+        run: sudo apt-get update && sudo apt-get install -y libfmt-dev libboost-dev
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
@@ -23,4 +31,6 @@ jobs:
         env:
           CC: clang
           CXX: clang++
-        run: python -m unittest discover -s tests -p test_order1886_read_backing.py -v
+        run: |
+          python -m unittest discover -s tests -p test_order1886_read_backing.py -v
+          python -m unittest discover -s tests -p test_order1886_readback_policy.py -v

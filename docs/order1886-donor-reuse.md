@@ -23,8 +23,10 @@ propagation is still needed to preserve NaN when that hardware bit is disabled.
 
 ### Remaining donor candidates
 
-- `3654b06` readbacks need CPU-write cancellation, unmap/remap cleanup, overlapping
-  watch handling and overflow-safe backing reads. Its HTILE synthesis also needs
+- `3654b06` motivated the protected backing-read fix and the synchronous selective
+  readback policy. The selective path reuses existing waits instead of introducing
+  the donor's promoted deferred-buffer queue; CPU writes/unmaps clear page watches.
+  Both modes still need matched scene/performance qualification. HTILE synthesis needs
   an optional-value guard for shader-written metadata and scene validation.
   Existing backing-write texture invalidation is already present locally.
 - Async pipeline restore prioritization depends on the donor's publication and

@@ -37,7 +37,7 @@ ASPECT_RATIO = {"Full screen 16:9 (experimental)": "16:9", "Original cinematic a
 PAGES = ("home", "graphics", "performance", "game", "advanced")
 PAGE_TITLES = dict(zip(PAGES, ("Home", "Graphics", "Performance", "Game", "Advanced")))
 SETTINGS_KEYS = ("game_dir", "runtime", "display_mode", "vsync", "show_fps",
-                 "presentation_filter", "frame_rate", "aspect_ratio", "mouse_look",
+                 "presentation_filter", "frame_rate", "aspect_ratio", "mouse_look", "readbacks",
                  "mouse_sensitivity", "mouse_invert_y", "ui_language", "mods_dir", "mods_enabled")
 
 
@@ -80,6 +80,7 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                 "--mouse-sensitivity", str(values.get("mouse_sensitivity", 100)),
                 "--mouse-invert-y", str(int(values.get("mouse_invert_y", False))),
                 "--system-language", str(language)]
+    command += ["--readbacks", values.get("readbacks", "relaxed")]
     if values.get("runtime"):
         command += ["--runtime", values["runtime"]]
     if mode == "play":
@@ -213,6 +214,7 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         "vsync": bool(saved.get("vsync", True)),
         "show_fps": bool(saved.get("show_fps", True)),
         "presentation_filter": saved.get("presentation_filter", "fsr1"),
+        "readbacks": saved.get("readbacks", "relaxed"),
         "frame_rate": saved.get("frame_rate", 30),
         "aspect_ratio": saved.get("aspect_ratio", "original"),
         "mouse_look": bool(saved.get("mouse_look", True)),

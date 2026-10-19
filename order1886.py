@@ -100,14 +100,12 @@ def inspect_game(game):
     return metadata
 
 
-def find_runtime(explicit=None):
+def find_runtime_path(explicit=None):
+    """Locate the selected executable; identity verification belongs to find_runtime."""
     if explicit:
         path = Path(explicit).expanduser().resolve()
         if not path.is_file():
             raise ValueError(f'Runtime executable not found: {path}')
-        build = runtime_identity(path)['build']
-        if not build or build.get('game_profile') != 'order1886' or build.get('runtime_abi') != RUNTIME_ABI:
-            raise ValueError('Selected executable is not a verified dedicated Order runtime. Rebuild order1886-runtime.exe.')
         return path
     name = 'order1886-runtime.exe' if os.name == 'nt' else 'order1886-runtime'
     bases = (INSTALL_ROOT,) if getattr(sys, 'frozen', False) else tuple(dict.fromkeys((INSTALL_ROOT, ROOT)))
@@ -115,8 +113,18 @@ def find_runtime(explicit=None):
                   for folder in ('bin', 'out')]
     for candidate in candidates:
         if candidate.is_file():
-            return find_runtime(candidate)
+            return candidate.resolve()
     return None
+
+
+def find_runtime(explicit=None):
+    path = find_runtime_path(explicit)
+    if path is None:
+        return None
+    build = runtime_identity(path)['build']
+    if not build or build.get('game_profile') != 'order1886' or build.get('runtime_abi') != RUNTIME_ABI:
+        raise ValueError('Selected executable is not a verified dedicated Order runtime. Rebuild order1886-runtime.exe.')
+    return path
 
 
 def sha256(path):
@@ -186,10 +194,22 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original'):
     return result
 
 
+def validate_readback_policy(runtime, policy):
+    if policy not in ('relaxed', 'selective', 'precise'):
+        raise ValueError('GPU readback policy must be relaxed, selective or precise')
+    if policy in ('selective', 'precise'):
+        build = runtime_identity(runtime)['build'] or {}
+        policies = build.get('readback_policies', [])
+        if not isinstance(policies, list) or policy not in policies:
+            raise ValueError(f'{policy.title()} readbacks require a matching native runtime build declaring {policy} support. Rebuild or select a newer runtime.')
+
+
 def runtime_environment(runtime, user, settings=None, inherited=None):
     runtime, user = Path(runtime).resolve(), Path(user).resolve()
     settings = settings or {}
     frame_rate = timing.validate_frame_rate(settings.get('frame_rate', 30))
+    readbacks = settings.get('readbacks', 'relaxed')
+    validate_readback_policy(runtime, readbacks)
     system_language = settings.get('system_language', 1)
     if type(system_language) is not int or not 0 <= system_language <= 29:
         raise ValueError('System language must be an integer from 0 to 29')
@@ -201,6 +221,7 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
         'ORDER1886_GPU_USER_DIR': str(user / 'gpu' / SHADER_CACHE_ABI), 'ORDER1886_GAME_PROFILE': 'order1886',
         'ORDER1886_FPS_LIMIT': str(frame_rate),
         'ORDER1886_LANGUAGE': str(system_language),
+        'ORDER1886_READBACKS': str({'relaxed': 1, 'selective': 3, 'precise': 2}[readbacks]),
         # Reuse validated cached pipelines before playback rather than compiling during it.
         'ORDER1886_PIPELINE_BINARIES': '0', 'ORDER1886_BACKGROUND_WARMUP': '0',
         'ORDER1886_PARALLEL_WARMUP': '0',
@@ -378,6 +399,8 @@ def main(argv=None):
     parser.add_argument('--aspect-ratio', choices=['original', '16:9'], default='original',
                         help='Experimental full-screen 16:9 or original cinematic aspect; requires restart')
     parser.add_argument('--vsync', type=int, choices=[0, 1], default=1)
+    parser.add_argument('--readbacks', choices=['relaxed', 'selective', 'precise'], default='relaxed',
+                        help='GPU buffer readback policy; selective/precise are experimental and can add CPU waits')
     parser.add_argument('--show-fps', type=int, choices=[0, 1], default=0)
     parser.add_argument('--mouse-look', type=int, choices=[0, 1], default=1)
     parser.add_argument('--mouse-sensitivity', type=int, default=100,

@@ -108,6 +108,9 @@ void BufferCache::InvalidateMemory(VAddr device_addr, u64 size, bool assume_lock
     memory_tracker->InvalidateRegion(device_addr, size, [this, device_addr, size, assume_locks] {
         ReadMemory(device_addr, size, true, assume_locks);
     });
+    if (EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Selective) {
+        memory_tracker->WatchReads(device_addr, size, false);
+    }
 }
 
 // the game fills its per-frame buffers (constants, skinning output) sequentially and
@@ -190,6 +193,7 @@ void BufferCache::DownloadMemory(const Buffer* arena, VAddr device_addr, u64 siz
             constexpr u64 mask = ~(align - 1ULL);
             total_size_bytes += (new_size + align - 1) & mask;
         };
+        std::scoped_lock lock{gpu_ranges_mutex};
         gpu_modified_ranges.ForEachInRange(address, size, add_download);
         gpu_modified_ranges.Subtract(address, size);
     });
@@ -336,6 +340,10 @@ std::pair<const Buffer*, u64> BufferCache::ObtainBuffer(VAddr device_addr, u32 s
     EnsureResident(arena, first_block, last_block);
     const u64 uploaded_before = Ps4Stats::buffer_upload_bytes.load(std::memory_order_relaxed);
     SynchronizeMemory(arena, device_addr, size, is_written, is_texel_buffer);
+    if (is_written && size <= 64_KB &&
+        EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Selective) {
+        memory_tracker->WatchReads(device_addr, size, true);
+    }
     if (stats) {
         auto& region = Stats().regions[RegionKey(device_addr)];
         ++region.arena_count;
@@ -344,6 +352,7 @@ std::pair<const Buffer*, u64> BufferCache::ObtainBuffer(VAddr device_addr, u32 s
             Ps4Stats::buffer_upload_bytes.load(std::memory_order_relaxed) - uploaded_before;
     }
     if (is_written) {
+        std::scoped_lock lock{gpu_ranges_mutex};
         gpu_modified_ranges.Add(device_addr, size);
     }
     return {arena, arena->Offset(device_addr)};
