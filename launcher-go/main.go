@@ -27,16 +27,18 @@ import (
 var assets embed.FS
 
 type App struct {
-	directDone   chan int
-	ctx          context.Context
-	worker       *workerClient
-	root         string
-	state        string
-	python       string
-	mu           sync.Mutex
-	busy         bool
-	closing      bool
-	startupError string
+	directDone      chan int
+	ctx             context.Context
+	worker          *workerClient
+	root            string
+	state           string
+	python          string
+	mu              sync.Mutex
+	busy            bool
+	closing         bool
+	startupError    string
+	connectMu       sync.Mutex
+	shutdownStarted bool
 }
 
 func (app *App) event(name string, data json.RawMessage) {
@@ -74,6 +76,14 @@ func (app *App) event(name string, data json.RawMessage) {
 }
 
 func (app *App) connect() error {
+	app.connectMu.Lock()
+	defer app.connectMu.Unlock()
+	if app.shutdownStarted {
+		return errors.New("Launcher is closing.")
+	}
+	if app.worker != nil {
+		return nil
+	}
 	workerPath := filepath.Join(app.root, "bin", "order1886-worker.exe")
 	var command *exec.Cmd
 	if _, err := os.Stat(workerPath); err == nil {
@@ -99,16 +109,13 @@ func (app *App) startup(ctx context.Context) {
 	app.mu.Lock()
 	app.ctx = ctx
 	app.mu.Unlock()
-	if app.worker == nil {
-		if err := app.connect(); err != nil {
-			app.startupError = err.Error()
-		}
-	}
+	// Frontend calls report the current connection error and can retry after repair.
+	_ = app.connect()
 }
 
 func (app *App) Call(method string, params json.RawMessage) (string, error) {
-	if app.worker == nil {
-		return "", errors.New(app.startupError)
+	if err := app.connect(); err != nil {
+		return "", err
 	}
 	if len(params) == 0 || string(params) == "null" {
 		params = json.RawMessage("{}")
@@ -136,7 +143,24 @@ func (app *App) Call(method string, params json.RawMessage) (string, error) {
 	return string(result), nil
 }
 
-func (app *App) StartupError() string { return app.startupError }
+func (app *App) StartupError() string {
+	if err := app.connect(); err != nil {
+		return err.Error()
+	}
+	app.connectMu.Lock()
+	defer app.connectMu.Unlock()
+	return app.startupError
+}
+
+func (app *App) shutdown(context.Context) {
+	app.connectMu.Lock()
+	app.shutdownStarted = true
+	worker := app.worker
+	app.connectMu.Unlock()
+	if worker != nil {
+		worker.Close()
+	}
+}
 
 func (app *App) Browse(kind string) (string, error) {
 	if kind == "directory" {
@@ -269,12 +293,10 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 12, G: 14, B: 15, A: 255},
 		AssetServer:      &assetserver.Options{Assets: frontend},
 		Bind:             []interface{}{app}, OnStartup: app.startup, OnBeforeClose: app.beforeClose,
-		OnShutdown: func(context.Context) {
-			if app.worker != nil {
-				app.worker.Close()
-			}
-		},
-		Windows: &windows.Options{Theme: windows.SystemDefault},
+		OnShutdown: app.shutdown,
+		// Separate portable installations must not reuse a live WebView profile.
+		Windows: &windows.Options{Theme: windows.SystemDefault,
+			WebviewUserDataPath: filepath.Join(app.state, "webview")},
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

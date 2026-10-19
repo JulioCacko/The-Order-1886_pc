@@ -61,6 +61,10 @@ field("frame_generation", "Frame generation", "performance", "select", "off", "G
        ("dlss", "NVIDIA DLSS Frame Generation", FG + " Requires supported NVIDIA hardware."),
        ("xess", "Intel XeSS Frame Generation", FG + " Requires the Windows D3D12 presentation bridge.")], reason=FG)
 field("show_fps", "Performance overlay", "performance", "boolean", True, "Show the runtime performance overlay.")
+field("readbacks", "GPU readback policy", "performance", "select", "relaxed",
+      "Relaxed keeps the existing behavior. Selective synchronizes CPU reads of small GPU output buffers; precise tracks all GPU-written buffers. Both can add waits and require gameplay/performance qualification.",
+      [("relaxed", "Relaxed (existing baseline)", ""), ("selective", "Selective — experimental", ""),
+       ("precise", "Precise — experimental", ""), ("disabled", "Disabled", "Required buffer readbacks cannot be disabled in the Order profile.")])
 for key, label, default in (("overlay_frametime", "Overlay: frame time", True), ("overlay_gpu", "Overlay: GPU", False),
                             ("overlay_cpu", "Overlay: CPU", False), ("overlay_memory", "Overlay: RAM / VRAM", False)):
     field(key, label, "performance", "boolean", default, "Individual overlay items are not yet wired to this launch profile.", reason=RENDERER)

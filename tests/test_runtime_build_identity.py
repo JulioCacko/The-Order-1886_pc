@@ -46,6 +46,7 @@ class BuildIdentityTests(unittest.TestCase):
             self.assertFalse(receipt['source_dirty'])
             self.assertEqual(receipt['compiler'], 'verified compiler')
             self.assertEqual(receipt['build_command'], build_command)
+            self.assertEqual(receipt['readback_policies'], ['relaxed','precise','selective'])
 
     def test_windows_receipt_preserves_msys_build_command(self):
         self.check_receipt('win32', 'clang', ['C:/msys64/usr/bin/bash.exe', 'build.sh'])

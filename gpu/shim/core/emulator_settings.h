@@ -8,7 +8,7 @@
 
 u32 Ps4DisplayRefreshHz(); // ps4gpu.cpp: primary display refresh rate, 60 when unknown
 
-enum GpuReadbacksMode : int { Disabled, Relaxed, Precise };
+enum GpuReadbacksMode : int { Disabled, Relaxed, Precise, Selective };
 
 class EmulatorSettingsImpl {
 public:
@@ -27,7 +27,13 @@ public:
     std::string GetPresentMode() { const char* v = std::getenv("ORDER1886_PRESENT_MODE"); return v ? v : "Mailbox"; }
     // Relaxed by default: without readbacks FaceGen reads stale GPU-written vertices
     // (vertex explosions); in the test scene it costs no measurable frame rate.
-    u32 GetReadbacksMode() { static const auto value = u32(Number("ORDER1886_READBACKS", GpuReadbacksMode::Relaxed)); return value; }
+    u32 GetReadbacksMode() {
+        static const auto value = [] {
+            const long mode = Number("ORDER1886_READBACKS", GpuReadbacksMode::Relaxed);
+            return u32(mode >= Disabled && mode <= Selective ? mode : Relaxed);
+        }();
+        return value;
+    }
     // ORDER1886_VBLANK_HZ=0 (uncapped presets): vblank runs at 480 Hz so a finished frame is
     // shown within ~2 ms instead of waiting for the next display-rate vblank (below the display
     // rate frames alternated 10/20 ms at 100 Hz: judder), and GetFrameLimit() caps the rate at

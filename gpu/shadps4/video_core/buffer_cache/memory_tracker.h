@@ -62,6 +62,14 @@ public:
                             });
     }
 
+    /// Enable or cancel selective read protection across all affected regions.
+    void WatchReads(VAddr address, u64 size, bool enable) {
+        IteratePages<false>(address, size, [enable](RegionManager* manager, u64 offset, size_t size) {
+            std::scoped_lock lock{manager->lock};
+            manager->WatchReads(manager->GetCpuAddr() + offset, size, enable);
+        });
+    }
+
     /// Unmark region as modified from the host GPU
     void UnmarkRegionAsGpuModified(VAddr dirty_cpu_addr, u64 query_size) noexcept {
         IteratePages<false>(dirty_cpu_addr, query_size,

@@ -29,17 +29,20 @@ MINGW*|MSYS*)
     fi
     cp out/gpu/order1886-runtime.exe out/gpu/ps4-gpu-capabilities.exe out/
     if [[ ${1:-} == --test ]]; then
-        tests=(runtime sema runtime-keys event-flag memory-hooks memory-read-backing services content
+        tests=(runtime sema runtime-keys event-flag memory-hooks memory-read-backing memory-ownership services content
                order-render-baseline srt-descriptor-validation pad pad-map frame-trace
                perf-overlay order-shader-math order-spirv pipeline-binary-cache
                pipeline-binary-initialization amd-paths mouse-look mp3 videodec
                trophy-history audio-downmix cpu-check isa-emulate isa-stub tsc-clock
                png-decode aliasing depth-stencil-state async-compiler warmup-inbox
                wave-stats pass-census frame-capture async-pipeline-cache
-               async-fetch-snapshot readback-queue wait-diagnostics readback-sources page-state)
+               async-fetch-snapshot readback-queue wait-diagnostics readback-sources page-state selective-readbacks)
         ninja -C out/gpu "${tests[@]/%/-test}"
         for test in "${tests[@]}"; do
             case $test in
+                selective-readbacks)
+                    for mode in 0 1 2 3 999; do ORDER1886_READBACKS=$mode "out/gpu/$test-test.exe"; done
+                    continue ;;
                 mp3) args=(tests/data/sine.mp3) ;;
                 videodec) args=(tests/data/tiny.h264) ;;
                 isa-stub) args=(tests/data/isa_fixture.bin) ;;
@@ -112,12 +115,13 @@ echo "Built $PWD/out/order1886-runtime"
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -Igpu/shadps4 tools/gpu_capabilities.c "${libraries[@]}" -o out/ps4-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
-    cmake --build out/gpu --target order-shader-math-test order-spirv-test pipeline-binary-cache-test amd-paths-test mouse-look-test
+    cmake --build out/gpu --target order-shader-math-test order-spirv-test pipeline-binary-cache-test amd-paths-test mouse-look-test selective-readbacks-test
     out/gpu/order-shader-math-test
     out/gpu/order-spirv-test
     out/gpu/pipeline-binary-cache-test
     out/gpu/amd-paths-test
     out/gpu/mouse-look-test
+    for mode in 0 1 2 3 999; do ORDER1886_READBACKS=$mode out/gpu/selective-readbacks-test; done
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_runtime.c "${runtime[@]}" out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/runtime-test
@@ -126,6 +130,8 @@ if [[ ${1:-} == --test ]]; then
     out/file-mods-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_memory_read_backing.c -o out/memory-read-backing-test
     out/memory-read-backing-test
+    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_memory_ownership.c -o out/memory-ownership-test
+    out/memory-ownership-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_sema.c "${runtime[@]}" out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/sema-test
     out/sema-test
     "$CC" -std=c11 -D_GNU_SOURCE -O2 -g -Wall -Wextra -Werror -I. -Isrc tests/test_content.c src/runtime_content.c -o out/content-test

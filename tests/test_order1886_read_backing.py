@@ -40,6 +40,9 @@ class ReadBackingTests(unittest.TestCase):
     def test_sparse_protected_reads_and_mapping_lifetime(self):
         self.compile_and_run(ROOT / 'tests/test_memory_read_backing.c')
 
+    def test_gpu_ownership_retires_before_mapping_replacement(self):
+        self.compile_and_run(ROOT / 'tests/test_memory_ownership.c')
+
     def test_actual_upload_copy_uses_backing_interface(self):
         text = (ROOT / 'gpu/shim/ps4gpu.cpp').read_text(encoding='utf-8')
         copy = text[text.index('static void CopySparseSerial('):

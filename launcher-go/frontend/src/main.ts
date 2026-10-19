@@ -123,6 +123,7 @@ function home() {
  <div><dt>${escape(t('Upscaling'))}</dt><dd>${escape(values.presentation_filter==='fsr1'?'FSR 1':values.presentation_filter)}</dd></div>
  <div><dt>${escape(t('Game frame rate'))}</dt><dd>${escape(values.frame_rate)} FPS</dd></div>
  <div><dt>${escape(t('Framing'))}</dt><dd>${escape(values.aspect_ratio)}</dd></div></dl>
+ <p class="quiet-copy">${escape(t('GPU readback policy'))}: ${escape(values.readbacks||'relaxed')}</p>
  <p class="quiet-copy">${escape(t('Configured values; measured performance is recorded separately.'))}</p></div>
  <div class="installation"><h2>${escape(t('Game installation'))}</h2>
  <p class="readiness ${snapshot.game.ready?'ready':''}">${escape(t(snapshot.game.ready?'Game files found':'Setup required'))}</p>

@@ -42,8 +42,26 @@ public:
         gpu.Clear();
         writeable.Fill();
         readable.Fill();
+        read_watch.Clear();
     }
     explicit RegionManager() = default;
+
+    /// Selective mode faults on reads of GPU-written pages containing small output buffers.
+    void WatchReads(u64 address, u64 size, bool enable) {
+        if (!size) return;
+        const size_t offset = address - cpu_addr;
+        const size_t first = SanitizeAddress(offset) / TRACKER_BYTES_PER_PAGE;
+        const size_t last = std::min<size_t>(NUM_PAGES_PER_REGION,
+            Common::DivCeil(SanitizeAddress(offset + size), TRACKER_BYTES_PER_PAGE));
+        if (first >= last) return;
+        if (enable) {
+            read_watch.SetRange(first, last);
+            UpdateProtection<true, true>();
+        } else {
+            read_watch.UnsetRange(first, last);
+            UpdateProtection<false, true>();
+        }
+    }
 
     void SetCpuAddress(VAddr new_cpu_addr) {
         cpu_addr = new_cpu_addr;
@@ -103,7 +121,8 @@ public:
         }
         if constexpr (type == Type::CPU) {
             UpdateProtection<!enable, false>();
-        } else if (EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Precise) {
+        } else if (EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Precise ||
+                   EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Selective) {
             UpdateProtection<enable, true>();
         }
     }
@@ -205,12 +224,16 @@ private:
     template <bool track, bool is_read>
     void UpdateProtection() {
         RENDERER_TRACE;
-        RegionBits mask = is_read ? (~gpu ^ readable) : (cpu ^ writeable);
+        const auto mode = EmulatorSettings.GetReadbacksMode();
+        const RegionBits hidden = mode == GpuReadbacksMode::Precise ? gpu
+                                  : mode == GpuReadbacksMode::Selective ? (gpu & read_watch)
+                                  : RegionBits{};
+        RegionBits mask = is_read ? (~hidden ^ readable) : (cpu ^ writeable);
         if (mask.None()) {
             return;
         }
         if constexpr (is_read) {
-            readable = ~gpu;
+            readable = ~hidden;
         } else {
             writeable = cpu;
         }
@@ -288,6 +311,7 @@ private:
     RegionBits gpu;
     RegionBits writeable;
     RegionBits readable;
+    RegionBits read_watch;
 };
 
 } // namespace VideoCore

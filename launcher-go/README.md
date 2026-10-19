@@ -32,7 +32,7 @@ Windows needs WebView2. Startup was checked on the development machine with WebV
 
 ## Current boundaries
 
-The catalogue contains 43 fields; 15 existing player settings are writable. Other requested modes remain visible with reasons and cannot be saved as working renderer options. Their presence is not an implementation or gold claim.
+The source catalogue contains 44 fields and 16 mapped player settings. The GPU readback selector keeps the existing relaxed default; selective/precise require a matching native receipt and remain experimental. Other requested modes remain visible with reasons and cannot be saved as working renderer options. Their presence is not a gold claim. The published Go preview 1 retains its original catalogue/runtime.
 
 The 13 existing language catalogs and game-language forwarding are reused. Newly written UI copy still needs translation/native-speaker review. Independent game text/voice selection remains open. Local trophy IDs and timestamps use the native store's checksum; official names/icons and a real unlock capture remain open.
 
