@@ -1917,7 +1917,7 @@ bool Rasterizer::IsComputeMetaClear(const Pipeline* pipeline) {
             if (!desc.IsSpecial() && desc.is_written &&
                 texture_cache.ClearMeta(address, desc.GetSharp(info).GetSize())) {
                 if (const auto extent = texture_cache.HtileReadExtent(address))
-                    buffer_cache.ObtainBuffer(address, *extent, false);
+                    (void)buffer_cache.ObtainBuffer(address, *extent, false);
                 // Assume all slices were updates
                 LOG_TRACE(Render_Vulkan, "Metadata update skipped");
                 return true;
@@ -2929,7 +2929,7 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
                 changed |= texture_cache.TouchMeta(htile_address, slice + layer, false);
             if (changed) {
                 if (const auto extent = texture_cache.HtileReadExtent(htile_address))
-                    buffer_cache.ObtainBuffer(htile_address, *extent, false);
+                    (void)buffer_cache.ObtainBuffer(htile_address, *extent, false);
             }
         }
         ASSERT(desc.view_info.range.extent.levels == 1 && !image.binding.needs_rebind);
