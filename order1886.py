@@ -220,6 +220,25 @@ def validate_htile_control(runtime, enabled):
         raise ValueError('HTILE control requires a matching native runtime declaring it. Rebuild or select a newer runtime.')
 
 
+def validate_fps_cap(settings):
+    """Presentation cap only: it can throttle the present thread, never the engine."""
+    value = settings.get('fps_cap', 120)
+    if type(value) is not int or not 30 <= value <= 240:
+        raise ValueError('Presentation frame cap must be a whole number from 30 to 240')
+    return value
+
+
+def timing_profile(settings):
+    """Resolve engine rate, presentation cadence, host cap and VSync for diagnostics."""
+    engine = timing.validate_frame_rate(settings.get('frame_rate', 30))
+    cap = validate_fps_cap(settings)
+    # The cap only ever throttles: the engine rate wins while it is the lower value,
+    # so the shipped default of 120 leaves pacing exactly as it was.
+    limit = cap if engine == 0 else min(engine, cap)
+    return {'engine_fps': engine, 'fps_cap': cap, 'fps_limit': limit,
+            'vblank_hz': 60, 'vsync': bool(settings.get('vsync', True))}
+
+
 def runtime_process_environment(runtime, inherited=None):
     runtime = Path(runtime).resolve()
     source = os.environ if inherited is None else inherited
@@ -253,7 +272,6 @@ def validate_input_settings(runtime, settings, inherited=None):
 def runtime_environment(runtime, user, settings=None, inherited=None):
     runtime, user = Path(runtime).resolve(), Path(user).resolve()
     settings = settings or {}
-    frame_rate = timing.validate_frame_rate(settings.get('frame_rate', 30))
     readbacks = settings.get('readbacks', 'relaxed')
     validate_readback_policy(runtime, readbacks)
     capture = settings.get('performance_capture', False)
@@ -263,11 +281,11 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     system_language = settings.get('system_language', 1)
     if type(system_language) is not int or not 0 <= system_language <= 29:
         raise ValueError('System language must be an integer from 0 to 29')
+    profile = timing_profile(settings)
     env = runtime_process_environment(runtime, inherited)
     env.update({
         'ORDER1886_CONFIG': str(user / 'runtime.ini'), 'ORDER1886_USER_DIR': str(user),
         'ORDER1886_GPU_USER_DIR': str(user / 'gpu' / SHADER_CACHE_ABI), 'ORDER1886_GAME_PROFILE': 'order1886',
-        'ORDER1886_FPS_LIMIT': str(frame_rate),
         'ORDER1886_LANGUAGE': str(system_language),
         'ORDER1886_READBACKS': str({'relaxed': 1, 'selective': 3, 'precise': 2}[readbacks]),
         # Off by default: the HTILE adaptation is unqualified for gameplay, visuals
@@ -279,9 +297,11 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
         # Keep unverified speculative SRT work off the normal Order launch path.
         'ORDER1886_PREP_WORKERS': '0',
         'ORDER1886_SETTINGS_MENU': '0',
-        'ORDER1886_VBLANK_HZ': '60',
         'ORDER1886_STREAM_MEMORY': 'cached', 'PYTHONIOENCODING': 'utf-8',
     })
+    if profile['fps_limit'] is not None:
+        env['ORDER1886_FPS_LIMIT'] = str(profile['fps_limit'])
+    env['ORDER1886_VBLANK_HZ'] = str(profile['vblank_hz'])
     env.update(validate_input_settings(runtime, settings, inherited))
     icon = user / 'window_icon.bmp'
     if icon.is_file():
@@ -303,8 +323,10 @@ def write_runtime_config(user, settings):
     if presentation_filter not in ('linear', 'fsr1'):
         raise ValueError('Invalid presentation filter')
     frame_rate = timing.validate_frame_rate(settings.get('frame_rate', 30))
+    profile = timing_profile(settings)
     values = {'display_mode': mode, 'vsync': int(bool(settings.get('vsync', True))),
-              'show_fps': int(bool(settings.get('show_fps', False))), 'fps_limit': frame_rate,
+              'show_fps': int(bool(settings.get('show_fps', False))),
+              'fps_limit': profile['fps_limit'] if profile['fps_limit'] is not None else 0,
               'render_resolution': 'native', 'presentation_filter': presentation_filter, 'frames_queued': 1,
               'overlay_fps': 1, 'overlay_frametime': 1, 'overlay_gpu': 1,
               'mouse_look': int(bool(settings.get('mouse_look', True))),

@@ -58,7 +58,7 @@ for key, label in (("film_grain", "Film grain"), ("motion_blur", "Motion blur"),
 field("frame_rate", "Game frame rate", "performance", "select", 30, "30 FPS is native. 60 FPS is experimental; Chapter 6/9 QTE checks remain required.",
       [(30, "30 FPS — native", ""), (60, "60 FPS — experimental", ""),
        (90, "90 FPS", PATCH), (0, "Unlocked", PATCH)])
-field("fps_cap", "Unlocked frame cap", "performance", "number", 120, "Host cap is distinct from simulation timing (#14).", reason=PATCH, minimum=30, maximum=240)
+field("fps_cap", "Presentation frame cap", "performance", "number", 120, "Limits how often the runtime presents, not how fast the engine runs (#14). The game frame rate still wins while it is lower, so the default of 120 never changes pacing; lowering it throttles presentation only. This is not a simulation-timing control.", minimum=30, maximum=240)
 field("frame_generation", "Frame generation", "performance", "select", "off", "Generated frames do not increase simulation rate. All three providers remain in the gold plan.",
       [("off", "Off", ""), ("fsr", "AMD FSR Frame Generation", FG),
        ("dlss", "NVIDIA DLSS Frame Generation", FG + " Requires supported NVIDIA hardware."),

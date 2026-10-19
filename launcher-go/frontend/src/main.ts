@@ -387,6 +387,13 @@ async function start() {
    if(await confirmAction(t('Stop and close?'),t('The current session will be stopped before the launcher closes.'),t('Stop and close'))) await bridge().ConfirmClose();
   });
   setInterval(()=>{if(page==='achievements'&&!saving&&!confirmation&&!disconnected&&!document.hidden) void refresh().catch(error=>flash(String(error),true));},3000);
+  // A download reports progress only through UpdateState, so keep reading it while
+  // one is running and while a recovery needs the player's decision.
+  setInterval(()=>{
+   if(document.hidden||!update) return;
+   if(update.state!=='downloading') return;
+   void refreshUpdate().then(()=>render()).catch(()=>{});
+  },500);
  }catch(error){root.innerHTML=`<main class="boot"><h1>Launcher setup required</h1><p role="alert">${escape(String(error))}</p><p>Repair the portable installation, or restore the previous version from the updates section of a working installation.</p></main>`;}
 }
 document.addEventListener('keydown',event=>{
