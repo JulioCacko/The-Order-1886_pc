@@ -14,11 +14,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 const workspace = ".order1886-update"
 const journalPath = workspace + "/journal.json"
-const recoveryABI = "order1886-update-1"
+const recoveryABI = "order1886-update-2"
+const journalVersion = 2
 
 type change struct {
 	Path string `json:"path"`
@@ -26,11 +28,19 @@ type change struct {
 	New  string `json:"new_sha256"`
 }
 
+// launchMode records how the launcher that started the update was started, so
+// recovery can restore the same entry point without trusting recorded arguments.
+type launchMode struct {
+	DirectPlay bool `json:"direct_play"`
+}
+
 type journal struct {
-	Version   int      `json:"version"`
-	Directory string   `json:"directory"`
-	Phase     string   `json:"phase"`
-	Files     []change `json:"files"`
+	Version   int              `json:"version"`
+	Directory string           `json:"directory"`
+	Phase     string           `json:"phase"`
+	Files     []change         `json:"files"`
+	Session   *sessionLocation `json:"session,omitempty"`
+	Launch    *launchMode      `json:"launch,omitempty"`
 }
 
 // Transaction holds the installation lock until Close. The caller must also hold
@@ -215,7 +225,7 @@ func directoryFiles(ctx context.Context, root *os.Root, identity *Identity) (Man
 		}
 		files[entry.Path] = entry.SHA256
 	}
-	for _, name := range []string{"The Order 1886.exe", "Play The Order 1886.exe", "The Order 1886 Legacy.exe", "bin/order1886-worker.exe", "bin/order1886-runtime.exe", "bin/runtime-build.json"} {
+	for _, name := range []string{"The Order 1886.exe", "Play The Order 1886.exe", "bin/order1886-worker.exe", "bin/order1886-runtime.exe", "bin/runtime-build.json"} {
 		if files[name] == "" {
 			return m, nil, fmt.Errorf("required installed file is missing: %s", name)
 		}
@@ -237,22 +247,30 @@ func directoryFiles(ctx context.Context, root *os.Root, identity *Identity) (Man
 	return m, files, nil
 }
 
-func rank(name string) int {
+// orderOf ranks a replacement step. Deletions run after every replacement, so a
+// retired entry point never disappears before its replacement exists, and the
+// manifest is always the final change.
+func orderOf(name string, deletion bool) int {
 	switch name {
 	case "The Order 1886.exe":
 		return 0
 	case "Play The Order 1886.exe":
 		return 1
 	case "package-manifest.json":
+		return 4
+	}
+	if deletion {
 		return 3
 	}
 	return 2
 }
-func before(a, b string) bool {
-	if rank(a) != rank(b) {
-		return rank(a) < rank(b)
+
+func beforeChange(a, b change) bool {
+	first, second := orderOf(a.Path, a.New == ""), orderOf(b.Path, b.New == "")
+	if first != second {
+		return first < second
 	}
-	return a < b
+	return a.Path < b.Path
 }
 
 func (t *Transaction) readJournal() error {
@@ -270,7 +288,10 @@ func (t *Transaction) readJournal() error {
 }
 
 func validateJournal(r journal) error {
-	if r.Version != 1 || !strings.HasPrefix(r.Directory, workspace+"/txn-") || !validHex(strings.TrimPrefix(r.Directory, workspace+"/txn-"), 16) || len(r.Files) == 0 || len(r.Files) > maxEntries {
+	if err := validateSessionLocation(r.Session); err != nil {
+		return err
+	}
+	if r.Version != journalVersion || !strings.HasPrefix(r.Directory, workspace+"/txn-") || !validHex(strings.TrimPrefix(r.Directory, workspace+"/txn-"), 16) || len(r.Files) == 0 || len(r.Files) > maxEntries {
 		return errors.New("invalid recovery journal")
 	}
 	switch r.Phase {
@@ -285,7 +306,7 @@ func validateJournal(r journal) error {
 			return err
 		}
 		key := strings.ToUpper(entry.Path)
-		if seen[key] || entry.Old == entry.New || entry.Old != "" && !validHex(entry.Old, 32) || entry.New != "" && !validHex(entry.New, 32) || i > 0 && !before(r.Files[i-1].Path, entry.Path) {
+		if seen[key] || entry.Old == entry.New || entry.Old != "" && !validHex(entry.Old, 32) || entry.New != "" && !validHex(entry.New, 32) || i > 0 && !beforeChange(r.Files[i-1], entry) {
 			return errors.New("invalid recovery file list")
 		}
 		seen[key] = true
@@ -476,7 +497,7 @@ func PrepareTransaction(ctx context.Context, directory, stage string, identity I
 	if len(changes) == 0 {
 		return nil, errors.New("this package is already installed")
 	}
-	sort.Slice(changes, func(i, j int) bool { return before(changes[i].Path, changes[j].Path) })
+	sort.Slice(changes, func(i, j int) bool { return beforeChange(changes[i], changes[j]) })
 	name, err := randomName()
 	if err != nil {
 		return nil, err
@@ -502,7 +523,7 @@ func PrepareTransaction(ctx context.Context, directory, stage string, identity I
 			}
 		}
 	}
-	t.record = journal{Version: 1, Directory: folder, Files: changes}
+	t.record = journal{Version: journalVersion, Directory: folder, Files: changes}
 	if err = t.saveJournal("prepared"); err != nil {
 		return nil, err
 	}
@@ -578,6 +599,9 @@ func (t *Transaction) Apply(ctx context.Context, progress func(int, int)) (err e
 	if t.Phase() != "prepared" {
 		return errors.New("only a prepared update can be installed")
 	}
+	if t.record.Session == nil {
+		return errors.New("record the player state before installing an update")
+	}
 	if err = t.preflight(ctx, false); err != nil {
 		return err
 	}
@@ -625,4 +649,99 @@ func (t *Transaction) Rollback(ctx context.Context, progress func(int, int)) err
 		return err
 	}
 	return t.saveJournal("rolled_back")
+}
+
+// BindLaunch records which entry point started the update, so a recovery relaunch
+// restores the same one instead of trusting arbitrary recorded arguments.
+func (t *Transaction) BindLaunch(directPlay bool) error {
+	if t.Phase() != "prepared" {
+		return errors.New("choose the relaunch mode before starting the update")
+	}
+	mode := launchMode{DirectPlay: directPlay}
+	if t.record.Launch != nil && *t.record.Launch != mode {
+		return errors.New("recovery must keep the original relaunch mode")
+	}
+	previous := t.record.Launch
+	t.record.Launch = &mode
+	if err := t.saveJournal("prepared"); err != nil {
+		t.record.Launch = previous
+		return err
+	}
+	return nil
+}
+
+func (t *Transaction) LaunchMode() (directPlay bool, recorded bool) {
+	if t.record.Launch == nil {
+		return false, false
+	}
+	return t.record.Launch.DirectPlay, true
+}
+
+// OpenInstallation takes only the installation lock, for work that must run
+// before any journal exists, such as retention after a completed update.
+func OpenInstallation(directory string) (*Transaction, error) { return openInstallation(directory) }
+
+// Retain removes superseded transaction directories, keeping the transaction the
+// current journal describes and the newest completed ones. A journal that cannot
+// be read stops retention instead of guessing which directory is live.
+func (t *Transaction) Retain(keep int) (_ []string, err error) {
+	if keep < 1 {
+		return nil, errors.New("retention must keep at least one transaction")
+	}
+	active := ""
+	if _, statErr := t.root.Lstat(journalPath); statErr == nil {
+		if err = t.readJournal(); err != nil {
+			return nil, err
+		}
+		if t.record.Phase != "applied" && t.record.Phase != "rolled_back" {
+			active = t.record.Directory
+		}
+	} else if !os.IsNotExist(statErr) {
+		return nil, statErr
+	}
+	type directory struct {
+		name   string
+		change time.Time
+	}
+	var directories []directory
+	items, err := fs.ReadDir(t.root.FS(), workspace)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		suffix := strings.TrimPrefix(item.Name(), "txn-")
+		if !item.IsDir() || suffix == item.Name() || !validHex(suffix, 16) {
+			continue
+		}
+		info, statErr := fs.Stat(t.root.FS(), workspace+"/"+item.Name())
+		if statErr != nil {
+			return nil, statErr
+		}
+		directories = append(directories, directory{workspace + "/" + item.Name(), info.ModTime()})
+	}
+	sort.Slice(directories, func(i, j int) bool {
+		if !directories[i].change.Equal(directories[j].change) {
+			return directories[i].change.After(directories[j].change)
+		}
+		return directories[i].name < directories[j].name
+	})
+	var removed []string
+	kept := 0
+	if active != "" {
+		kept = 1
+	}
+	for _, entry := range directories {
+		if entry.name == active {
+			continue
+		}
+		if kept < keep {
+			kept++
+			continue
+		}
+		if err = t.root.RemoveAll(entry.name); err != nil {
+			return removed, err
+		}
+		removed = append(removed, entry.name)
+	}
+	return removed, nil
 }

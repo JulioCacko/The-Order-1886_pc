@@ -25,7 +25,7 @@ from launcher.order1886_options import FIELDS, PAGES
 MAX_REQUEST = 64 * 1024
 METHODS = frozenset(("state.get", "settings.set", "settings.reset", "session.start", "session.stop",
                      "saves.list", "saves.backup", "saves.restore", "cache.clear", "mods.list",
-                     "steam.add", "shortcut.create"))
+                     "steam.add", "shortcut.create", "updates.preflight"))
 FIELD_BY_KEY = {item["key"]: item for item in FIELDS}
 
 
@@ -274,6 +274,12 @@ class Worker:
             values = self.settings()
             return order1886.mods.discover(order1886.mods.resolve_root(values.get("mods_dir", ""), self.installation))
         self.require_idle()
+        if method == "updates.preflight":
+            self.safe_state()
+            self.state.mkdir(parents=True, exist_ok=True)
+            # The helper must reacquire and hold this lock across replacement.
+            with order1886.session_lock(self.state):
+                return {"ready": True}
         if method in ("settings.set", "settings.reset"):
             patch = params.get("values")
             if method == "settings.reset":
