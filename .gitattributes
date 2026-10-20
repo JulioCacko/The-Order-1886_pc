@@ -12,3 +12,4 @@
 *.ts text eol=lf
 *.mjs text eol=lf
 *.yml text eol=lf
+scripts/git-hooks/* text eol=lf
