@@ -272,7 +272,7 @@ func directoryFiles(ctx context.Context, root *os.Root, identity *Identity) (Man
 			return m, nil, fmt.Errorf("required installed file is missing: %s", name)
 		}
 	}
-	if files["bin/order1886-runtime.exe"] != m.RuntimeSHA256 {
+	if files[pkgpath.Runtime()] != m.RuntimeSHA256 {
 		return m, nil, errors.New("installed runtime differs from manifest")
 	}
 	raw, err := readSmall(root, "bin/runtime-build.json")
@@ -294,9 +294,9 @@ func directoryFiles(ctx context.Context, root *os.Root, identity *Identity) (Man
 // manifest is always the final change.
 func orderOf(name string, deletion bool) int {
 	switch name {
-	case "The Order 1886.exe":
+	case pkgpath.Launcher():
 		return 0
-	case "Play The Order 1886.exe":
+	case pkgpath.Play():
 		return 1
 	case "package-manifest.json":
 		return 4
