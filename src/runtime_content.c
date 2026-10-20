@@ -6,6 +6,7 @@
 #include <string.h>
 #define INVALID_ID ((int32_t)0x805a1000)
 #define NOT_LOADED ((int32_t)0x805a1001)
+#define NOT_INITIALIZED ((int32_t)0x80d90001)
 #define PARAMETER ((int32_t)0x80d90002)
 #define BUSY ((int32_t)0x80d90003)
 #define NOT_FOUND ((int32_t)0x80d90005)
@@ -126,6 +127,17 @@ static ABI int32_t entitlement_key(uint32_t service,const void *label,void *key)
     if (!configured || !label || !key) return PARAMETER;
     return NO_ENTITLEMENT;
 }
+/* sceAppContentAddcontUnmount. Upstream shadPS4 (app_content/app_content.cpp) refuses before
+ * initialization, rejects a null mount point, and otherwise unmounts the point and reports
+ * success. This provider never mounts add-on content — addon_mount above answers NOT_FOUND for
+ * every entitlement — so there is no mount point outstanding to release, and the success the
+ * reference returns for an unmounted point is the whole behaviour that can be honoured here. */
+static ABI int32_t addon_unmount(void *mount_point) {
+    if (!initialized) return NOT_INITIALIZED;
+    if (!mount_point) return PARAMETER;
+    puts("Runtime: AppContent add-on unmount (this provider mounts no add-on content)");
+    return 0;
+}
 uintptr_t runtime_content_resolve(const char *name) {
     if (!strcmp(name,"g8cM39EUZ6o#libSceSysmodule")) return (uintptr_t)module_load;
     if (!strcmp(name,"fMP5NHUOaMk#libSceSysmodule")) return (uintptr_t)module_loaded;
@@ -134,6 +146,7 @@ uintptr_t runtime_content_resolve(const char *name) {
     if (!strcmp(name,"99b82IKXpH4#libSceAppContent")) return (uintptr_t)param_int;
     if (!strcmp(name,"xnd8BJzAxmk#libSceAppContent")) return (uintptr_t)addon_list;
     if (!strcmp(name,"VANhIWcqYak#libSceAppContent")) return (uintptr_t)addon_mount;
+    if (!strcmp(name,"3rHWaV-1KC4#libSceAppContent")) return (uintptr_t)addon_unmount;
     if (!strcmp(name,"XTWR0UXvcgs#libSceAppContent")) return (uintptr_t)entitlement_key;
     return 0;
 }

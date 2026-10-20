@@ -326,6 +326,24 @@ static ABI __attribute__((noreturn)) void thread_exit(void *value) {
     exit_longjmp(t);
 }
 static ABI int32_t thread_yield(void) { sched_yield(); return 0; }
+/* Scheduler parameters are recorded on the guest thread and never enforced; this file's header
+ * has always said so. Semantics follow upstream shadPS4 (kernel/threads/pthread.cpp):
+ * posix_pthread_getschedparam/posix_pthread_setschedparam — a valid thread with valid outputs
+ * stores and returns the policy and priority, a null argument or an impossible policy is EINVAL,
+ * and a thread that is not ours is ESRCH. */
+static ABI int32_t thread_get_schedparam(GuestThread *t,uint32_t *policy,int32_t *prio) {
+    if (!find_thread(t)) return ERR(3);
+    if (!policy || !prio) return ERR(22);
+    *policy=(uint32_t)t->attr.policy; *prio=t->attr.prio;
+    return 0;
+}
+static ABI int32_t thread_set_schedparam(GuestThread *t,uint32_t policy,const int32_t *prio) {
+    if (!t) return ERR(22);
+    if (!find_thread(t)) return ERR(3);
+    if (!prio || policy<1 || policy>3) return ERR(22);
+    t->attr.policy=(int)policy; t->attr.prio=*prio;
+    return 0;
+}
 static ABI int32_t thread_get_prio(GuestThread *t,int *prio) {
     if (!find_thread(t)) return ERR(3);
     if (!prio) return ERR(22);
@@ -363,6 +381,9 @@ static ABI int32_t posix_attr_set_param(ThreadAttr **a,const int *p) { return po
 static ABI int32_t posix_create(GuestThread **t,ThreadAttr **a,GuestEntry e,void *arg) { return posix(create(t,a,e,arg,"posix")); }
 static ABI int32_t posix_create_name(GuestThread **t,ThreadAttr **a,GuestEntry e,void *arg,const char *name) { return posix(create(t,a,e,arg,name)); }
 static ABI int32_t posix_join(GuestThread *t,void **r) { return posix(thread_join(t,r)); }
+static ABI int32_t posix_thread_set_schedparam(GuestThread *t,uint32_t policy,const int32_t *prio) {
+    return posix(thread_set_schedparam(t,policy,prio));
+}
 
 uintptr_t runtime_thread_resolve(const char *name) {
     static const struct { const char *nid; void *fn; } table[]={
@@ -385,6 +406,9 @@ uintptr_t runtime_thread_resolve(const char *name) {
         {"euKRgm0Vn2M#libkernel",posix_attr_set_param}, {"OxhIB8LB-PQ#libkernel",posix_create},
         {"Jmi+9w9u0E4#libkernel",posix_create_name}, {"h9CcP3J0oVM#libkernel",posix_join},
         {"FJrT5LuUBAU#libkernel",thread_exit},
+        {"Xs9hdiD7sAA#libkernel",posix_thread_set_schedparam},
+        {"P41kTWUS3EI#libkernel",thread_get_schedparam},
+        {"oIRFTjoILBg#libkernel",thread_set_schedparam},
     };
     for (size_t i=0;i<sizeof(table)/sizeof(*table);++i)
         if (!strcmp(name,table[i].nid)) return (uintptr_t)table[i].fn;

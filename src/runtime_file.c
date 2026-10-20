@@ -178,8 +178,9 @@ static void convert_stat(const HostStat *s,GuestStat *g) {
     g->nlink=(uint16_t)s->st_nlink;
     g->size=s->st_size;
 #ifdef _WIN32
-    /* FreeBSD mode bits: directories rwxr-xr-x, files rw-r--r--. */
-    g->mode=(uint16_t)(S_ISDIR(s->st_mode) ? 0040755 : 0100644);
+    /* FreeBSD mode bits: directories rwxr-xr-x, files rw-r--r--. The host keeps one permission
+     * fact, so the owner write bit is what sceKernelChmod can change and report back. */
+    g->mode=(uint16_t)(S_ISDIR(s->st_mode) ? 0040755 : (s->st_mode & _S_IWRITE) ? 0100644 : 0100444);
     g->blocks=(s->st_size+511)/512; g->blksize=4096;
     g->atime=(GuestTimespec){s->st_atime,0};
     g->mtime=(GuestTimespec){s->st_mtime,0};
@@ -532,6 +533,105 @@ static int64_t do_access(const char *guest,int mode) {
     return access(path,mode&7) ? -errno : 0;
 #endif
 }
+/* sceKernelUtimes: timestamps of a path. The reference implementation
+ * (upstream shadPS4 file_system.cpp, posix_utimes) rejects a null path and an out-of-range
+ * microsecond field before it touches the host. */
+static int64_t do_utimes(const char *guest,const GuestTimeval *times) {
+    if (!guest) return -EFAULT;
+    if (game_path(guest)) return -EROFS;
+    if (times)
+        for (unsigned i=0;i<2;++i)
+            if (times[i].usec<0 || times[i].usec>=1000000) return -EINVAL;
+    char path[1024];
+    int e=translate(guest,path,sizeof(path));
+    if (e) return -e;
+#ifdef _WIN32
+    FILETIME native[2];
+    if (times)
+        for (unsigned i=0;i<2;++i) {
+            int error=timeval_filetime(&times[i],&native[i]);
+            if (error) return -error;
+        }
+    /* FILE_WRITE_ATTRIBUTES changes metadata only; the file content is never opened for writing. */
+    HANDLE file=CreateFileA(path,FILE_WRITE_ATTRIBUTES,
+                            FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,NULL,OPEN_EXISTING,
+                            FILE_FLAG_BACKUP_SEMANTICS,NULL);
+    if (file==INVALID_HANDLE_VALUE) return -compat_errno_from_win32(GetLastError());
+    if (!times) { GetSystemTimePreciseAsFileTime(&native[0]); native[1]=native[0]; }
+    const BOOL ok=SetFileTime(file,NULL,&native[0],&native[1]);
+    CloseHandle(file);
+    return ok ? 0 : -compat_errno_from_win32(GetLastError());
+#else
+    struct timespec native[2];
+    if (times)
+        for (unsigned i=0;i<2;++i) {
+            native[i].tv_sec=(time_t)times[i].sec;
+            if ((int64_t)native[i].tv_sec!=times[i].sec) return -EINVAL;
+            native[i].tv_nsec=(long)(times[i].usec*1000);
+        }
+    return utimensat(AT_FDCWD,path,times ? native : NULL,0) ? -errno : 0;
+#endif
+}
+/* sceKernelChmod. The host has no permission bits beyond read-only, so the owner write bit is
+ * the only part of the guest mode that can be stored; sceKernelStat reports it back. */
+static int64_t do_chmod(const char *guest,uint32_t mode) {
+    if (!guest) return -EFAULT;
+    if (game_path(guest)) return -EROFS;
+    char path[1024];
+    int e=translate(guest,path,sizeof(path));
+    if (e) return -e;
+#ifdef _WIN32
+    return _chmod(path,(mode&0200) ? (_S_IREAD|_S_IWRITE) : _S_IREAD) ? -errno : 0;
+#else
+    return chmod(path,(mode_t)(mode&07777)) ? -errno : 0;
+#endif
+}
+#ifdef _WIN32
+static void sleep_us(int64_t us) { compat_sleep_ns((uint64_t)us*1000); }
+#else
+static void sleep_us(int64_t us) {
+    struct timespec duration={(time_t)(us/1000000),(long)((us%1000000)*1000)};
+    while (nanosleep(&duration,&duration) && errno==EINTR) {}
+}
+#endif
+/* select(2) over this tree's descriptors. Sockets are not implemented here, so a descriptor is
+ * reported ready the way the reference implementation treats a regular file (upstream shadPS4
+ * file_system.cpp, posix_select): readable unless it is descriptor 0, writable always, and an
+ * exception set is always empty. The reference also sleeps when nothing it watches can become
+ * ready, which is what a wait without a positive timeout does here too. */
+static int64_t do_select(int32_t nfds,void *readfds,void *writefds,void *exceptfds,const GuestTimeval *timeout) {
+    typedef struct { uint64_t bits[1024/64]; } FdSet;
+    const FdSet *read=readfds,*write=writefds,*except=exceptfds;
+    if (nfds<0 || nfds>1024) return -EINVAL;
+    int64_t limit=-1; /* no limit */
+    if (timeout) {
+        if (timeout->sec<0 || timeout->usec<0 || timeout->usec>=1000000) return -EINVAL;
+        limit = timeout->sec>(INT64_MAX/1000000-1) ? INT64_MAX : timeout->sec*1000000+timeout->usec;
+    }
+    FdSet read_ready,write_ready;
+    memset(&read_ready,0,sizeof read_ready);
+    memset(&write_ready,0,sizeof write_ready);
+    int32_t ready=0;
+    for (int32_t i=0;i<nfds;++i) {
+        const int want_read = read && ((read->bits[i/64]>>(i%64))&1);
+        const int want_write = write && ((write->bits[i/64]>>(i%64))&1);
+        const int want_except = except && ((except->bits[i/64]>>(i%64))&1);
+        if (!want_read && !want_write && !want_except) continue;
+        /* Descriptors 0-2 are the host's own stdio; anything else must be open in our table. */
+        if (i>=3 && !get(i)) return -EBADF;
+        if (want_read && i!=0) { read_ready.bits[i/64]|=UINT64_C(1)<<(i%64); ++ready; }
+        if (want_write) { write_ready.bits[i/64]|=UINT64_C(1)<<(i%64); ++ready; }
+    }
+    if (ready) limit=0;
+    else if (limit!=0) {
+        const int64_t slice=limit<0 ? 1000000 : limit;
+        do { sleep_us(slice); } while (limit<0);
+    }
+    if (readfds) *(FdSet *)readfds=read_ready;
+    if (writefds) *(FdSet *)writefds=write_ready;
+    if (exceptfds) memset(exceptfds,0,sizeof(FdSet));
+    return ready;
+}
 
 /* Convention adapters: sceKernel* -> Orbis error codes, POSIX -> -1 + errno. */
 static int64_t sce(int64_t r) { return r<0 ? ERR(runtime_guest_errno((int)-r)) : r; }
@@ -554,6 +654,12 @@ PAIR(ftruncate,(int fd,int64_t l),(fd,l))
 PAIR(truncate,(const char *p,int64_t l),(p,l))
 PAIR(fsync,(int fd),(fd))
 PAIR(futimes,(int fd,const GuestTimeval *times),(fd,times))
+PAIR(utimes,(const char *p,const GuestTimeval *times),(p,times))
+PAIR(chmod,(const char *p,uint32_t m),(p,m))
+/* sceKernelGetdents is the directory read above without a base pointer. */
+static ABI int64_t sce_getdents_current(int fd,char *b,uint64_t n) { return sce(do_getdents(fd,b,n,NULL)); }
+static ABI int64_t posix_getdents_current(int fd,char *b,uint64_t n) { return posix(do_getdents(fd,b,n,NULL)); }
+static ABI int64_t posix_select(int32_t nfds,void *r,void *w,void *e,const GuestTimeval *t) { return posix(do_select(nfds,r,w,e,t)); }
 static ABI int64_t posix_access(const char *p,int m) { return posix(do_access(p,m)); }
 static ABI int64_t sce_mkdir(const char *p,int m) { return sce(path_op(p,0,m)); }
 static ABI int64_t posix_mkdir(const char *p,int m) { return posix(path_op(p,0,m)); }
@@ -576,11 +682,15 @@ static const RuntimeExport exports[]={
     {"sceKernelFstat",sce_fstat}, {"fstat",posix_fstat},
     {"sceKernelStat",sce_stat}, {"stat",posix_stat},
     {"sceKernelGetdirentries",sce_getdents}, {"getdirentries",posix_getdents},
+    {"sceKernelGetdents",sce_getdents_current}, {"getdents",posix_getdents_current},
+    {"select",posix_select},
     {"sceKernelRename",sce_rename}, {"rename",posix_rename},
     {"sceKernelFtruncate",sce_ftruncate}, {"ftruncate",posix_ftruncate},
     {"sceKernelTruncate",sce_truncate}, {"truncate",posix_truncate},
     {"sceKernelFsync",sce_fsync}, {"fsync",posix_fsync},
     {"sceKernelFutimes",sce_futimes}, {"futimes",posix_futimes},
+    {"sceKernelUtimes",sce_utimes}, {"utimes",posix_utimes},
+    {"sceKernelChmod",sce_chmod}, {"chmod",posix_chmod},
     {"access",posix_access}, {"sceKernelCheckReachability",sce_check_reachability},
     {"sceKernelMkdir",sce_mkdir}, {"mkdir",posix_mkdir},
     {"sceKernelRmdir",sce_rmdir}, {"rmdir",posix_rmdir},
