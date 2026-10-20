@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"testing"
 
 	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/updates"
@@ -42,7 +44,7 @@ func TestHelperAppliesPreparedUpdateAndRecordsResult(t *testing.T) {
 	if result.StateDirectory != state {
 		t.Fatalf("wrong player state %q", result.StateDirectory)
 	}
-	if data, err := os.ReadFile(filepath.Join(installation, "The Order 1886.exe")); err != nil || string(data) != "launcher-7" {
+	if data, err := os.ReadFile(filepath.Join(installation, pkgpath.Launcher())); err != nil || string(data) != "launcher-7" {
 		t.Fatalf("update was not applied: %q %v", data, err)
 	}
 	if _, err := os.Stat(filepath.Join(installation, "The Order 1886 Legacy.exe")); !os.IsNotExist(err) {
@@ -135,9 +137,9 @@ func TestRelaunchUsesTheRecordedEntryPointAndState(t *testing.T) {
 	installation := filepath.Join("C:", "Portable 游戏")
 	for _, direct := range []bool{false, true} {
 		command := relaunchCommand(installation, filepath.Join(installation, "user", "order1886"), direct)
-		want := filepath.Join(installation, "The Order 1886.exe")
+		want := filepath.Join(installation, pkgpath.Launcher())
 		if direct {
-			want = filepath.Join(installation, "Play The Order 1886.exe")
+			want = filepath.Join(installation, pkgpath.Play())
 		}
 		if command.Path != want {
 			t.Fatalf("relaunch used %q, want %q", command.Path, want)

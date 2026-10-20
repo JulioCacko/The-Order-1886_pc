@@ -4,6 +4,7 @@ package updates
 
 import (
 	"context"
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"os"
 	"path/filepath"
 	"testing"
@@ -45,7 +46,7 @@ func TestPublishedPreviewStages(t *testing.T) {
 	if _, err = os.Stat(filepath.Join(stage, "The Order 1886 Legacy.exe")); !os.IsNotExist(err) {
 		t.Fatal("published package still ships the retired launcher")
 	}
-	for _, name := range []string{"The Order 1886.exe", "Play The Order 1886.exe"} {
+	for _, name := range []string{pkgpath.Launcher(), pkgpath.Play()} {
 		if _, statErr := os.Stat(filepath.Join(stage, name)); statErr != nil {
 			t.Fatalf("published package is missing %s: %v", name, statErr)
 		}

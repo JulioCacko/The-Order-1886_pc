@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"testing"
 )
 
@@ -69,7 +71,7 @@ func TestCrashBetweenApplyingJournalAndFirstReplacementRecoversExactTree(t *test
 
 			if partial {
 				transaction := transactionDirectory(root, directory)
-				for _, payload := range []string{"previous/_internal/library.dll", "previous/The Order 1886.exe"} {
+				for _, payload := range []string{"previous/_internal/library.dll", "previous/" + pkgpath.Launcher()} {
 					file := filepath.Join(transaction, filepath.FromSlash(payload))
 					body, err := os.ReadFile(file)
 					if err != nil {
@@ -82,7 +84,7 @@ func TestCrashBetweenApplyingJournalAndFirstReplacementRecoversExactTree(t *test
 						t.Fatal(err)
 					}
 				}
-				if err = os.Remove(filepath.Join(transaction, filepath.FromSlash("next/bin/order1886-worker.exe"))); err != nil {
+				if err = os.Remove(filepath.Join(transaction, filepath.FromSlash("next/"+pkgpath.Worker()))); err != nil {
 					t.Fatal(err)
 				}
 			}

@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"testing"
 )
 
@@ -19,11 +21,11 @@ func packageFixture(t *testing.T, change func(map[string][]byte, map[string]any)
 	t.Helper()
 	runtime := []byte("runtime-6")
 	files := map[string][]byte{
-		"The Order 1886.exe":        []byte("launcher-6"),
-		"Play The Order 1886.exe":   []byte("launcher-6"),
+		pkgpath.Launcher():          []byte("launcher-6"),
+		pkgpath.Play():              []byte("launcher-6"),
 		"The Order 1886 Legacy.exe": []byte("legacy-6"),
-		"bin/order1886-worker.exe":  []byte("worker-6"),
-		"bin/order1886-runtime.exe": runtime,
+		pkgpath.Worker():            []byte("worker-6"),
+		pkgpath.Runtime():           runtime,
 		"bin/runtime-build.json":    []byte(`{"runtime_abi":"order1886-native-1","game_profile":"order1886","runtime_sha256":"` + digest(runtime) + `"}`),
 		"_internal/library.dll":     []byte("library-6"),
 		"notices/LICENSE.txt":       []byte("license"),
@@ -85,7 +87,7 @@ func TestStageVerifiedPackageAtUnicodePath(t *testing.T) {
 	if manifest.SourceRevision != identity.SourceRevision {
 		t.Fatal("lost source identity")
 	}
-	got, err := os.ReadFile(filepath.Join(dest, "bin", "order1886-runtime.exe"))
+	got, err := os.ReadFile(filepath.Join(dest, filepath.FromSlash(pkgpath.Runtime())))
 	if err != nil || string(got) != "runtime-6" {
 		t.Fatalf("wrong runtime: %q %v", got, err)
 	}
@@ -109,11 +111,11 @@ func TestRejectArchiveIntegrityOrProvenanceMismatch(t *testing.T) {
 				case "payload":
 					files["_internal/library.dll"] = []byte("tampered")
 				case "missing":
-					delete(files, "bin/order1886-worker.exe")
+					delete(files, pkgpath.Worker())
 				case "extra":
 					files["unexpected.exe"] = []byte("unowned")
 				case "duplicate-manifest":
-					m["files"] = append(m["files"].([]map[string]string), map[string]string{"path": "BIN/order1886-worker.exe", "sha256": digest(files["bin/order1886-worker.exe"])})
+					m["files"] = append(m["files"].([]map[string]string), map[string]string{"path": "BIN/order1886-worker.exe", "sha256": digest(files[pkgpath.Worker()])})
 				case "protected":
 					files["user/order1886/settings.json"] = []byte("{}")
 				}

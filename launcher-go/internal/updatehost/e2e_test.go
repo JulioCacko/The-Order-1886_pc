@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"testing"
 	"time"
 
@@ -86,7 +88,7 @@ func TestPackagedUpdatePreservesPlayerDataAndRollsBack(t *testing.T) {
 	if _, ok := after["The Order 1886 Legacy.exe"]; ok {
 		t.Fatal("the retired launcher survived the update")
 	}
-	for _, name := range []string{"The Order 1886.exe", "Play The Order 1886.exe"} {
+	for _, name := range []string{pkgpath.Launcher(), pkgpath.Play()} {
 		if data, ok := after[name]; !ok || data == "" {
 			t.Fatalf("missing entry point after update: %s", name)
 		}
@@ -111,7 +113,7 @@ func TestPackagedUpdatePreservesPlayerDataAndRollsBack(t *testing.T) {
 	}
 	// The updated installation must actually start its own worker. The worker may
 	// create its own player-side notices, which are not package files.
-	smoke := exec.Command(filepath.Join(installation, "The Order 1886.exe"), "--worker-smoke", "--state-dir", state)
+	smoke := exec.Command(filepath.Join(installation, pkgpath.Launcher()), "--worker-smoke", "--state-dir", state)
 	smoke.Dir = installation
 	if output, err := smoke.CombinedOutput(); err != nil {
 		t.Fatalf("updated package failed its worker smoke: %v %s", err, output)
