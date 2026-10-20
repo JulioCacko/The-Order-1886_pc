@@ -62,7 +62,7 @@ Usa tu propia copia extraída de CUSA00076 con `eboot.bin`, `sce_sys` y `sce_mod
 3. Empieza con **30 FPS** y elige el modo de pantalla y FSR 1 o Linear.
 4. Usa **Play**, **Advanced → View session log** y **Stop session** para iniciar, revisar o detener la sesión.
 
-Desde el código fuente, ejecuta `Launch The Order 1886.cmd` o el launcher de Go compilado después de seguir las [instrucciones de compilación para Windows](docs/order1886-build.md). El paquete no requiere Python ni MSYS2. Linux no está soportado: solo se empaqueta el launcher de Go para Windows.
+Desde el código fuente, ejecuta `Launch The Order 1886.cmd` o el launcher de Go compilado después de seguir las [instrucciones de compilación para Windows](docs/order1886-build.md). El paquete no requiere Python ni MSYS2. **Linux x86-64 vuelve a compilarse** como `tar.gz` portable con el launcher de Go, el runtime nativo y el worker de Python. No está cualificado: nada de ello ha ejecutado el juego, y la prueba automática cubre el paquete, no el juego. Requiere un driver con Vulkan y un escritorio con GTK 3 y WebKitGTK 4.1. Véase la [guía de compilación](docs/order1886-build.md).
 
 ## Estado y rendimiento
 
