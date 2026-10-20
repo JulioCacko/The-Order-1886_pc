@@ -56,6 +56,16 @@ public:
         return Common::AlignUp(addr + 1, PM_PAGE_SIZE);
     }
 
+    /// How far a faulting access may be considered to extend, taken from upstream shadPS4.
+    ///
+    /// A fault in the last few bytes of a mapping must not be reported as an eight-byte access:
+    /// `Rasterizer::ReadMemory` refuses an unmapped range outright, so an access that runs past
+    /// the page would never be resolved and the guest would fault again forever.
+    static constexpr u64 FaultAccessSize(VAddr addr) {
+        const u64 remaining = GetNextPageAddr(addr) - addr;
+        return remaining < 8 ? remaining : 8;
+    }
+
 private:
     friend struct UffdImpl;
     friend struct SignalImpl;

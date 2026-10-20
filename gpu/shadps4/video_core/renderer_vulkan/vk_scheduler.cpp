@@ -477,10 +477,16 @@ void Scheduler::SubmitExecution(SubmitInfo& info) {
     const vk::Semaphore timeline = work_semaphore.Handle();
     info.AddSignal(timeline, signal_value);
 
-    static constexpr std::array<vk::PipelineStageFlags, 2> wait_stage_masks = {
+    // Sized from the submit info, as upstream shadPS4 does: the driver reads
+    // `num_wait_semas` entries, and a three-wait submission used to read past this array.
+    static constexpr auto kMaxWaits = std::tuple_size_v<decltype(SubmitInfo::wait_semas)>;
+    static constexpr std::array<vk::PipelineStageFlags, kMaxWaits> wait_stage_masks = {
         vk::PipelineStageFlagBits::eAllCommands,
         vk::PipelineStageFlagBits::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits::eAllCommands,
+        vk::PipelineStageFlagBits::eAllCommands,
     };
+    static_assert(wait_stage_masks.size() >= 4, "one stage mask per possible wait");
 
     const vk::TimelineSemaphoreSubmitInfo timeline_si = {
         .waitSemaphoreValueCount = info.num_wait_semas,
