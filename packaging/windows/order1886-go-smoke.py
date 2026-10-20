@@ -43,12 +43,21 @@ def main():
             raise ValueError("Update helper refused a clean package: " + recovery.stderr.decode("utf-8", "replace"))
         if (root / ".order1886-update" / "journal.json").exists():
             raise ValueError("Update helper wrote a journal for a clean package.")
+        # order1886.py resolves its imports from the shipped scripts/ directory at runtime, so a
+        # missing module only shows up on Play. Ask the backend for help: it must reach argument
+        # parsing and exit 0 rather than dying on an import.
+        backend = subprocess.run([str(root / "bin/order1886-worker.exe"), "--run-backend", "--help"],
+                                 cwd=temporary, env=environment, timeout=60, capture_output=True)
+        if backend.returncode != 0:
+            raise ValueError("Packaged backend cannot import its modules: "
+                             + (backend.stderr or backend.stdout).decode("utf-8", "replace")[-600:])
         worker = root / "bin/order1886-worker.exe"
         requests = [
             dict(version=1,id=1,method="settings.set",params={"values":{"vsync":False,"ui_language":"pt"}}),
             dict(version=1,id=2,method="settings.set",params={"values":{"frame_rate":90}}),
             dict(version=1,id=3,method="state.get",params={}),
             dict(version=1,id=4,method="updates.preflight",params={}),
+            dict(version=1,id=5,method="patches.list",params={}),
         ]
         result = subprocess.run([str(worker),"--state-dir",str(state),"--installation-root",str(root)],
             input="".join(json.dumps(r)+"\n" for r in requests),text=True,encoding="utf-8",
@@ -60,6 +69,10 @@ def main():
         assert len(replies[2]["result"]["pages"]) == 7
         assert len(replies[2]["result"]["languages"]) == 13
         assert replies[3]["result"]["ready"] is True
+        rows = replies[4]["result"]["recipes"]
+        assert len(rows) >= 2 and all(row["id"] and row["title"] for row in rows)
+        # Applicability is decided against the selected game; with none it must be a reason.
+        assert all(row["applicable"] is False and row["reason"] for row in rows)
         assert not (state / "savedata").exists()
     print("Go portable smoke passed: manifest, both entry points, update ABI and clean helper, Unicode relocation, restricted PATH, worker protocol, update preflight, autosave, language and rejected settings.")
 
