@@ -81,7 +81,7 @@ The preview includes the launcher, dedicated runtime, required libraries and
 The release also provides a ZIP checksum. Game files are supplied separately
 by you; this preview retains the [known compatibility limitations](#status).
 
-**Linux is not supported.** The Go launcher and its package are Windows-only, and the previous Linux package was removed with the Python launcher. If a Linux build is wanted, it is new work.
+**Linux x86-64 is built again**, as a portable `tar.gz` from the Go launcher, the native runtime and the Python worker. It is **not qualified**: nothing in it has run The Order: 1886, and the smoke that guards it covers the package, not the game. Requirements are a Vulkan-capable driver and a desktop session with GTK 3 and WebKitGTK 4.1. The runtime needs clang rather than GCC 13, because the shader compiler uses C++23 explicit object parameters. See the [Windows build guide](docs/order1886-build.md), which also documents the Linux path.
 
 For a portable Windows package:
 
