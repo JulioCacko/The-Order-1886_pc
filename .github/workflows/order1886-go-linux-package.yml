@@ -54,6 +54,8 @@ jobs:
             libwayland-dev libxkbcommon-dev \
             libfmt-dev libboost-dev robin-map-dev libxxhash-dev libzydis-dev \
             libvulkan-memory-allocator-dev \
+            # SDL3's audio and gamepad backends, used by src/runtime_audio.c and runtime_pad.c.
+            libasound2-dev libpulse-dev libudev-dev \
             glslang-dev glslang-tools spirv-tools spirv-headers spirv-cross \
             zlib1g-dev libssl-dev
       - name: Provide SDL3 (Ubuntu 24.04 does not package it yet)
