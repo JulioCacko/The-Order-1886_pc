@@ -15,6 +15,7 @@
 #include "core/libraries/gnmdriver/gnm_error.h"
 #include "core/libraries/gnmdriver/gnmdriver_init.h"
 #include "core/libraries/kernel/orbis_error.h"
+#include "core/libraries/gnmdriver/gnm_call_decisions.h"
 #include "core/libraries/kernel/process.h"
 #include "core/libraries/libs.h"
 #include "core/libraries/videoout/video_out.h"
@@ -199,8 +200,15 @@ s32 PS4_SYSV_ABI sceGnmComputeWaitOnAddress(u32* cmdbuf, u32 size, uintptr_t add
     return -1;
 }
 
-int PS4_SYSV_ABI sceGnmComputeWaitSemaphore() {
-    LOG_ERROR(Lib_GnmDriver, "(STUBBED) called");
+s32 PS4_SYSV_ABI sceGnmComputeWaitSemaphore(u32* cmdbuf, u32 size, u64 sem_addr, u32 flags) {
+    LOG_TRACE(Lib_GnmDriver, "called");
+    // Taken from upstream shadPS4 (GPL-2.0-or-later). The guest hands over a buffer it expects
+    // to be filled; returning success without writing left its garbage in the queue, where the
+    // dispatcher reads it as packet headers.
+    if (!cmdbuf || size != Gnm::ComputeWaitSemaphoreDwords) {
+        return -1;
+    }
+    Gnm::WriteComputeWaitSemaphore(cmdbuf, sem_addr, flags);
     return ORBIS_OK;
 }
 
@@ -1594,8 +1602,16 @@ s32 PS4_SYSV_ABI sceGnmSetEsShader(u32* cmdbuf, u32 size, const u32* es_regs, u3
     return ORBIS_OK;
 }
 
-int PS4_SYSV_ABI sceGnmSetGsRingSizes() {
-    LOG_ERROR(Lib_GnmDriver, "(STUBBED) called");
+s32 PS4_SYSV_ABI sceGnmSetGsRingSizes(u32 esgs_ring_size, u32 gsvs_ring_size) {
+    LOG_TRACE(Lib_GnmDriver, "esgs_ring_size = {:#x}, gsvs_ring_size = {:#x}",
+              esgs_ring_size, gsvs_ring_size);
+    if (const auto code = Gnm::ValidateGsRingSizes(esgs_ring_size, gsvs_ring_size)) {
+        return static_cast<s32>(code);
+    }
+    if (liverpool) {
+        liverpool->regs.vgt_esgs_ring_size = esgs_ring_size >> 8;
+        liverpool->regs.vgt_gsvs_ring_size = gsvs_ring_size >> 8;
+    }
     return ORBIS_OK;
 }
 
@@ -1789,8 +1805,18 @@ int PS4_SYSV_ABI sceGnmSetSpiEnableSqCountersForUnitInstance() {
     return ORBIS_GNM_ERROR_FAILURE;
 }
 
-int PS4_SYSV_ABI sceGnmSetupMipStatsReport() {
-    LOG_ERROR(Lib_GnmDriver, "(STUBBED) called");
+s32 PS4_SYSV_ABI sceGnmSetupMipStatsReport(void* output_buffer, u32 size_in_bytes,
+                                          u8 intervals_between_reports,
+                                          u8 num_reports_before_reset,
+                                          u32 mip_stats_reset_force) {
+    LOG_DEBUG(Lib_GnmDriver, "output_buffer = {}, size = {:#x}, intervals = {}, reports = {},"
+              " force = {}", output_buffer, size_in_bytes, intervals_between_reports,
+              num_reports_before_reset, mip_stats_reset_force);
+    if (const auto code = Gnm::ValidateMipStatsReport(output_buffer, size_in_bytes)) {
+        return static_cast<s32>(code);
+    }
+    std::memset(output_buffer, 0, size_in_bytes);
+    *static_cast<u32*>(output_buffer) = Gnm::MipStatsReportSentinel;
     return ORBIS_OK;
 }
 
