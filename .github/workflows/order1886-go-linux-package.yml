@@ -125,12 +125,14 @@ jobs:
       - name: Build the Python worker
         run: |
           python -m pip install --disable-pip-version-check 'pyinstaller==6.20.0'
-          mkdir -p out/worker
+          # PyInstaller resolves --add-data relative to --specpath, so the source side has to be
+          # absolute; on Linux the source:destination separator is ':'.
           python -m PyInstaller --noconfirm --clean --console --onedir --log-level WARN \
-            --name order1886-worker --paths . \
-            --add-data "scripts:scripts" \
+            --name order1886-worker --paths "$PWD" \
+            --add-data "$PWD/scripts:scripts" \
             --distpath out/worker-dist --workpath out/worker-build --specpath out \
             launcher/order1886_worker.py
+          ls -l out/worker-dist/order1886-worker/order1886-worker
       - name: Build the Linux package and smoke-test it
         id: package
         run: |
