@@ -79,7 +79,9 @@ struct PageManager::Impl {
         } else {
             Ps4Stats::read_faults.fetch_add(1, std::memory_order_relaxed);
             Ps4Stats::Timer timer{Ps4Stats::t_read_faults};
-            return rasterizer->ReadMemory(addr, 8, is_gpu_thread);
+            // Taken from upstream shadPS4: clamp the access to the page, so a fault near the end
+            // of a mapping still resolves instead of being refused as an unmapped range.
+            return rasterizer->ReadMemory(addr, PageManager::FaultAccessSize(addr), is_gpu_thread);
         }
         return false;
     }
