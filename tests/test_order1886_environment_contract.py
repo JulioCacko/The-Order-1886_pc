@@ -18,7 +18,7 @@ import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-LAUNCHER_SIDE = [ROOT / 'order1886.py', ROOT / 'launcher/order1886_launcher.py',
+LAUNCHER_SIDE = [ROOT / 'order1886.py', ROOT / 'launcher/order1886_common.py',
                  ROOT / 'launcher/order1886_worker.py']
 RUNTIME_ROOTS = [ROOT / 'src', ROOT / 'gpu']
 RUNTIME_SUFFIXES = ('.c', '.h', '.cpp', '.hpp', '.cc')

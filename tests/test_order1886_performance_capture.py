@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 import order1886
-from launcher import order1886_launcher as legacy
+from launcher import order1886_common as legacy
 from launcher import order1886_worker as worker
 from launcher.order1886_lang import LANGUAGES, table
 import test_order1886_read_backing as native

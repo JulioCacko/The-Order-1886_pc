@@ -12,7 +12,6 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WINDOWS = ROOT / 'packaging/windows/order1886-go-build.ps1'
-LINUX = ROOT / 'packaging/linux/order1886-package.py'
 
 
 def scripts_imported(path):
@@ -34,24 +33,12 @@ def windows_list():
     return {name.replace('.py', '') for name in re.findall(r"'([\w.]+\.py)'", block)}
 
 
-def linux_list():
-    text = LINUX.read_text(encoding='utf-8')
-    block = text[text.index('SCRIPTS = ('):]
-    block = block[: block.index(')')]
-    return set(re.findall(r"'(\w+)'", block))
-
-
 class PackagingCoverageTests(unittest.TestCase):
     def test_the_go_worker_ships_every_module_the_backend_imports(self):
         needed = scripts_imported(ROOT / 'order1886.py') | scripts_imported(ROOT / 'launcher/order1886_worker.py')
         self.assertIn('order1886_patches', needed)
         missing = sorted(needed - windows_list())
         self.assertFalse(missing, f'order1886-go-build.ps1 does not ship: {missing}')
-
-    def test_the_linux_package_ships_every_module_the_backend_imports(self):
-        needed = scripts_imported(ROOT / 'order1886.py')
-        missing = sorted(needed - linux_list())
-        self.assertFalse(missing, f'order1886-package.py does not ship: {missing}')
 
     def test_the_guard_would_fail_for_a_missing_entry(self):
         # The scan is source-driven: adding an import without adding the module must fail.

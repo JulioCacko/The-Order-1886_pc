@@ -244,7 +244,7 @@ class ModOverlayTests(unittest.TestCase):
 
 class LauncherModTests(unittest.TestCase):
     def test_relative_mod_root_uses_installation_in_every_working_directory(self):
-        from launcher import order1886_launcher as launcher
+        from launcher import order1886_common as launcher
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             installation, other = base / 'installation', base / 'other'
@@ -265,29 +265,8 @@ class LauncherModTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
-    @unittest.skipUnless(os.name == 'nt', 'Native Tk malformed mod settings')
-    def test_malformed_saved_mod_settings_are_visible_and_not_rewritten_on_open(self):
-        import tkinter as tk
-        from launcher import order1886_launcher as launcher
-        with tempfile.TemporaryDirectory() as tmp:
-            state = Path(tmp)
-            values = {'game_dir': str(state / 'missing'), 'mods_dir': 123, 'mods_enabled': 'yes', 'mod_order': []}
-            launcher.save_settings(state / 'settings.json', values)
-            before = (state / 'settings.json').read_bytes()
-            window = tk.Tk()
-            window.withdraw()
-            try:
-                app = launcher.DesktopLauncher(window, state)
-                self.assertIn('Saved mod settings are invalid', app.mod_notice.cget('text'))
-                self.assertFalse(app.page_fields['mods_enabled'].get())
-                self.assertEqual((state / 'settings.json').read_bytes(), before)
-                with self.assertRaises(ValueError):
-                    launcher.backend_command(app.values)
-            finally:
-                window.destroy()
-
     def test_saved_direct_play_keeps_explicit_order_and_disabled_default(self):
-        from launcher import order1886_launcher as launcher
+        from launcher import order1886_common as launcher
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)
             root = state / 'mods'
@@ -305,44 +284,12 @@ class LauncherModTests(unittest.TestCase):
             self.assertNotIn('New', command[command.index('--mods-order') + 1])
             self.assertNotIn('--mods-enabled', launcher.backend_command(reloaded, 'verify'))
 
-    @unittest.skipUnless(os.name == 'nt', 'Native Tk mod selection')
-    def test_launcher_mod_selection_order_and_changed_folder_require_explicit_enable(self):
-        import tkinter as tk
-        from launcher import order1886_launcher as launcher
-        with tempfile.TemporaryDirectory() as tmp:
-            state = Path(tmp)
-            root = state / 'mods'
-            for name in ('First', 'Second'):
-                (root / name / '_data').mkdir(parents=True)
-                (root / name / '_data/asset').write_bytes(name.encode())
-            launcher.save_settings(state / 'settings.json', {'game_dir': str(state / 'missing-game'), 'mods_dir': str(root)})
-            window = tk.Tk()
-            window.withdraw()
-            try:
-                app = launcher.DesktopLauncher(window, state)
-                self.assertEqual(app.mod_order, [])
-                for name in ('First', 'Second'):
-                    app.mod_list.selection_clear(0, 'end')
-                    app.mod_list.selection_set(app.mod_names.index(name))
-                    app.toggle_mod()
-                app.move_mod(-1)
-                self.assertEqual(app.mod_order, ['Second', 'First'])
-                self.assertTrue(app.save_page_settings())
-                self.assertEqual(launcher.read_settings(state / 'settings.json')['mod_order'], ['Second', 'First'])
-                app.page_fields['mods_dir'].set(str(state / 'different-mods-folder'))
-                app.refresh_mods()
-                self.assertEqual(app.mod_order, [])
-                self.assertIn('attention', app.mod_notice.cget('text'))
-            finally:
-                window.destroy()
-
-    def test_packaging_declares_mod_helper_in_data_sources_and_frozen_imports(self):
+    def test_packaging_declares_mod_helper_in_data_sources(self):
+        # The Go builder is the only packager now; it ships the mod helper in the worker's data
+        # sources, which is what makes a packaged Play able to mount overlays.
         root = Path(__file__).resolve().parents[1]
-        build = (root / 'packaging/windows/order1886-build.ps1').read_text(encoding='utf-8')
-        smoke = (root / 'packaging/windows/order1886-smoke.py').read_text(encoding='utf-8')
-        self.assertEqual(build.count("'order1886_mods.py'"), 2)
-        self.assertIn('--hidden-import order1886_mods', build)
-        self.assertIn('"order1886_mods.py"', smoke)
+        build = (root / 'packaging/windows/order1886-go-build.ps1').read_text(encoding='utf-8')
+        self.assertIn("'order1886_mods.py'", build)
 
 
 if __name__ == '__main__':

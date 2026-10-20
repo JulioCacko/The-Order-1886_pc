@@ -1,7 +1,9 @@
 param(
-    [Parameter(Mandatory=$true)][string]$LegacyPackage,
+    [Parameter(Mandatory=$true)][string]$Runtime,
+    [string]$DependencyRoot = 'C:/msys64/clang64/bin',
     [string]$Python = 'python',
-    [switch]$SkipFrontendBuild
+    [switch]$SkipFrontendBuild,
+    [switch]$SkipDependencyInstall
 )
 $ErrorActionPreference = 'Stop'
 function Get-SHA256([string]$Path) {
@@ -10,34 +12,60 @@ function Get-SHA256([string]$Path) {
     try { return ([System.BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-','').ToLowerInvariant() }
     finally { $stream.Dispose(); $sha.Dispose() }
 }
-$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$legacyRoot = (Resolve-Path -LiteralPath $LegacyPackage).Path
-$legacyManifest = Get-Content -LiteralPath (Join-Path $legacyRoot 'package-manifest.json') -Raw | ConvertFrom-Json
-$runtime = Join-Path $legacyRoot 'bin/order1886-runtime.exe'
-$hash = Get-SHA256 $runtime
-if ($hash -ne $legacyManifest.runtime_sha256) { throw 'Legacy runtime does not match its package manifest.' }
-if (-not (Test-Path -LiteralPath (Join-Path $legacyRoot 'The Order 1886.exe'))) { throw 'Missing legacy launcher.' }
-if ($legacyManifest.runtime_build.game_profile -ne 'order1886' -or $legacyManifest.runtime_build.runtime_abi -ne 'order1886-native-1') {
-    throw 'Legacy package is not a dedicated Order build.'
-}
-foreach ($entry in $legacyManifest.files) {
-    $source = [System.IO.Path]::GetFullPath((Join-Path $legacyRoot $entry.path))
-    if (-not $source.StartsWith($legacyRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw 'Legacy manifest path escapes its package.'
+
+# Copy the runtime plus every non-system DLL it imports, so the package runs on a machine without the
+# build toolchain that produced it. This used to live in the retired Python-launcher builder.
+function Copy-RuntimeDependencies([string]$Executable, [string]$Target, [string]$DependencyPath) {
+    $inspector = Join-Path $DependencyPath 'llvm-readobj.exe'
+    if (-not (Test-Path -LiteralPath $inspector)) { throw "Missing dependency inspector: $inspector" }
+    $origin = Split-Path -Parent $Executable
+    New-Item -ItemType Directory -Force -Path $Target | Out-Null
+    Copy-Item -LiteralPath $Executable -Destination (Join-Path $Target 'order1886-runtime.exe')
+    $seen = @{}
+    $pending = [System.Collections.Generic.Queue[string]]::new()
+    $pending.Enqueue($Executable)
+    while ($pending.Count -gt 0) {
+        $binary = $pending.Dequeue()
+        $imports = & $inspector --coff-imports $binary
+        if ($LASTEXITCODE) { throw "Could not inspect PE imports: $binary" }
+        foreach ($line in $imports) {
+            if ($line -notmatch '^\s*Name:\s*(\S+\.dll)\s*$') { continue }
+            $name = $Matches[1]
+            $key = $name.ToLowerInvariant()
+            if ($seen.ContainsKey($key)) { continue }
+            $seen[$key] = $true
+            $candidates = @((Join-Path $origin $name), (Join-Path $DependencyPath $name))
+            $found = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            if ($found) {
+                Copy-Item -LiteralPath $found -Destination (Join-Path $Target $name)
+                $pending.Enqueue($found)
+            } elseif ($name -notmatch '^(api-ms-|ext-ms-)' -and
+                      -not (Test-Path -LiteralPath (Join-Path "$env:SystemRoot/System32" $name))) {
+                throw "Unresolved host dependency $name imported by $binary"
+            }
+        }
     }
-    if ((Get-SHA256 $source) -ne $entry.sha256) { throw "Legacy package file hash mismatch: $($entry.path)" }
 }
+
+$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$runtimePath = (Resolve-Path -LiteralPath $Runtime).Path
+$runtimeIdentityPath = Join-Path (Split-Path -Parent $runtimePath) 'runtime-build.json'
+if (-not (Test-Path -LiteralPath $runtimeIdentityPath)) {
+    throw 'The runtime build receipt is missing next to the runtime; build it with build.sh first.'
+}
+$runtimeBuild = Get-Content -LiteralPath $runtimeIdentityPath -Raw | ConvertFrom-Json
+if ($runtimeBuild.game_profile -ne 'order1886' -or $runtimeBuild.runtime_abi -ne 'order1886-native-1') {
+    throw 'This runtime is not a dedicated Order build.'
+}
+$dependencyPath = (Resolve-Path -LiteralPath $DependencyRoot).Path
+$hash = Get-SHA256 $runtimePath
+
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
 $stage = Join-Path $projectRoot "out/order1886-go-package/$stamp"
 $destination = Join-Path $stage 'The Order 1886'
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
-foreach ($entry in Get-ChildItem -LiteralPath $legacyRoot) {
-    if ($entry.Name -ne 'user') { Copy-Item -LiteralPath $entry.FullName -Destination $destination -Recurse }
-}
 $incomplete = Join-Path $destination 'GO-BUILD-INCOMPLETE.txt'
 'This Go preview is incomplete until packaging and smoke checks finish.' | Set-Content -LiteralPath $incomplete -Encoding UTF8
-# The package is Go only: the previous Python launcher is not shipped, and an
-# installed tree that still has it loses that file during the first update.
 Push-Location (Join-Path $projectRoot 'launcher-go')
 try {
     if (-not $SkipFrontendBuild) {
@@ -49,6 +77,15 @@ try {
     foreach ($name in @('The Order 1886.exe','Play The Order 1886.exe')) {
         Copy-Item -LiteralPath $goLauncher -Destination (Join-Path $destination $name) -Force
     }
+
+    # Runtime payload: the exe, the DLLs it imports, and its build receipt.
+    $runtimeBin = Join-Path $destination 'bin'
+    Copy-RuntimeDependencies $runtimePath $runtimeBin $dependencyPath
+    if ((Get-SHA256 (Join-Path $runtimeBin 'order1886-runtime.exe')) -ne $hash) {
+        throw 'Runtime changed during packaging. Re-run after the source build has finished.'
+    }
+    Copy-Item -LiteralPath $runtimeIdentityPath -Destination (Join-Path $runtimeBin 'runtime-build.json')
+
     $modules = @(& go list -deps -tags desktop,production -f '{{with .Module}}{{if not .Main}}{{.Path}}|{{.Version}}|{{.Dir}}{{end}}{{end}}' .)
     if ($LASTEXITCODE) { throw 'Go dependency listing failed.' }
     $copiedModules = @{}
@@ -65,42 +102,73 @@ try {
     }
     $goRoot = (& go env GOROOT | Out-String).Trim()
     Copy-Item -LiteralPath (Join-Path $goRoot 'LICENSE') -Destination (Join-Path $destination 'notices/go/GO-STDLIB-LICENSE')
-    $scriptData = Join-Path $stage 'scripts'
-    New-Item -ItemType Directory -Force -Path $scriptData | Out-Null
-    foreach ($name in @('prepare.py','link_modules.py','link_libc.py','save_backup.py',
-            'order1886_frame_rate.py','order1886_display.py','order1886_cache.py',
-            'order1886_steam.py','order1886_mods.py','order1886_trophy_history.py','order1886_input.py',
-            # performance.report reads the recorded CSV through the shared frame-trace parser.
-            'order1886_frame_trace.py','order1886_perf_report.py',
-            # order1886.py imports this by name from the shipped scripts/ directory; without it
-            # every packaged Play fails on the import, before any game file is read.
-            'order1886_patches.py')) {
-        Copy-Item -LiteralPath (Join-Path "$projectRoot/scripts" $name) -Destination $scriptData
-    }
-    & $Python -m PyInstaller --noconfirm --clean --console --onedir --log-level WARN --name order1886-worker --paths $projectRoot --add-data "$scriptData;scripts" --distpath "$stage/worker-dist" --workpath "$stage/worker-build" --specpath $stage "$projectRoot/launcher/order1886_worker.py"
-    if ($LASTEXITCODE) { throw 'Worker build failed.' }
-    foreach ($entry in Get-ChildItem -LiteralPath "$stage/worker-dist/order1886-worker") {
-        Copy-Item -LiteralPath $entry.FullName -Destination (Join-Path $destination 'bin') -Recurse -Force
-    }
-    $manifest = [ordered]@{
-        product='The Order: 1886'; launcher='Go / Wails v2.17.0'; status='development preview'
-        built_utc=(Get-Date).ToUniversalTime().ToString('o'); runtime_sha256=$hash
-        runtime_build=$legacyManifest.runtime_build
-        # Advertised only now that the copied helper and startup recovery exist.
-        update_abi='order1886-update-2'
-        source_revision=(& git -C $projectRoot rev-parse HEAD | Out-String).Trim()
-        source_dirty=([bool](& git -C $projectRoot status --porcelain | Out-String).Trim())
-        files=@()
-    }
-    $manifest.files = @(Get-ChildItem -LiteralPath $destination -File -Recurse | Where-Object {
-        $_.Name -notin @('package-manifest.json','GO-BUILD-INCOMPLETE.txt')
-    } | ForEach-Object {
-        [ordered]@{path=$_.FullName.Substring($destination.Length+1).Replace('\','/'); sha256=(Get-SHA256 $_.FullName)}
-    })
-    $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $destination 'package-manifest.json') -Encoding UTF8
-    & $Python "$projectRoot/packaging/windows/order1886-go-smoke.py" $destination
-    if ($LASTEXITCODE) { throw 'Go portable smoke failed; the incomplete marker remains.' }
-    Remove-Item -LiteralPath $incomplete
     Write-Output $destination
 } finally { Pop-Location }
 
+$venv = Join-Path $projectRoot 'out/order1886-pyenv'
+if (-not (Test-Path "$venv/Scripts/python.exe")) {
+    & $Python -m venv $venv
+    if ($LASTEXITCODE) { throw 'Virtual environment creation failed.' }
+}
+$buildPython = Join-Path $venv 'Scripts/python.exe'
+if (-not $SkipDependencyInstall) {
+    & $buildPython -m pip install --disable-pip-version-check 'pyinstaller==6.20.0' 'pillow==12.3.0'
+    if ($LASTEXITCODE) { throw 'Build dependencies installation failed.' }
+}
+
+# Launcher artwork and the documents a player reads first.
+$artwork = Join-Path $stage 'artwork'
+& $buildPython (Join-Path $PSScriptRoot 'order1886_icon.py') $artwork
+if ($LASTEXITCODE) { throw 'Launcher icon conversion failed.' }
+foreach ($name in @('logo-horizontal.png', 'logo-stacked.png', 'app-icon.png', 'BRANDING.txt',
+        'launcher-art.png', 'launcher-art.jpg', 'launcher-art.txt', 'play-brass.png')) {
+    Copy-Item -LiteralPath (Join-Path "$projectRoot/launcher/order1886" $name) -Destination $artwork
+}
+Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination $destination
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README-Order1886.txt') -Destination $destination
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'QUICKSTART-Order1886.txt') -Destination (Join-Path $destination 'QUICKSTART.txt')
+$noticeRoot = Join-Path $destination 'notices'
+New-Item -ItemType Directory -Force -Path $noticeRoot | Out-Null
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ATTRIBUTION-Order1886.txt') -Destination (Join-Path $noticeRoot 'ATTRIBUTION.txt')
+& $buildPython (Join-Path $PSScriptRoot 'order1886_notices.py') (Join-Path $noticeRoot 'python')
+if ($LASTEXITCODE) { throw 'Python notices generation failed.' }
+
+# The worker that the Go launcher drives over stdio.
+$scriptData = Join-Path $stage 'scripts'
+New-Item -ItemType Directory -Force -Path $scriptData | Out-Null
+foreach ($name in @('prepare.py','link_modules.py','link_libc.py','save_backup.py',
+        'order1886_frame_rate.py','order1886_display.py','order1886_cache.py',
+        'order1886_steam.py','order1886_mods.py','order1886_trophy_history.py','order1886_input.py',
+        # performance.report reads the recorded CSV through the shared frame-trace parser.
+        'order1886_frame_trace.py','order1886_perf_report.py',
+        # order1886.py imports this by name from the shipped scripts/ directory; without it
+        # every packaged Play fails on the import, before any game file is read.
+        'order1886_patches.py')) {
+    Copy-Item -LiteralPath (Join-Path "$projectRoot/scripts" $name) -Destination $scriptData
+}
+& $buildPython -m PyInstaller --noconfirm --clean --console --onedir --log-level WARN --name order1886-worker --paths $projectRoot --add-data "$scriptData;scripts" --distpath "$stage/worker-dist" --workpath "$stage/worker-build" --specpath $stage "$projectRoot/launcher/order1886_worker.py"
+if ($LASTEXITCODE) { throw 'Worker build failed.' }
+foreach ($entry in Get-ChildItem -LiteralPath "$stage/worker-dist/order1886-worker") {
+    Copy-Item -LiteralPath $entry.FullName -Destination (Join-Path $destination 'bin') -Recurse -Force
+}
+
+$manifest = [ordered]@{
+    product='The Order: 1886'; launcher='Go / Wails v2.17.0'; status='development preview'
+    built_utc=(Get-Date).ToUniversalTime().ToString('o'); runtime_sha256=$hash
+    runtime_build=$runtimeBuild
+    # Advertised only now that the copied helper and startup recovery exist.
+    update_abi='order1886-update-2'
+    source_revision=(& git -C $projectRoot rev-parse HEAD | Out-String).Trim()
+    source_dirty=([bool](& git -C $projectRoot status --porcelain | Out-String).Trim())
+    files=@()
+}
+$manifest.files = @(Get-ChildItem -LiteralPath $destination -File -Recurse | Where-Object {
+    $_.Name -notin @('package-manifest.json','GO-BUILD-INCOMPLETE.txt')
+} | ForEach-Object {
+    [ordered]@{path=$_.FullName.Substring($destination.Length+1).Replace('\','/'); sha256=(Get-SHA256 $_.FullName)}
+})
+$manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $destination 'package-manifest.json') -Encoding UTF8
+& $buildPython "$projectRoot/packaging/windows/order1886-go-smoke.py" $destination
+if ($LASTEXITCODE) { throw 'Go portable smoke failed; the incomplete marker remains.' }
+Remove-Item -LiteralPath $incomplete
+Write-Output $destination

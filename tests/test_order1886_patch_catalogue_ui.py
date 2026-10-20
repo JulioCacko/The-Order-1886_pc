@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from launcher import order1886_launcher as launcher
+from launcher import order1886_common as launcher
 from launcher import order1886_worker as worker
 from scripts import order1886_patches as patches
 

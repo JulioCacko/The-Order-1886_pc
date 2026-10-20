@@ -91,7 +91,7 @@ components:
 
 The existing identity pairs dark, quiet surfaces with muted brass and ivory. Cinematic artwork provides atmosphere; a solid launch console gives text and controls a stable, readable surface. The user approved the cinematic launch-bar composition in `.impeccable/mocks/concept-a.png` on 2026-10-16. Its surface-specific direction lives in `.impeccable/surfaces/launcher-order1886-launcher-py.md`.
 
-This is a Windows Tkinter application. The native title bar, focus behavior, dialogs, buttons and dropdown semantics are intentional adaptations of the composition. The current implementation in `launcher/order1886_launcher.py` is the token source. This document records the implemented system; it does not certify completion of the visual review or runtime compatibility.
+This is a Windows Tkinter application. The native title bar, focus behavior, dialogs, buttons and dropdown semantics are intentional adaptations of the composition. The current implementation in `launcher/order1886_common.py` (the Go launcher drives it; the Tk window was retired) is the token source. This document records the implemented system; it does not certify completion of the visual review or runtime compatibility.
 
 **Key Characteristics:**
 

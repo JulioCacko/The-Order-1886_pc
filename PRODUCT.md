@@ -38,7 +38,7 @@ Preserve The Order: 1886 identity, charcoal, muted brass, ivory, Georgia page he
 
 ## Evidence on Hand
 
-Implementation is in `launcher/order1886_launcher.py`; behavior checks are in `tests/test_order1886_launcher.py`; packaging and CPU-only smoke checks are under `packaging/windows/`. Compatibility evidence is recorded in `docs/order1886-runtime-status.md`.
+Implementation is in `launcher/order1886_common.py` (the Go launcher drives it through the worker; the Tk window was retired); behavior checks are in `tests/test_order1886_launcher.py`; packaging and CPU-only smoke checks are under `packaging/windows/`. Compatibility evidence is recorded in `docs/order1886-runtime-status.md`.
 
 The approved composition is `.impeccable/mocks/concept-a.png`. Native captures live under `.impeccable/review/`; their review status is separate from code or packaging checks. The composition, specification and asset-plate stages are closed, while the hero webgate remains open with native measurement limitations. This file does not declare an Impeccable finish verdict or gameplay certification.
 

@@ -43,7 +43,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -m unittest discover -s tests -p test_order1886_input.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python -m unittest discover -s tests -p test_order1886_save_selection.py
+          # Save restore moved into the worker protocol; the Tk save-selection window is gone.
+          python -m unittest discover -s tests -p test_order1886_worker_protocol.py
       - name: Frontend checks
         working-directory: launcher-go/frontend
         run: |
