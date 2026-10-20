@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"testing"
 
 	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/updates"
@@ -35,9 +37,9 @@ func TransactionFixture(t *testing.T) (string, Candidate) {
 	stagedZip, staged := buildPackage(t, func(files map[string][]byte, manifest map[string]any) {
 		manifest["source_revision"] = strings.Repeat("b", 40)
 		manifest["update_abi"] = "order1886-update-2"
-		files["The Order 1886.exe"] = []byte("launcher-7")
-		files["Play The Order 1886.exe"] = []byte("launcher-7")
-		files["bin/order1886-worker.exe"] = []byte("worker-7")
+		files[pkgpath.Launcher()] = []byte("launcher-7")
+		files[pkgpath.Play()] = []byte("launcher-7")
+		files[pkgpath.Worker()] = []byte("worker-7")
 		files["_internal/library.dll"] = []byte("library-7")
 		delete(files, "The Order 1886 Legacy.exe")
 		delete(files, "notices/LICENSE.txt")
@@ -75,11 +77,11 @@ func buildPackage(t *testing.T, change func(map[string][]byte, map[string]any)) 
 	t.Helper()
 	runtime := []byte("runtime-6")
 	files := map[string][]byte{
-		"The Order 1886.exe":        []byte("launcher-6"),
-		"Play The Order 1886.exe":   []byte("launcher-6"),
+		pkgpath.Launcher():          []byte("launcher-6"),
+		pkgpath.Play():              []byte("launcher-6"),
 		"The Order 1886 Legacy.exe": []byte("legacy-6"),
-		"bin/order1886-worker.exe":  []byte("worker-6"),
-		"bin/order1886-runtime.exe": runtime,
+		pkgpath.Worker():            []byte("worker-6"),
+		pkgpath.Runtime():           runtime,
 		"bin/runtime-build.json":    []byte(`{"runtime_abi":"order1886-native-1","game_profile":"order1886","runtime_sha256":"` + digest(runtime) + `"}`),
 		"_internal/library.dll":     []byte("library-6"),
 		"notices/LICENSE.txt":       []byte("license"),
@@ -227,7 +229,7 @@ func corruptBackups(t *testing.T, installation string) {
 	if err = json.Unmarshal(body, &journal); err != nil {
 		t.Fatal(err)
 	}
-	previous := filepath.Join(installation, filepath.FromSlash(journal.Directory), "previous", "The Order 1886.exe")
+	previous := filepath.Join(installation, filepath.FromSlash(journal.Directory), "previous", pkgpath.Launcher())
 	if err = os.WriteFile(previous, []byte("broken-backup"), 0o600); err != nil {
 		t.Fatal(err)
 	}

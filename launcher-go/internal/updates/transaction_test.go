@@ -13,6 +13,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"testing"
 	"time"
 )
@@ -29,9 +31,9 @@ func transactionFixture(t *testing.T) (string, string, Identity) {
 	archive, identity = packageFixture(t, func(files map[string][]byte, m map[string]any) {
 		m["source_revision"] = strings.Repeat("b", 40)
 		m["update_abi"] = "order1886-update-2"
-		files["The Order 1886.exe"] = []byte("launcher-7")
-		files["Play The Order 1886.exe"] = []byte("launcher-7")
-		files["bin/order1886-worker.exe"] = []byte("worker-7")
+		files[pkgpath.Launcher()] = []byte("launcher-7")
+		files[pkgpath.Play()] = []byte("launcher-7")
+		files[pkgpath.Worker()] = []byte("worker-7")
 		files["_internal/library.dll"] = []byte("library-7")
 		delete(files, "notices/LICENSE.txt")
 		delete(files, "The Order 1886 Legacy.exe")
@@ -231,7 +233,7 @@ func TestTransactionUpdatesAndRollsBackOnlyPackageFiles(t *testing.T) {
 		t.Fatalf("wrong phase %s", tx.Phase())
 	}
 	after := installedSnapshot(t, root)
-	for name, want := range map[string]string{"The Order 1886.exe": "launcher-7", "Play The Order 1886.exe": "launcher-7", "bin/order1886-worker.exe": "worker-7", "_internal/library.dll": "library-7", "notices/new-license.txt": "new-license"} {
+	for name, want := range map[string]string{pkgpath.Launcher(): "launcher-7", pkgpath.Play(): "launcher-7", pkgpath.Worker(): "worker-7", "_internal/library.dll": "library-7", "notices/new-license.txt": "new-license"} {
 		if after[name] != want {
 			t.Fatalf("wrong %s: %q", name, after[name])
 		}
@@ -344,13 +346,13 @@ func TestTransactionRefusesModifiedFilesAndUnownedCollisions(t *testing.T) {
 		t.Run(when, func(t *testing.T) {
 			root, stage, identity := transactionFixture(t)
 			if when == "old-modified" {
-				os.WriteFile(filepath.Join(root, "The Order 1886.exe"), []byte("player-edit"), 0600)
+				os.WriteFile(filepath.Join(root, pkgpath.Launcher()), []byte("player-edit"), 0600)
 			}
 			if when == "new-collision" {
 				os.WriteFile(filepath.Join(root, "notices", "new-license.txt"), []byte("player-file"), 0600)
 			}
 			if when == "staged-corrupt" {
-				os.WriteFile(filepath.Join(stage, "The Order 1886.exe"), []byte("broken-download"), 0600)
+				os.WriteFile(filepath.Join(stage, pkgpath.Launcher()), []byte("broken-download"), 0600)
 			}
 			if when == "stage-rehashed" {
 				os.WriteFile(filepath.Join(stage, "bin", "order1886-worker.exe"), []byte("replaced-worker"), 0600)
@@ -360,7 +362,7 @@ func TestTransactionRefusesModifiedFilesAndUnownedCollisions(t *testing.T) {
 				json.Unmarshal([]byte(strings.TrimPrefix(string(body), "\ufeff")), &m)
 				for _, entry := range m["files"].([]any) {
 					row := entry.(map[string]any)
-					if row["path"] == "bin/order1886-worker.exe" {
+					if row["path"] == pkgpath.Worker() {
 						row["sha256"] = digest([]byte("replaced-worker"))
 					}
 				}
@@ -531,10 +533,10 @@ func TestRecoveryBootstrapsAreReplacedBeforeWorkerLibraries(t *testing.T) {
 	bindSession(t, tx, root)
 	if err = tx.Apply(context.Background(), func(done, total int) {
 		got := installedSnapshot(t, root)
-		if done == 1 && (got["The Order 1886.exe"] != "launcher-7" || got["_internal/library.dll"] != "library-6") {
+		if done == 1 && (got[pkgpath.Launcher()] != "launcher-7" || got["_internal/library.dll"] != "library-6") {
 			t.Fatal("primary bootstrap was not installed first")
 		}
-		if done == 2 && (got["Play The Order 1886.exe"] != "launcher-7" || got["_internal/library.dll"] != "library-6") {
+		if done == 2 && (got[pkgpath.Play()] != "launcher-7" || got["_internal/library.dll"] != "library-6") {
 			t.Fatal("direct bootstrap was not installed before libraries")
 		}
 	}); err != nil {
@@ -542,7 +544,7 @@ func TestRecoveryBootstrapsAreReplacedBeforeWorkerLibraries(t *testing.T) {
 	}
 	if err = tx.Rollback(context.Background(), func(done, total int) {
 		got := installedSnapshot(t, root)
-		if got["Play The Order 1886.exe"] == "launcher-6" && got["_internal/library.dll"] != "library-6" {
+		if got[pkgpath.Play()] == "launcher-6" && got["_internal/library.dll"] != "library-6" {
 			t.Fatal("removed recovery bootstrap before restoring old libraries")
 		}
 	}); err != nil {

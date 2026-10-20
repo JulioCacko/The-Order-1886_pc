@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"testing"
 	"time"
 )
@@ -64,7 +66,7 @@ func TestRetiredLauncherIsDeletedAfterReplacementsAndRestored(t *testing.T) {
 			if _, ok := snapshot["The Order 1886 Legacy.exe"]; !ok {
 				t.Fatal("retired entry point was deleted before replacements finished")
 			}
-			if snapshot["The Order 1886.exe"] != "launcher-7" {
+			if snapshot[pkgpath.Launcher()] != "launcher-7" {
 				t.Fatal("primary entry point was not replaced before the deletion")
 			}
 		}
@@ -84,7 +86,7 @@ func TestRetiredLauncherIsDeletedAfterReplacementsAndRestored(t *testing.T) {
 	if _, ok := after["The Order 1886 Legacy.exe"]; ok {
 		t.Fatal("applied update kept the retired entry point")
 	}
-	for _, name := range []string{"The Order 1886.exe", "Play The Order 1886.exe"} {
+	for _, name := range []string{pkgpath.Launcher(), pkgpath.Play()} {
 		if after[name] != "launcher-7" {
 			t.Fatalf("missing Go entry point %s after update", name)
 		}
