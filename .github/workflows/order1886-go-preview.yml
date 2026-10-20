@@ -5,21 +5,15 @@ on:
     paths:
       - 'launcher-go/**'
       - 'launcher/order1886_*.py'
-      - 'scripts/order1886_trophy_history.py'
-      - 'scripts/order1886_input.py'
-      - 'tests/test_order1886_input.py'
-      - 'tests/test_order1886_worker.py'
-      - 'tests/test_order1886_trophy_history.py'
+      - 'scripts/**'
+      - 'tests/**'
       - '.github/workflows/order1886-go-preview.yml'
   push:
     paths:
       - 'launcher-go/**'
       - 'launcher/order1886_*.py'
-      - 'scripts/order1886_trophy_history.py'
-      - 'scripts/order1886_input.py'
-      - 'tests/test_order1886_input.py'
-      - 'tests/test_order1886_worker.py'
-      - 'tests/test_order1886_trophy_history.py'
+      - 'scripts/**'
+      - 'tests/**'
       - '.github/workflows/order1886-go-preview.yml'
 permissions:
   contents: read
@@ -68,4 +62,33 @@ jobs:
           go vet ./...
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.0 build -clean -skipbindings
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: launcher-go/go.mod
+          cache-dependency-path: launcher-go/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: launcher-go/frontend/package-lock.json
+      # gofmt runs here because this checkout is LF by construction; a Windows runner defaults
+      # to CRLF and would flag every file. .gitattributes keeps the two consistent.
+      - name: Go formatting
+        working-directory: launcher-go
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; echo 'gofmt required'; exit 1; }
+      # The race detector needs cgo, which the Windows job cannot assume; the documented gate
+      # list asks for it, so it runs where the toolchain is guaranteed.
+      - name: Frontend build for the embedded assets
+        working-directory: launcher-go/frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Go race detector
+        working-directory: launcher-go
+        run: go test ./... -race -count=1
 

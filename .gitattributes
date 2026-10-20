@@ -3,3 +3,12 @@
 
 # MSYS2 bash must receive LF shell scripts on Windows.
 *.sh text eol=lf
+
+# Keep the files CI inspects the way CI inspects them. A Windows checkout defaults to CRLF,
+# which makes `gofmt -l .` flag every Go file even though the committed blob is LF, and hides
+# real formatting regressions behind line-ending noise.
+*.go text eol=lf
+*.py text eol=lf
+*.ts text eol=lf
+*.mjs text eol=lf
+*.yml text eol=lf
