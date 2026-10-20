@@ -71,7 +71,10 @@ try {
             'order1886_frame_rate.py','order1886_display.py','order1886_cache.py',
             'order1886_steam.py','order1886_mods.py','order1886_trophy_history.py','order1886_input.py',
             # performance.report reads the recorded CSV through the shared frame-trace parser.
-            'order1886_frame_trace.py','order1886_perf_report.py')) {
+            'order1886_frame_trace.py','order1886_perf_report.py',
+            # order1886.py imports this by name from the shipped scripts/ directory; without it
+            # every packaged Play fails on the import, before any game file is read.
+            'order1886_patches.py')) {
         Copy-Item -LiteralPath (Join-Path "$projectRoot/scripts" $name) -Destination $scriptData
     }
     & $Python -m PyInstaller --noconfirm --clean --console --onedir --log-level WARN --name order1886-worker --paths $projectRoot --add-data "$scriptData;scripts" --distpath "$stage/worker-dist" --workpath "$stage/worker-build" --specpath $stage "$projectRoot/launcher/order1886_worker.py"
