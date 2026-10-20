@@ -87,7 +87,7 @@ func TestStageVerifiedPackageAtUnicodePath(t *testing.T) {
 	if manifest.SourceRevision != identity.SourceRevision {
 		t.Fatal("lost source identity")
 	}
-	got, err := os.ReadFile(filepath.Join(dest, "bin", "order1886-runtime.exe"))
+	got, err := os.ReadFile(filepath.Join(dest, filepath.FromSlash(pkgpath.Runtime())))
 	if err != nil || string(got) != "runtime-6" {
 		t.Fatalf("wrong runtime: %q %v", got, err)
 	}

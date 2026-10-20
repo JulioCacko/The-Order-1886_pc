@@ -355,7 +355,7 @@ func TestTransactionRefusesModifiedFilesAndUnownedCollisions(t *testing.T) {
 				os.WriteFile(filepath.Join(stage, pkgpath.Launcher()), []byte("broken-download"), 0600)
 			}
 			if when == "stage-rehashed" {
-				os.WriteFile(filepath.Join(stage, "bin", "order1886-worker.exe"), []byte("replaced-worker"), 0600)
+				os.WriteFile(filepath.Join(stage, filepath.FromSlash(pkgpath.Worker())), []byte("replaced-worker"), 0600)
 				manifestPath := filepath.Join(stage, "package-manifest.json")
 				body, _ := os.ReadFile(manifestPath)
 				var m map[string]any
