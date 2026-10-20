@@ -59,9 +59,9 @@ class Fp64CoverageTests(unittest.TestCase):
         declared = declared_opcodes()
         fp64_vector = {name for name in declared
                        if name.startswith('V_') and name.endswith('_F64')}
-        # Two instruction encodings are translated under different names in this tree.
-        aliases = {'V_MAX_F64'}
-        missing = sorted(fp64_vector - dispatched_opcodes() - aliases)
+        # No exemptions: V_MAX_F64 is dispatched here exactly like its siblings, so excusing it
+        # would hide the same defect the test exists to catch.
+        missing = sorted(fp64_vector - dispatched_opcodes())
         self.assertFalse(missing, f'fp64 vector opcodes dispatched nowhere: {missing}')
 
     def test_the_dispatch_scan_sees_real_entries(self):

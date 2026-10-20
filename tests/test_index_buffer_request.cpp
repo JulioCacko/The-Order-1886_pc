@@ -43,6 +43,19 @@ int main() {
         return fail("an indirect draw must be sized from max_index_size");
     }
 
+    // A plain DrawIndex follows no packet that writes max_index_size, so the register can still be
+    // zero or stale. Zero must mean "no cap": sizing the request from it would bind one index while
+    // the draw counts num_indices, which is exactly the out-of-range read this helper exists to
+    // prevent.
+    direct = ResolveIndexRequest(300, 0, false, U32, Enough);
+    if (direct.indices != 300 || direct.size != 300 * U32) {
+        return fail("a direct draw with no max_index_size must request its own count");
+    }
+    indirect = ResolveIndexRequest(1, 0, true, U32, Enough);
+    if (indirect.indices != 1 || indirect.size != 1 * U32) {
+        return fail("an indirect draw with no max_index_size must fall back to the count");
+    }
+
     // Both are clamped to what is actually mapped, aligned down to a whole index.
     auto clamped = ResolveIndexRequest(1000, 1000, false, U32, 6);
     if (clamped.size != 4 || clamped.indices != 1) {
