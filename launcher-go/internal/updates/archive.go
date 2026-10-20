@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"io"
 	"os"
 	"strings"
@@ -264,7 +266,7 @@ func StageArchive(ctx context.Context, archive, destination string, identity Ide
 	if len(entries) != len(manifest.Files)+1 {
 		return manifest, errors.New("archive contains unmanifested files")
 	}
-	for _, required := range []string{"The Order 1886.exe", "Play The Order 1886.exe", "bin/order1886-worker.exe", "bin/order1886-runtime.exe", "bin/runtime-build.json"} {
+	for _, required := range pkgpath.Required() {
 		if entries[required] == nil {
 			return manifest, fmt.Errorf("required package file is missing: %s", required)
 		}
