@@ -24,6 +24,8 @@ def cpython_licenses():
         found.extend(sorted(base.glob('LICENSE*')) + sorted(base.glob('LICENCE*')))
     if not found:
         found.extend(sorted(Path('/usr/share/doc').glob('python3*/copyright')))
+    # prefix and base_prefix are usually the same directory; keep one copy of each notice.
+    return list(dict.fromkeys(found))
     return found
 
 
