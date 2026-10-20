@@ -48,7 +48,7 @@ jobs:
             build-essential cmake ninja-build pkg-config git \
             libvulkan-dev vulkan-tools \
             libavcodec-dev libavutil-dev libswscale-dev \
-            libgtk-3-dev libwebkit2gtk-4.0-dev \
+            libgtk-3-dev libwebkit2gtk-4.1-dev \
             python3 python3-venv python3-pip \
             libx11-dev libxrandr-dev libxcursor-dev libxi-dev \
             libwayland-dev libxkbcommon-dev
@@ -87,7 +87,8 @@ jobs:
         run: |
           cd launcher-go
           go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
-          "$(go env GOPATH)/bin/wails" build -clean -skipbindings -platform linux/amd64
+          # Ubuntu 24.04 ships WebKitGTK 4.1 only; Wails selects it with the webkit2_41 tag.
+          "$(go env GOPATH)/bin/wails" build -clean -skipbindings -platform linux/amd64 -tags webkit2_41
           ls -l build/bin/
       - name: Build the Python worker
         run: |
