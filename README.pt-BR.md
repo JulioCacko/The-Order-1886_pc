@@ -20,16 +20,16 @@ Projeto comunitário para executar o binário original de **The Order: 1886**, e
 
 ## Baixar
 
-**Download publicado: preview.4, de 18 de outubro.** Pacotes para Windows e Linux x86-64 experimental. Preserve a pasta LuserL ao atualizar.
+**Download publicado: preview.4, de 18 de outubro.** Pacotes para Windows e Linux x86-64 experimental. Preserve a pasta `user` ao atualizar.
 
 **[Baixar o ZIP do launcher para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/order1886-windows.zip)** · [Notas da versão](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.4) · [Manual em português e inglês](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/QUICKSTART.txt)
 
-Extraia o ZIP inteiro e leia **QUICKSTART.txt**, incluído no pacote. Não precisa de Python, MSYS2 ou compilador. Baixe Lorder1886-windows.zipL; os arquivos “Source code” são para desenvolvedores. O jogo não está incluído: use seu próprio dump CUSA00076. Esta prévia mantém as limitações de compatibilidade descritas acima.
+Extraia o ZIP inteiro e leia **QUICKSTART.txt**, incluído no pacote. Não precisa de Python, MSYS2 ou compilador. Baixe `order1886-windows.zip`; os arquivos “Source code” são para desenvolvedores. O jogo não está incluído: use seu próprio dump CUSA00076. Esta prévia mantém as limitações de compatibilidade descritas acima.
 
 ## Novidades no código-fonte — 18 de outubro
 
 - Mouse look por emulação do stick, sensibilidade e inversão Y; início direto por **Play The Order 1886.exe**, atalho de desktop e **Game → Add to Steam** (feche o Steam antes).
-- Backups com ordenação numérica, mods de assets L_dataL reversíveis com ordem/conflitos, limpeza segura do cache e 13 idiomas de interface com fallback inglês. Validação visual de árabe/CJK continua pendente.
+- Backups com ordenação numérica, mods de assets `_data` reversíveis com ordem/conflitos, limpeza segura do cache e 13 idiomas de interface com fallback inglês. Validação visual de árabe/CJK continua pendente.
 - Correções de shaders NaN/atomics, cópia de chaves de pipeline, memória e mutex; suporte a dumps ELF x86-64 validados.
 - **340 testes Python no Windows sem skips; Linux: 340 executados, 21 skips; Windows: 41 checks nativos, Linux: subconjunto nativo aprovado; Windows 15 e Linux 10 checks portáteis.** [Evidência](docs/verification/2026-10-18-preview4-release.md) · [Estado das issues](docs/order1886-issue-status.md).
 
@@ -51,18 +51,18 @@ Estrutura adaptada de [mateussmeneses/theorder1886-port](https://github.com/mate
 | Game | Arquivos, atalhos de desktop/Steam, saves, mods de assets e controles do mouse |
 | Advanced | Idioma do launcher, runtime, logs, cache de shaders e releases manuais |
 
-Use **Save settings** para gravar as opções. Iniciar por uma página de opções também grava os valores antes de abrir o jogo. A restauração pede confirmação e cria um backup do save substituído; fica bloqueada durante uma sessão. O launcher anterior continua disponível com Lpython launcher/order1886_launcher.py --classicL. Mods de assets estão disponíveis; patches executáveis externos, recursos temporais e atualizador automático continuam pendentes; veja a [análise de reaproveitamento](docs/order1886-reference-reuse.md).
+Use **Save settings** para gravar as opções. Iniciar por uma página de opções também grava os valores antes de abrir o jogo. A restauração pede confirmação e cria um backup do save substituído; fica bloqueada durante uma sessão. A janela Tk que servia de launcher alternativo foi removida: o launcher em Go é o único. Mods de assets estão disponíveis; patches executáveis externos, recursos temporais e atualizador automático continuam pendentes; veja a [análise de reaproveitamento](docs/order1886-reference-reuse.md).
 
 ## Iniciar
 
-Use sua própria cópia extraída de CUSA00076, contendo Leboot.binL, Lsce_sysL e Lsce_moduleL. Nenhum dump, executável do jogo ou save do jogador é distribuído. Os originais são preservados; configurações, imagens preparadas, cache, logs, saves e backups ficam separados.
+Use sua própria cópia extraída de CUSA00076, contendo `eboot.bin`, `sce_sys` e `sce_module`. Nenhum dump, executável do jogo ou save do jogador é distribuído. Os originais são preservados; configurações, imagens preparadas, cache, logs, saves e backups ficam separados.
 
 1. Extraia o pacote portátil completo para uma pasta com permissão de escrita.
 2. Abra **The Order 1886.exe** e escolha **Game folder** na barra inferior.
 3. Comece com **30 FPS**; selecione o modo de exibição e FSR 1 ou Linear.
 4. Use **Play**, **Advanced → View session log** e **Stop session** para iniciar, acompanhar ou encerrar a sessão.
 
-No código-fonte, execute LLaunch The Order 1886.cmdL ou Lpython launcher/order1886_launcher.pyL após seguir as [instruções de build para Windows](docs/order1886-build.md). Usuários do pacote não precisam de Python ou MSYS2. [Linux x86-64 experimental](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/order1886-linux-x86_64.tar.gz): Ubuntu 26.04 / glibc 2.43+, X11/XWayland e driver Vulkan. Gameplay/GPU, distros antigas e SteamOS ainda não foram aceitos. [Guia Linux](packaging/linux/README.md).
+No código-fonte, execute `Launch The Order 1886.cmd` ou o launcher em Go compilado após seguir as [instruções de build para Windows](docs/order1886-build.md). Usuários do pacote não precisam de Python ou MSYS2. Linux não é suportado: apenas o launcher em Go para Windows é empacotado.
 
 ## Estado e desempenho
 
@@ -72,6 +72,6 @@ Leia o [relatório completo do estado atual, em inglês](docs/STATUS.md), a [evi
 
 ## Problemas e licença
 
-Abra **Advanced → Open log folder**. Ao [relatar um problema](https://github.com/JulioCacko/The-Order-1886_pc/issues), inclua os logs e Llast-run.jsonL correspondentes de Luser/order1886/logsL, SHA256 do runtime, metadados do jogo e GPU/driver. Remova dados privados; não envie arquivos do jogo ou saves.
+Abra **Advanced → Open log folder**. Ao [relatar um problema](https://github.com/JulioCacko/The-Order-1886_pc/issues), inclua os logs e `last-run.json` correspondentes de `user/order1886/logs`, SHA256 do runtime, metadados do jogo e GPU/driver. Remova dados privados; não envie arquivos do jogo ou saves.
 
 [GPL-2.0-or-later](LICENSE). Infraestrutura reutilizada de [FelipePrado0/gow3_pc](https://github.com/FelipePrado0/gow3_pc) e [shadPS4](https://github.com/shadps4-emu/shadPS4), com atribuição e licenças preservadas. The Order usa outro motor; patches e desempenho de outro título não comprovam compatibilidade. Sem afiliação ou endosso de Ready at Dawn ou Sony.
