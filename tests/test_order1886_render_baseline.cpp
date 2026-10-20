@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdlib>
+#include <cstring>
 #include <type_traits>
 #include "ps4_settings.h"
 #include "ps4_graphics.h"
@@ -36,6 +37,25 @@ int main() {
     assert(Ps4Graphics::FsrPassRuns(true, false, 1920, 1080, 3840, 2160));
     assert(!Ps4Graphics::FsrPassRuns(false, false, 1920, 1080, 3840, 2160));
     assert(!Ps4Graphics::FsrPassRuns(true, false, 1920, 1080, 1920, 1080));
+    // The capability gates have to leave a reason behind: a reader asking "can this GPU run DLSS or
+    // FSR 4?" got a silently false flag before these were called at init.
+    Ps4Settings::ConfigureUpscalerSupport(false, false, "test: fsr4 unavailable");
+    Ps4Settings::ConfigureDlssSupport(false, "test: dlss unavailable");
+    const char* fsr4_problem = Ps4Settings::Get().fsr4_problem.load();
+    const char* dlss_problem = Ps4Settings::Get().dlss_problem.load();
+    assert(fsr4_problem && std::strstr(fsr4_problem, "fsr4 unavailable"));
+    assert(dlss_problem && std::strstr(dlss_problem, "dlss unavailable"));
+    // Asking for a provider that is unavailable falls back rather than leaving the session pointed
+    // at a pass that cannot run.
+    Ps4Settings::Get().upscaler = Ps4Settings::UpscalerFsr4;
+    Ps4Settings::ConfigureUpscalerSupport(false, false, "test: fsr4 unavailable");
+    assert(Ps4Settings::Get().upscaler == Ps4Settings::UpscalerFsr3);
+    Ps4Settings::Get().upscaler = Ps4Settings::UpscalerDlss;
+    Ps4Settings::ConfigureDlssSupport(false, "test: dlss unavailable");
+    assert(Ps4Settings::Get().upscaler == Ps4Settings::UpscalerFsr3);
+    // And a supported provider clears the reason instead of keeping a stale one.
+    Ps4Settings::ConfigureUpscalerSupport(true, true, "test: fsr4 unavailable");
+    assert(Ps4Settings::Get().fsr4_problem.load() == nullptr);
     assert(defaults.startup_upscaler == Ps4Settings::UpscalerOff);
     assert(!defaults.startup_object_motion && !defaults.startup_deferred_readback &&
            !defaults.startup_stale_readback);

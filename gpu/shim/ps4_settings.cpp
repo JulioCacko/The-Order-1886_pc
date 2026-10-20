@@ -205,10 +205,17 @@ bool GraphicsNeedRestart() {
            v.anisotropy != v.startup_anisotropy;
 }
 
-void ConfigureUpscalerSupport(bool fsr4, bool fsr411) {
+void ConfigureUpscalerSupport(bool fsr4, bool fsr411, const char* problem) {
     auto& v = Get();
     v.fsr4_supported = fsr4;
     v.fsr411_supported = fsr4 && fsr411;
+    if (!fsr4) {
+        static std::string kept;
+        kept = problem ? problem : "GPU does not support the FSR 4 shaders";
+        v.fsr4_problem = kept.c_str();
+    } else {
+        v.fsr4_problem = nullptr;
+    }
     const int requested = v.upscaler;
     if ((requested == UpscalerFsr4 && !v.fsr4_supported) ||
         (requested == UpscalerFsr411 && !v.fsr411_supported)) {

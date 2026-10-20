@@ -108,8 +108,9 @@ void Load();
 /// the live settings it edits are not gameplay-qualified for this title, so a launch that
 /// does not ask for it behaves exactly as before.
 bool MenuEnabled();
-/// Checks the loaded choice before the first frame; unsupported FSR 4 uses FSR 3.1.
-void ConfigureUpscalerSupport(bool fsr4, bool fsr411);
+/// Checks the loaded choice before the first frame; unsupported FSR 4 uses FSR 3.1. `problem`
+/// is recorded whenever FSR 4 is unavailable, so the reason exists even if nobody asked for it.
+void ConfigureUpscalerSupport(bool fsr4, bool fsr411, const char* problem = nullptr);
 /// After device creation: DLSS availability; a DLSS setting falls back to FSR 3.1 without it.
 void ConfigureDlssSupport(bool available, const char* problem);
 /// Startup-patched scene dimensions cannot change until run.sh prepares a new image.
