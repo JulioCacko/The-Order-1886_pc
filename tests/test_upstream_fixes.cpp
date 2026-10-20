@@ -16,6 +16,7 @@
 #include <string_view>
 
 #include "video_core/amdgpu/pm4_cmds.h"
+#include "video_core/page_manager.h"
 #include "video_core/amdgpu/tiling.h"
 
 #include "common/logging/log.h"
@@ -34,13 +35,11 @@ int fail(std::string_view message) {
     return EXIT_FAILURE;
 }
 
-// Mirrors PageManager::FaultAccessSize without pulling the page manager's platform dependencies
-// into a test that must build everywhere.
+// The real helper, not a copy of it: a test that re-implements the arithmetic cannot notice the
+// code being reverted.
 constexpr unsigned long long PageSize = 4096;
 constexpr unsigned long long FaultAccessSize(unsigned long long addr) {
-    const unsigned long long next = ((addr + 1 + PageSize - 1) / PageSize) * PageSize;
-    const unsigned long long remaining = next - addr;
-    return remaining < 8 ? remaining : 8;
+    return VideoCore::PageManager::FaultAccessSize(addr);
 }
 
 // Mirrors the GC floor arithmetic in TextureCache's constructor.

@@ -95,7 +95,11 @@ static void WaitGpuIdle() {
 static inline u32* WriteTrailingNop(u32* cmdbuf, u32 data_block_size) {
     auto* nop = reinterpret_cast<PM4CmdNop*>(cmdbuf);
     nop->header = PM4Type3Header{PM4ItOpcode::Nop, data_block_size - 1};
-    nop->data_block[0] = 0u; // only one out of `data_block_size` is initialized
+    // Every data dword is written: a producer that leaves the guest's garbage inside the packet it
+    // just wrote has only half-filled the buffer the guest handed over.
+    for (u32 i = 0; i < data_block_size; ++i) {
+        nop->data_block[i] = 0u;
+    }
     return cmdbuf + data_block_size + 1 /* header */;
 }
 
@@ -104,7 +108,9 @@ template <u32 data_block_size>
 static inline u32* WriteTrailingNop(u32* cmdbuf) {
     auto* nop = reinterpret_cast<PM4CmdNop*>(cmdbuf);
     nop->header = PM4Type3Header{PM4ItOpcode::Nop, data_block_size - 1};
-    nop->data_block[0] = 0u; // only one out of `data_block_size` is initialized
+    for (u32 i = 0; i < data_block_size; ++i) {
+        nop->data_block[i] = 0u;
+    }
     return cmdbuf + data_block_size + 1 /* header */;
 }
 

@@ -63,6 +63,7 @@ constexpr uint32_t ValidateGsRingSizes(uint32_t esgs_ring_size, uint32_t gsvs_ri
 
 /// The guest inspects the first dword of the report buffer for this sentinel.
 constexpr uint32_t MipStatsReportSentinel = 0x40;
+constexpr uintptr_t MipStatsReportAlignment = 0x40;
 constexpr uint32_t MipStatsMinSize = 0x1040;
 constexpr uint32_t MipStatsSizeGranularity = 0x7ff;
 constexpr uint32_t MipStatsSizeRemainder = 0x40;
@@ -71,8 +72,12 @@ constexpr uint32_t MipStatsInvalidSize = 0x80000002;
 
 /// Zero when the buffer can hold a report, the guest error code otherwise.
 inline uint32_t ValidateMipStatsReport(const void* output_buffer, uint32_t size_in_bytes) {
+    // Upstream masks this address with 0xffffff000000003f, which rejects every bit from 24 to 47 —
+    // in practice any address above 16 MB. Since this replaces a stub that always returned success,
+    // failing a call the title used to tolerate would be a regression of its own, so only the
+    // documented 64-byte alignment is enforced.
     if (output_buffer == nullptr ||
-        (reinterpret_cast<uintptr_t>(output_buffer) & 0xffffff000000003fULL) != 0) {
+        (reinterpret_cast<uintptr_t>(output_buffer) & (MipStatsReportAlignment - 1)) != 0) {
         return MipStatsInvalidBuffer;
     }
     if (size_in_bytes < MipStatsMinSize ||

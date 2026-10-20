@@ -23,8 +23,12 @@ struct IndexBufferRequest {
 constexpr IndexBufferRequest ResolveIndexRequest(uint32_t num_indices, uint32_t max_index_size,
                                                   bool is_indirect, uint32_t index_size,
                                                   uint64_t mapped_size) {
-    const uint32_t wanted =
-        is_indirect ? max_index_size : std::min(num_indices, max_index_size);
+    // `max_index_size` is only written by the DrawIndexAuto/DrawIndexOffset packets, so a plain
+    // DrawIndex can arrive with it zero or stale. Zero therefore means "no cap": sizing the request
+    // from it would bind fewer indices than the draw reads, which is the defect this helper exists
+    // to prevent.
+    const uint32_t cap = max_index_size != 0 ? max_index_size : num_indices;
+    const uint32_t wanted = is_indirect ? cap : std::min(num_indices, cap);
     if (index_size == 0) {
         return {0, 0};
     }
