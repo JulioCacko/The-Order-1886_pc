@@ -33,6 +33,16 @@ void EmitBarrier(EmitContext& ctx) {
                          ctx.ConstU32(static_cast<u32>(memory_semantics)));
 }
 
+// Taken from upstream shadPS4 (GPL-2.0-or-later). GCN waves share LDS without explicit
+// barriers because they run in lockstep; a host compiler may reorder those accesses, so the
+// order is pinned with a subgroup-scoped memory barrier.
+void EmitSubgroupBarrier(EmitContext& ctx) {
+    const auto semantics{static_cast<u32>(spv::MemorySemanticsMask::AcquireRelease |
+                                          spv::MemorySemanticsMask::WorkgroupMemory)};
+    ctx.OpMemoryBarrier(ctx.ConstU32(static_cast<u32>(spv::Scope::Subgroup)),
+                        ctx.ConstU32(semantics));
+}
+
 void EmitWorkgroupMemoryBarrier(EmitContext& ctx) {
     MemoryBarrier(ctx, spv::Scope::Workgroup);
 }
