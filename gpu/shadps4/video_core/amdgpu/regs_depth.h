@@ -283,6 +283,15 @@ struct DepthBuffer {
         return (depth_slice.tile_max + 1) * 64 * bpe * GuestNumSamples();
     }
 
+    // Taken from upstream shadPS4. A stencil-only surface has no depth slice of its own, so it
+    // is sized from the same tile geometry at one byte per sample.
+    u32 GetStencilSliceSize() const {
+        if (stencil_info.format == StencilFormat::Invalid) {
+            return 0;
+        }
+        return (depth_slice.tile_max + 1) * 64 * 1 * GuestNumSamples();
+    }
+
     TileMode GetTileMode() const {
         return static_cast<TileMode>(z_info.tile_mode_index);
     }
