@@ -1,0 +1,127 @@
+# Linux package for the Go launcher.
+#
+# The Linux package was removed with the Python launcher; this rebuilds it for the Go one. Written and
+# reviewed on Windows, so this workflow is the first real execution of packaging/linux/*: treat a
+# green run as the first evidence, not a re-run of something already known to work.
+#
+# What it builds: the native runtime (libps4gpu.so + order1886-runtime) via build.sh, the Wails Linux
+# launcher, and the Python worker via PyInstaller - then the portable tar.gz and its smoke. Nothing
+# here starts the game; the smoke never claims gameplay.
+name: The Order 1886 Go Linux package
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'packaging/linux/**'
+      - 'launcher-go/**'
+      - 'launcher/**'
+      - 'scripts/**'
+      - 'src/**'
+      - 'gpu/**'
+      - '.github/workflows/order1886-go-linux-package.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: order1886-go-linux-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Initialize only required native dependencies
+        run: |
+          git submodule update --init --recursive -- \
+            gpu/third_party/imgui gpu/third_party/magic_enum \
+            gpu/third_party/miniz gpu/third_party/xbyak third_party/LibAtrac9
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config git \
+            libvulkan-dev vulkan-tools \
+            libavcodec-dev libavutil-dev libswscale-dev \
+            libgtk-3-dev libwebkit2gtk-4.0-dev \
+            python3 python3-venv python3-pip \
+            libx11-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libwayland-dev libxkbcommon-dev
+      - name: Provide SDL3 (Ubuntu 24.04 does not package it yet)
+        run: |
+          if pkg-config --exists sdl3; then
+            echo "SDL3 comes from the distribution packages."
+          else
+            git clone --depth 1 --branch release-3.2.30 https://github.com/libsdl-org/SDL.git /tmp/SDL
+            cmake -S /tmp/SDL -B /tmp/SDL/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+                  -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX=/usr/local
+            sudo cmake --build /tmp/SDL/build --target install
+            # pkg-config needs the prefix on its search path for an unprivileged user.
+            echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
+            echo "LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          fi
+      - name: Build the Order native runtime and run CPU checks
+        run: |
+          mkdir -p out
+          bash build.sh --test 2>&1 | tee out/order1886-native-build-and-cpu-tests.log
+          ls -l out/order1886-runtime out/gpu/libps4gpu.so
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: launcher-go/go.mod
+          cache-dependency-path: launcher-go/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: launcher-go/frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: '3.13'
+      - name: Build the Go launcher for Linux
+        run: |
+          cd launcher-go
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
+          "$(go env GOPATH)/bin/wails" build -clean -skipbindings -platform linux/amd64
+          ls -l build/bin/
+      - name: Build the Python worker
+        run: |
+          python -m pip install --disable-pip-version-check 'pyinstaller==6.20.0'
+          mkdir -p out/worker
+          python -m PyInstaller --noconfirm --clean --console --onedir --log-level WARN \
+            --name order1886-worker --paths . \
+            --add-data "scripts:scripts" \
+            --distpath out/worker-dist --workpath out/worker-build --specpath out \
+            launcher/order1886_worker.py
+      - name: Build the Linux package and smoke-test it
+        id: package
+        run: |
+          python packaging/linux/order1886-go-package.py \
+            --runtime out/order1886-runtime \
+            --gpu out/gpu/libps4gpu.so \
+            --launcher "launcher-go/build/bin/The Order 1886" \
+            --worker out/worker-dist/order1886-worker
+          echo "archive=$(ls out/order1886-go-package/*/order1886-linux-x86_64.tar.gz | tail -1)" >> "$GITHUB_OUTPUT"
+          echo 'Host/package smoke only. Gameplay, stability and performance remain unverified on Linux.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: order1886-go-linux-package
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.archive }}.sha256
+          if-no-files-found: error
+      - name: Preserve build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: order1886-go-linux-package-evidence
+          path: |
+            out/gpu-build.log
+            out/order1886-native-build-and-cpu-tests.log
+            out/runtime-build.json
+          if-no-files-found: warn
