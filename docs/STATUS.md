@@ -1,13 +1,13 @@
 # The Order: 1886 PC — development status
 
-Updated **18 October 2026**. Preview.4 implementation: `54242e0` plus release documentation.
+Updated **20 October 2026**. Preview 8 implementation: `e877470`; the Go launcher is the only launcher and a Linux package is published again.
 Cinematics render and a street route has been exercised, but performance remains
 slow. Campaign progression, gameplay checkpoint save/load, long-session stability,
 native 4K and sustained 4K/60 remain unaccepted.
 
 ## Implemented and locally checked
 
-- Opt-in [Go/Wails launcher prerelease](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.1): seven searchable pages, separate worker, validated autosave and local trophy history. [353 Python tests, Go/frontend checks, portable smoke and hosted Windows CI passed](verification/2026-10-18-go-launcher.md). Unavailable features are visible with reasons; this does not replace preview.4 or establish gold.
+- Opt-in [Go/Wails launcher prerelease](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.8): seven searchable pages, separate worker, validated autosave and local trophy history. [353 Python tests, Go/frontend checks, portable smoke and hosted Windows CI passed](verification/2026-10-18-go-launcher.md). Unavailable features are visible with reasons; this does not replace preview.4 or establish gold.
 - Five-page Windows launcher with shared settings, keyboard navigation, scrolling,
   persistent Play/Stop, 13 UI language choices and English fallback.
 - Configurable mouse-to-stick camera input, sensitivity and inverted Y. Focus loss,
@@ -69,7 +69,7 @@ artifacts and boundaries. Older reports retain their original dates and test sco
 | ZIP SHA256 | `ec613979ab159b7042554597deff9d9cb91b7670125152fa837a8adc2ebb74d6` |
 | Local hardware | Ryzen 5 5600X, RTX 3070; not minimum requirements |
 
-**[Preview.4 downloads](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.4)**
+**[Preview 8 downloads](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.8)**
 include Windows and experimental Linux packages, checksums and setup guides.
 Preview.3 remains available for rollback. Shader version 16 rebuilds old
 translations on the next game launch.
