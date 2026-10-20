@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import io
 import json
@@ -74,10 +75,30 @@ class Worker:
         self.last_exit = None
         self.log_tail = []
         self._runtime_support = None
+        self._state_locked = False
         # Legacy helper defaults remain unchanged; explicit installation/state paths
         # support both source runs and a worker under the portable bin directory.
         legacy.ROOT = self.installation
         order1886.INSTALL_ROOT = self.installation
+
+    @contextlib.contextmanager
+    def state_lock(self):
+        """Hold the player-session lock for a state write, once per nested use.
+
+        `require_idle` only sees this worker's own sessions; the OS lock is the only thing that
+        also excludes a direct-play game or another launcher. Reentrancy keeps a caller already
+        inside the lock from deadlocking on a second handle.
+        """
+        if self._state_locked:
+            yield
+            return
+        self.state.mkdir(parents=True, exist_ok=True)
+        with order1886.session_lock(self.state):
+            self._state_locked = True
+            try:
+                yield
+            finally:
+                self._state_locked = False
 
     def settings(self):
         defaults = legacy.load_launch_settings(self.state, {})
@@ -87,7 +108,8 @@ class Worker:
         imported = order1886.menu_settings_import(self.state, values)
         if imported:
             values.update(imported)
-            legacy.save_settings(self.state / "settings.json", values)
+            with self.state_lock():
+                legacy.save_settings(self.state / "settings.json", values)
         return values
 
     def readback_policy_reason(self, values, policy):
@@ -271,8 +293,9 @@ class Worker:
         destination = (self.state / "patched" / (recipe["id"] + ".bin")).resolve()
         if destination == game or game in destination.parents:
             raise ValueError("A derived patch image belongs outside the selected game folder.")
-        return recipes.apply_recipe_bytes(recipe, recipes.decode(recipe, executable),
-                                          destination, metadata)
+        with self.state_lock():
+            return recipes.apply_recipe_bytes(recipe, recipes.decode(recipe, executable),
+                                              destination, metadata)
 
     def require_idle(self):
         if self.busy:
@@ -431,7 +454,8 @@ class Worker:
                     raise ValueError(reason)
             order1886.mods.validate_config(order1886.mods.resolve_root(values.get("mods_dir", ""), self.installation),
                                           values.get("mods_enabled", False), values.get("mod_order", []))
-            legacy.save_settings(self.state / "settings.json", values)
+            with self.state_lock():
+                legacy.save_settings(self.state / "settings.json", values)
             return self.snapshot()
         if method == "saves.restore":
             self.confirm(params)
@@ -495,6 +519,14 @@ def serve(worker, source, output):
                 send({"version": 1, "id": request_id, "result": result})
             except (ValueError, TypeError, OSError, RuntimeError) as exc:
                 send({"version": 1, "id": request_id, "error": {"message": str(exc)}})
+            except Exception as exc:  # noqa: BLE001 - a bug in one method must not end the session
+                # Anything else is a defect inside a method. Answering with an error keeps the
+                # launcher usable and its session stoppable; exiting here would look like a
+                # lost worker while the game may still be running.
+                import traceback
+                traceback.print_exc()
+                send({"version": 1, "id": request_id,
+                      "error": {"message": f"{type(exc).__name__}: {exc}"}})
     finally:
         worker.close()
 
