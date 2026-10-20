@@ -11,6 +11,7 @@
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/texture_cache/blit_helper.h"
 #include "video_core/texture_cache/image.h"
+#include "video_core/texture_cache/image_type_map.h"
 
 #include <vk_mem_alloc.h>
 
@@ -48,20 +49,14 @@ static vk::ImageUsageFlags ImageUsageFlags(const Vulkan::Instance& instance,
     return usage;
 }
 
-static vk::ImageType ConvertImageType(AmdGpu::ImageType type) noexcept {
-    switch (type) {
-    case AmdGpu::ImageType::Color1D:
-    case AmdGpu::ImageType::Color1DArray:
-        return vk::ImageType::e1D;
-    case AmdGpu::ImageType::Color2D:
-    case AmdGpu::ImageType::Color2DMsaa:
-    case AmdGpu::ImageType::Color2DArray:
-        return vk::ImageType::e2D;
-    case AmdGpu::ImageType::Color3D:
-        return vk::ImageType::e3D;
-    default:
-        UNREACHABLE();
+static vk::ImageType GuestImageType(AmdGpu::ImageType type) noexcept {
+    // The mapping moved to image_type_map.h so it is testable without a device, and so the cube
+    // case upstream already has cannot go missing again: a guest cube descriptor used to reach
+    // UNREACHABLE() here, killing the session over a shape the host handles as an array.
+    if (!VideoCore::IsMappedImageType(type)) {
+        UNREACHABLE_MSG("Unmapped guest image type: {}", AmdGpu::NameOf(type));
     }
+    return VideoCore::ConvertImageType(type);
 }
 
 static vk::FormatFeatureFlags2 FormatFeatureFlags(const vk::ImageUsageFlags usage_flags) {
@@ -103,7 +98,7 @@ void UniqueImage::Destroy() {
 void UniqueImage::Create(const vk::ImageCreateInfo& image_ci) {
     this->image_ci = image_ci;
     ASSERT(!image);
-    const VmaAllocationCreateInfo alloc_ci = {
+    VmaAllocationCreateInfo alloc_ci = {
         .flags = VMA_ALLOCATION_CREATE_WITHIN_BUDGET_BIT,
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
         .requiredFlags = 0,
@@ -117,6 +112,16 @@ void UniqueImage::Create(const vk::ImageCreateInfo& image_ci) {
     VmaAllocationInfo alloc_info{};
     VkResult result = vmaCreateImage(allocator, &image_ci_unsafe, &alloc_ci, &unsafe_image,
                                      &allocation, &alloc_info);
+    // Taken from upstream shadPS4: a device that cannot honour the budget often still allocates.
+    // One retry with the budget preference cleared beats taking the process down over an image
+    // the guest asked for, and the warning makes the overspend visible.
+    if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY) {
+        alloc_ci.flags &= ~VMA_ALLOCATION_CREATE_WITHIN_BUDGET_BIT;
+        LOG_WARNING(Render_Vulkan, "Allocating image of size {} bytes over budget.",
+                    alloc_info.size);
+        result = vmaCreateImage(allocator, &image_ci_unsafe, &alloc_ci, &unsafe_image, &allocation,
+                                &alloc_info);
+    }
     ASSERT_MSG(result == VK_SUCCESS, "Failed allocating image with error {}",
                vk::to_string(vk::Result{result}));
     image = vk::Image{unsafe_image};
@@ -159,7 +164,7 @@ Image::Image(const Vulkan::Instance& instance, Vulkan::Runtime& runtime_,
     const auto supported_format = instance.GetSupportedFormat(info.pixel_format, format_features);
     vk::PhysicalDeviceImageFormatInfo2 format_info{
         .format = supported_format,
-        .type = ConvertImageType(info.type),
+        .type = GuestImageType(info.type),
         .tiling = tiling,
         .usage = usage_flags,
         .flags = flags,
@@ -192,7 +197,7 @@ Image::Image(const Vulkan::Instance& instance, Vulkan::Runtime& runtime_,
 
     const vk::ImageCreateInfo image_ci = {
         .flags = flags,
-        .imageType = ConvertImageType(info.type),
+        .imageType = GuestImageType(info.type),
         .format = supported_format,
         .extent{
             .width = info.size.width,
