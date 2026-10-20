@@ -26,7 +26,13 @@ def cpython_licenses():
         found.extend(sorted(Path('/usr/share/doc').glob('python3*/copyright')))
     # prefix and base_prefix are usually the same directory; keep one copy of each notice.
     return list(dict.fromkeys(found))
-    return found
+
+
+# Shipped with the frozen worker on every platform: the bootloader and its hook data.
+SHIPPED = ("pyinstaller", "pyinstaller-hooks-contrib")
+# Used only by the Windows icon converter at packaging time, so its notice is collected when the
+# package is installed but is not a reason to fail the Linux build, where Pillow is not present.
+OPTIONAL = ("pillow",)
 
 
 def collect(destination: Path):
@@ -36,8 +42,14 @@ def collect(destination: Path):
         raise RuntimeError("The build Python installation has no license notice")
     for source in core:
         shutil.copy2(source, destination / ("CPython-" + source.name))
-    for name in ("pillow", "pyinstaller", "pyinstaller-hooks-contrib"):
-        distribution = metadata.distribution(name)
+    for name, required in [(n, True) for n in SHIPPED] + [(n, False) for n in OPTIONAL]:
+        try:
+            distribution = metadata.distribution(name)
+        except metadata.PackageNotFoundError:
+            if required:
+                raise RuntimeError(f"{name} is shipped with the worker but has no metadata")
+            print(f"notices: {name} is not installed here; no notice to collect")
+            continue
         count = 0
         for file in distribution.files or ():
             parts = file.parts
@@ -51,6 +63,7 @@ def collect(destination: Path):
             count += 1
         if not count:
             raise RuntimeError(f"No license notice found for {name}")
+    base = Path(sys.base_prefix)
     for source in (base / "tcl").rglob("license.terms"):
         target = destination / source.relative_to(base)
         target.parent.mkdir(parents=True, exist_ok=True)
