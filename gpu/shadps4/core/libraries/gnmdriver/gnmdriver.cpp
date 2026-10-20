@@ -635,9 +635,30 @@ s32 PS4_SYSV_ABI sceGnmDrawIndirect(u32* cmdbuf, u32 size, u32 data_offset, u32 
     return -1;
 }
 
-int PS4_SYSV_ABI sceGnmDrawIndirectCountMulti() {
-    LOG_ERROR(Lib_GnmDriver, "(STUBBED) called");
-    UNREACHABLE();
+s32 PS4_SYSV_ABI sceGnmDrawIndirectCountMulti(u32* cmdbuf, u32 size, u32 data_offset,
+                                              u32 max_count, u64 count_addr, u32 shader_stage,
+                                              u32 vertex_sgpr_offset, u32 instance_sgpr_offset,
+                                              u32 flags) {
+    LOG_TRACE(Lib_GnmDriver, "called");
+    if (!cmdbuf || size != 0x10 || shader_stage >= ShaderStages::Max ||
+        vertex_sgpr_offset >= 0x10 || instance_sgpr_offset >= 0x10) {
+        return -1;
+    }
+    WriteTrailingNop<2>(cmdbuf);
+    auto* draw = reinterpret_cast<PM4CmdDrawIndirectCountMulti*>(
+        WriteHeader<PM4ItOpcode::DrawIndirectCountMulti>(
+            cmdbuf + 3, 9, PM4ShaderType::ShaderGraphics,
+            flags & 1 ? PM4Predicate::PredEnable : PM4Predicate::PredDisable));
+    const auto sgpr_offset = indirect_sgpr_offsets[shader_stage];
+    draw->data_offset = data_offset;
+    draw->dw2 = vertex_sgpr_offset == 0 ? 0 : (vertex_sgpr_offset & 0xffffu) + sgpr_offset;
+    draw->dw3 = instance_sgpr_offset == 0 ? 0 : (instance_sgpr_offset & 0xffffu) + sgpr_offset;
+    draw->count_indirect_enable.Assign(count_addr != 0 ? 1u : 0u);
+    draw->count = max_count;
+    draw->count_addr = count_addr;
+    draw->stride = sizeof(DrawIndirectArgs);
+    draw->draw_initiator = sceKernelIsNeoMode() ? (flags & 0xe0000000u) | 2u : 2u;
+    WriteTrailingNop<2>(cmdbuf + 3 + 10);
     return ORBIS_OK;
 }
 
