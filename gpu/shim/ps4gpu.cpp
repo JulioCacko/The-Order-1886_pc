@@ -211,6 +211,18 @@ static void StartProfileWriter() {
 
 extern "C" int ps4gpu_init(const Ps4GpuConfig* config) {
     Ps4Settings::Load();
+    // Record why the vendor upscalers cannot run, so the answer exists before any device query
+    // and a reader is not left with a silently false flag. Both providers ship in this tree; the
+    // Order temporal integration is the disabled baseline, and DLSS also needs the vendor runtime
+    // that is built separately and never committed.
+    Ps4Settings::ConfigureUpscalerSupport(
+        false, false,
+        "FSR 4 and FSR 4.1.1 providers ship in this tree, but the Order temporal integration is "
+        "disabled in this build and the device must expose the required FSR 4 support (#12).");
+    Ps4Settings::ConfigureDlssSupport(
+        false,
+        "The DLSS bridge ships in this tree, but it needs order1886_dlss.dll and nvngx_dlss.dll next "
+        "to the runtime - neither is in Git - and the temporal integration is disabled (#11).");
 #ifdef PS4_PGO_GENERATE
     StartProfileWriter();
 #endif
