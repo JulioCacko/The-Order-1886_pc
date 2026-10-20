@@ -32,9 +32,6 @@ from launcher.order1886_lang import LANGUAGES, translate
 STATE = ROOT / "user" / "order1886"
 # Page order adapted from mateussmeneses/theorder1886-port, GPL-2.0-or-later.
 # Reference: 7822ee56c2169f15ecde5d80f39e96143a252464, launcher/port_launcher_win.py.
-SETTINGS_KEYS = ("game_dir", "runtime", "display_mode", "vsync", "show_fps",
-                 "presentation_filter", "frame_rate", "aspect_ratio", "mouse_look", "readbacks", "performance_capture",
-                 "mouse_sensitivity", "mouse_invert_y", "ui_language", "mods_dir", "mods_enabled")
 
 
 def read_settings(path: Path) -> dict:
@@ -222,8 +219,12 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
     ):
         if values[key] not in allowed:
             values[key] = default
+    # A saved value the backend cannot honour is a launch-blocking error, not something to rewrite
+    # silently: a player who once chose 90 FPS would otherwise be told nothing and run at 30.
     if type(values["frame_rate"]) is not int or values["frame_rate"] not in (30, 60):
-        values["frame_rate"] = 30
+        raise ValueError(
+            f"Saved game frame rate {values['frame_rate']!r} is not supported: the backend accepts 30 or "
+            "60 FPS. Choose one of those, or the higher rates stay unavailable (#14).")
     if type(values["mouse_sensitivity"]) is not int or not 10 <= values["mouse_sensitivity"] <= 500:
         values["mouse_sensitivity"] = 100
     return values

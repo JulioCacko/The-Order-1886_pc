@@ -9,10 +9,16 @@ PAGES = [
     {"id": "game", "title": "Game & Content"}, {"id": "achievements", "title": "Achievements"},
     {"id": "system", "title": "System"},
 ]
-TEMPORAL = "Requires verified Order depth, motion, jitter, history and HUD inputs (#7)."
+TEMPORAL = ("Two things are missing: verified Order depth, motion, jitter, history and HUD inputs "
+            "(#7), and a temporal renderer in this build. The runtime also forces the upscaler off, so "
+            "selecting one of these cannot take effect yet (#10-#13).")
 RENDERER = "This setting is not exposed by the validated Order launch profile yet; backend wiring and qualification are pending."
 PATCH = "No hash-verified recipe for this executable is available yet."
 FG = "Frame-generation presentation, synchronization and latency qualification are pending."
+# RCAS is wired to the runtime but the Order profile forces it off, so availability has to say
+# that rather than blaming missing wiring.
+SHARPENING = ("RCAS is wired to the runtime but the Order profile forces it off; the value cannot "
+              "take effect yet.")
 FIELDS = []
 
 
@@ -40,7 +46,10 @@ field("presentation_filter", "Upscaling", "graphics", "select", "fsr1", "Choose 
       [("linear", "Linear / no FSR", ""), ("fsr1", "FSR 1", ""),
        ("taa", "Native temporal AA", TEMPORAL), ("dlss", "NVIDIA DLSS Super Resolution", TEMPORAL),
        ("fsr3", "AMD FSR 3.1", TEMPORAL), ("fsr4", "AMD FSR 4", TEMPORAL),
-       ("xess", "Intel XeSS", TEMPORAL)])
+       # XeSS has no identifier in the runtime's upscaler names yet; the runtime's "fsr411" has no
+       # launcher label either, so both sides are honest about the mismatch.
+       ("xess", "Intel XeSS", "The runtime has no XeSS identifier yet, so even a qualified temporal "
+        "renderer could not select it (#13).")])
 field("vsync", "VSync", "graphics", "boolean", True, "Synchronize presentation with the display.")
 field("output_resolution", "Output resolution", "graphics", "select", "automatic", "Output dimensions and game-rendered dimensions are reported separately.",
       [("automatic", "Current runtime default", ""), ("1280x720", "1280 × 720", RENDERER),
@@ -48,16 +57,22 @@ field("output_resolution", "Output resolution", "graphics", "select", "automatic
        ("3840x2160", "3840 × 2160", RENDERER)], reason=RENDERER)
 field("upscale_preset", "Upscaler quality", "graphics", "select", "quality", "Quality presets require a qualified temporal provider.",
       [(x, x.title(), TEMPORAL) for x in ("native", "quality", "balanced", "performance")], reason=TEMPORAL)
-field("sharpness", "Sharpening", "graphics", "number", 0, "RCAS is currently disabled by the Order profile.", reason=RENDERER, minimum=0, maximum=100)
+field("sharpness", "Sharpening", "graphics", "number", 0,
+      "RCAS is wired to the runtime but the Order profile forces it off, so the value cannot take effect yet.",
+      reason=SHARPENING, minimum=0, maximum=100)
 field("anisotropy", "Anisotropic filtering", "graphics", "select", 1, "Texture-filter overrides need matched visual validation.",
       [(x, str(x) + "×", RENDERER) for x in (1, 2, 4, 8, 16)], reason=RENDERER)
 for key, label in (("film_grain", "Film grain"), ("motion_blur", "Motion blur"),
                    ("depth_of_field", "Depth of field"), ("chromatic_aberration", "Chromatic aberration"),
                    ("model_detail", "Model detail")):
     field(key, label, "graphics", "boolean", True, "Preserve the original effect until a verified game-specific control is implemented (#16).", reason=PATCH)
+# The backend accepts 30 and 60 only and pins vblank to 60, so a higher rate needs both a
+# hash-verified recipe and that ceiling lifted: the PATCH reason alone under-described it.
+FRAME_RATE_REASON = ("The backend accepts 30 and 60 and pins vblank to 60 Hz, and no hash-verified "
+                     "recipe exists to raise either. Nothing here is a simulation-timing control.")
 field("frame_rate", "Game frame rate", "performance", "select", 30, "30 FPS is native. 60 FPS is experimental; Chapter 6/9 QTE checks remain required.",
       [(30, "30 FPS — native", ""), (60, "60 FPS — experimental", ""),
-       (90, "90 FPS", PATCH), (0, "Unlocked", PATCH)])
+       (90, "90 FPS", FRAME_RATE_REASON), (0, "Unlocked", FRAME_RATE_REASON)])
 field("in_game_menu", "In-game settings menu", "performance", "boolean", False, "Off by default. The menu, its tabs and the settings it changes while the game runs are unqualified for this title: input capture, focus and stability have not been verified in gameplay, so enable it only to help test it. Insert or R3+R2 toggles it when enabled.")
 field("fps_cap", "Presentation frame cap", "performance", "number", 120, "Limits how often the runtime presents, not how fast the engine runs (#14). The game frame rate still wins while it is lower, so the default of 120 never changes pacing; lowering it throttles presentation only. This is not a simulation-timing control.", minimum=30, maximum=240)
 field("frame_generation", "Frame generation", "performance", "select", "off", "Generated frames do not increase simulation rate. All three providers remain in the gold plan.",
