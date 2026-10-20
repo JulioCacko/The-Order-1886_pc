@@ -81,8 +81,15 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                 "--mouse-invert-y", str(int(values.get("mouse_invert_y", False))),
                 "--system-language", str(language)]
     command += ["--readbacks", values.get("readbacks", "relaxed")]
+    # The presentation cap is a launcher setting; without this it never reached the backend
+    # and the value shown in the UI was not the one applied.
+    command += ["--fps-cap", str(values.get("fps_cap", 120))]
     command += ["--performance-capture", str(int(values.get("performance_capture", False)))]
     # Live runtime switches stay off the command line unless the player asked for them.
+    if values.get("htile_unqualified"):
+        command += ["--htile"]
+    if values.get("in_game_menu"):
+        command += ["--in-game-menu"]
     if values.get("synchronous_recording"):
         command += ["--synchronous-recording"]
     if values.get("texture_update_locking"):

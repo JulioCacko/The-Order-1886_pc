@@ -349,9 +349,14 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     validate_readback_policy(runtime, readbacks)
     capture = settings.get('performance_capture', False)
     validate_performance_capture(runtime, capture)
-    htile = settings.get('htile_unqualified', False)
+    # The CLI flag is how the launcher setting reaches the backend; either spelling works.
+    # An explicit setting wins, so an invalid value still raises; the CLI flag is the
+    # fallback spelling the launcher uses.
+    htile = settings['htile_unqualified'] if 'htile_unqualified' in settings \
+        else settings.get('htile', False)
     validate_htile_control(runtime, htile)
     effect_mask = effect_toggle_mask(runtime, settings)
+    # --in-game-menu uses the same dest as the launcher setting, so either source works.
     in_game_menu = validate_in_game_menu(settings.get('in_game_menu', False))
     system_language = settings.get('system_language', 1)
     if type(system_language) is not int or not 0 <= system_language <= 29:
@@ -617,6 +622,8 @@ def argument_parser():
                         help='30 is the native baseline; 60 is experimental with known QTE risks')
     parser.add_argument('--system-language', type=int, choices=range(30), default=1,
                         help='PS4 system language ID; game requires installed language assets (default: English US)')
+    parser.add_argument('--fps-cap', type=int, choices=range(30, 241), default=120,
+                        help='Presentation frame cap: throttles the present thread only, never the engine rate')
     parser.add_argument('--aspect-ratio', choices=['original', '16:9'], default='original',
                         help='Experimental full-screen 16:9 or original cinematic aspect; requires restart')
     parser.add_argument('--vsync', type=int, choices=[0, 1], default=1)
@@ -643,6 +650,12 @@ def argument_parser():
     parser.add_argument('--texture-update-locking', action='store_true',
                         help='Take the guest-fault mutex for texture update checks instead of '
                              'the lock-free flag check (experimental, unqualified)')
+    # Opt-in runtime switches the launcher owns as settings. Without a flag the backend never
+    # sees them and the launcher's toggle is decorative.
+    parser.add_argument('--htile', action='store_true',
+                        help='Opt in to the unqualified HTILE metadata adaptation')
+    parser.add_argument('--in-game-menu', action='store_true',
+                        help='Allow the in-game settings menu (unqualified for gameplay)')
     return parser
 
 
