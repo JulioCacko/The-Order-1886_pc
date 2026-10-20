@@ -5,21 +5,15 @@ on:
     paths:
       - 'launcher-go/**'
       - 'launcher/order1886_*.py'
-      - 'scripts/order1886_trophy_history.py'
-      - 'scripts/order1886_input.py'
-      - 'tests/test_order1886_input.py'
-      - 'tests/test_order1886_worker.py'
-      - 'tests/test_order1886_trophy_history.py'
+      - 'scripts/**'
+      - 'tests/**'
       - '.github/workflows/order1886-go-preview.yml'
   push:
     paths:
       - 'launcher-go/**'
       - 'launcher/order1886_*.py'
-      - 'scripts/order1886_trophy_history.py'
-      - 'scripts/order1886_input.py'
-      - 'tests/test_order1886_input.py'
-      - 'tests/test_order1886_worker.py'
-      - 'tests/test_order1886_trophy_history.py'
+      - 'scripts/**'
+      - 'tests/**'
       - '.github/workflows/order1886-go-preview.yml'
 permissions:
   contents: read
@@ -67,5 +61,23 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           go vet ./...
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # The documented gate list requires gofmt-clean sources; without this a Windows tool
+          # writing CRLF or an unformatted edit lands unnoticed.
+          $unformatted = gofmt -l .
+          if ($unformatted) { Write-Error "gofmt required: $unformatted"; exit 1 }
           go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.0 build -clean -skipbindings
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: launcher-go/go.mod
+          cache-dependency-path: launcher-go/go.sum
+      # The race detector needs cgo, which the Windows job cannot assume; the documented gate
+      # list asks for it, so it runs where the toolchain is guaranteed.
+      - name: Go race checks
+        working-directory: launcher-go
+        run: go test ./... -race -count=1
 
