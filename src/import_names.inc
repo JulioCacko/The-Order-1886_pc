@@ -784,3 +784,8 @@
 {"iKJMWrAumPE#libkernel","getargc"},
 {"FJmglmTMdr4#libkernel","getargv"},
 {"QKd0qM58Qes#libkernel","sceKernelStopUnloadModule"},
+/* Imports of The Order (CUSA00076) that had no name-to-handler mapping in this tree. */
+{"0Cq8ipKr9n0#libkernel","sceKernelUtimes"},
+{"fgIsQ10xYVA#libkernel","sceKernelChmod"},
+{"j2AIqSqJP0w#libkernel","sceKernelGetdents"},
+{"T8fER+tIGgk#libkernel","select"},
