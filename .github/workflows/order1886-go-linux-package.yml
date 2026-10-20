@@ -60,6 +60,15 @@ jobs:
             libasound2-dev libpulse-dev libudev-dev \
             glslang-dev glslang-tools spirv-tools spirv-headers spirv-cross \
             zlib1g-dev libssl-dev
+      - name: Select a compiler that supports C++23 explicit object parameters
+        # The shader compiler uses `auto& f(this Self& self, ...)`. clang and MSVC accept it; GCC 13,
+        # which noble ships, does not, so the Linux build uses clang - the same family the Windows
+        # build uses - rather than rewriting the source for an older compiler.
+        run: |
+          sudo apt-get install -y --no-install-recommends clang lld
+          clang --version
+          echo "CC=clang" >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
       - name: Provide current Vulkan headers
         # noble ships Vulkan-Headers 1.3.275, but the renderer uses VK_KHR_compute_shader_derivatives,
         # VK_KHR_pipeline_binary and driver ids that only exist in 1.4.x. The MSYS2 build gets 1.4.357,
