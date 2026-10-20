@@ -2593,6 +2593,23 @@ void Rasterizer::BindSamplers(const Shader::Info& stage, const PreparedStage* pr
         const auto& sampler = stage.samplers[sampler_index];
         auto ssharp =
             prepared ? prepared->sampler_sharps[sampler_index] : sampler.GetSharp(stage);
+        // Taken from upstream shadPS4: a malformed S# used to reach the conversion switch (which
+        // aborts on a reserved value) or read a custom border colour from guest address zero. One
+        // warning per session is enough to know it happened.
+        if (!ssharp.Usable(Regs().ta_bc_base.Address())) {
+            static std::atomic<unsigned> rejected{};
+            if (rejected.fetch_add(1, std::memory_order_relaxed) < 4) {
+                LOG_WARNING(Render_Vulkan,
+                            "Rejecting an invalid sampler: max_aniso={}, filter_mode={}, "
+                            "mip_filter={}, border_color_type={}, border_color_base={:#x}",
+                            static_cast<u32>(ssharp.max_aniso.Value()),
+                            static_cast<u32>(ssharp.filter_mode.Value()),
+                            static_cast<u32>(ssharp.mip_filter.Value()),
+                            static_cast<u32>(ssharp.border_color_type.Value()),
+                            Regs().ta_bc_base.Address());
+            }
+            ssharp = AmdGpu::Sampler{};
+        }
         const auto vk_sampler = texture_cache.GetSampler(
             ssharp, Regs().ta_bc_base, sampler.is_depth, sampler.is_depth ? 0.0f : sampler_lod_bias);
         image_infos.emplace_back(vk_sampler, VK_NULL_HANDLE, vk::ImageLayout::eGeneral);
