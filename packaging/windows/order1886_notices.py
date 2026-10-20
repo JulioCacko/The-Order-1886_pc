@@ -3,12 +3,33 @@ from importlib import metadata
 from pathlib import Path
 import shutil
 import sys
+import sysconfig
+
+
+def cpython_licenses():
+    """Every place a CPython installation keeps its license, newest layout first.
+
+    The interpreter shipped by actions/setup-python does not keep a LICENSE in its prefix, so a single
+    `base_prefix` lookup failed on Linux after the same code had worked on Windows. Debian keeps it as
+    /usr/share/doc/python3*/copyright instead.
+    """
+    candidates = [Path(sys.base_prefix), Path(sys.prefix)]
+    stdlib = sysconfig.get_path('stdlib')
+    if stdlib:
+        candidates.append(Path(stdlib).parent)
+    found = []
+    for base in candidates:
+        if not base.is_dir():
+            continue
+        found.extend(sorted(base.glob('LICENSE*')) + sorted(base.glob('LICENCE*')))
+    if not found:
+        found.extend(sorted(Path('/usr/share/doc').glob('python3*/copyright')))
+    return found
 
 
 def collect(destination: Path):
     destination.mkdir(parents=True, exist_ok=True)
-    base = Path(sys.base_prefix)
-    core = list(base.glob("LICENSE*"))
+    core = cpython_licenses()
     if not core:
         raise RuntimeError("The build Python installation has no license notice")
     for source in core:
