@@ -131,6 +131,27 @@ int main() {
         }
     }
 
+    // The indirect-count packet this tree had no opcode, struct or dispatcher case for: a header
+    // plus nine payload words, framed by two NOPs of two data words each — which is exactly the
+    // 0x10 the guest's size argument asserts. If any of those numbers drift, the guest's buffer is
+    // over- or under-written.
+    {
+        static_assert(sizeof(AmdGpu::PM4CmdDrawIndirectCountMulti) == 10 * sizeof(uint32_t),
+                      "the packet is a header plus nine payload words");
+        constexpr unsigned leading = 1 + 2;  // NOP header plus a two-word data block
+        constexpr unsigned trailing = 1 + 2;
+        constexpr unsigned guest_size = leading + 10 + trailing;
+        if (guest_size != 0x10) {
+            std::puts("the framed indirect-count packet must fill the 0x10 dwords the guest asked for");
+            return EXIT_FAILURE;
+        }
+        if (static_cast<unsigned>(AmdGpu::PM4ItOpcode::DrawIndirectCountMulti) != 0x9c ||
+            static_cast<unsigned>(AmdGpu::PM4ItOpcode::DrawIndirectMulti) != 0x2c) {
+            std::puts("the indirect opcodes must keep their hardware values");
+            return EXIT_FAILURE;
+        }
+    }
+
     std::puts("Gnm decisions: wait-semaphore packet, ring-size contract, mip-stats buffer rules");
     return EXIT_SUCCESS;
 }

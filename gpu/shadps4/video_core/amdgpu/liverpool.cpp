@@ -227,6 +227,7 @@ bool PipelinedOpcode(PM4ItOpcode opcode) {
     case PM4ItOpcode::DispatchDirect: // handed over like draws (PipelinedDispatch)
     case PM4ItOpcode::DrawIndirect:   // likewise (PipelinedIndirectDraws; else drains itself)
     case PM4ItOpcode::DrawIndirectMulti:
+    case PM4ItOpcode::DrawIndirectCountMulti:
     case PM4ItOpcode::DrawIndexIndirect:
     case PM4ItOpcode::DrawIndexIndirectMulti:
     case PM4ItOpcode::DrawIndexIndirectCountMulti:
@@ -622,6 +623,7 @@ bool IsDrawOpcode(PM4ItOpcode op) {
     case PM4ItOpcode::DrawIndexAuto:
     case PM4ItOpcode::DrawIndirect:
     case PM4ItOpcode::DrawIndirectMulti:
+    case PM4ItOpcode::DrawIndirectCountMulti:
     case PM4ItOpcode::DrawIndexIndirect:
     case PM4ItOpcode::DrawIndexIndirectMulti:
     case PM4ItOpcode::DrawIndexIndirectCountMulti:
@@ -1039,6 +1041,29 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                             true, indirect_args_addr, offset, draw_index_indirect->stride,
                             draw_index_indirect->count, 0, draw_index_indirect->base_vtx_loc,
                             draw_index_indirect->start_inst_loc);
+                    });
+                break;
+            }
+            case PM4ItOpcode::DrawIndirectCountMulti: {
+                const auto* draw_indirect =
+                    reinterpret_cast<const PM4CmdDrawIndirectCountMulti*>(header);
+                const auto offset = draw_indirect->data_offset;
+                if (DebugState.DumpingCurrentReg()) {
+                    DebugState.PushRegsDump(base_addr, reinterpret_cast<uintptr_t>(header), regs);
+                }
+                if (!rasterizer) {
+                    break;
+                }
+                const auto cmd_address = reinterpret_cast<const void*>(header);
+                rasterizer->ScopeMarker(
+                    "gfx:{}:DrawIndirectCountMulti", fmt::make_format_args(cmd_address), [&] {
+                        rasterizer->DrawIndirect(
+                            false, indirect_args_addr, offset, draw_indirect->stride,
+                            draw_indirect->count,
+                            draw_indirect->count_indirect_enable.Value()
+                                ? draw_indirect->count_addr
+                                : 0,
+                            draw_indirect->base_vtx_loc, draw_indirect->start_inst_loc);
                     });
                 break;
             }
