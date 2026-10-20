@@ -473,8 +473,20 @@ struct Sampler {
         return raw0 != 0 || raw1 != 0;
     }
 
+    // Taken from upstream shadPS4. These fields are narrower than their storage: three bits for
+    // max_aniso and two each for the filter modes, so a reserved value used to reach the
+    // conversion switch and abort, or read a border colour from guest address zero.
     bool Valid() const {
-        return true;
+        return max_aniso.Value() <= AnisoRatio::Sixteen &&
+               filter_mode.Value() <= FilterMode::Max &&
+               mip_filter.Value() <= MipFilter::Linear;
+    }
+
+    /// A sampler can be decoded only when its fields are representable and, for a custom border
+    /// colour, when the table it reads actually exists.
+    constexpr bool Usable(VAddr border_color_base) const {
+        return Valid() &&
+               (border_color_type.Value() != BorderColor::Custom || border_color_base != 0);
     }
 
     bool operator==(const Sampler& other) const noexcept {
