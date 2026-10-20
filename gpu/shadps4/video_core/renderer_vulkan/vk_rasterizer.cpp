@@ -28,6 +28,7 @@
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_hle.h"
 #include "video_core/texture_cache/image_rejection.h"
+#include "video_core/texture_cache/index_buffer_request.h"
 #include "video_core/texture_cache/image_view.h"
 #include "video_core/texture_cache/texture_cache.h"
 
@@ -1140,7 +1141,9 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
 
     BindVertexBuffers(pipeline);
     if (is_indexed) {
-        BindIndexBuffer();
+        // This is the indirect path: the index range is bounded by max_index_size,
+        // not by the index register.
+        BindIndexBuffer(0, true);
     }
 
     const auto [buffer, base] =
@@ -1841,8 +1844,8 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
     v.num_buffers = static_cast<u32>(guest_buffers.size());
 }
 
-void Rasterizer::BindIndexBuffer(u32 index_offset) {
-    ResolveIndexBuffer(index_offset);
+void Rasterizer::BindIndexBuffer(u32 index_offset, bool is_indirect) {
+    ResolveIndexBuffer(index_offset, is_indirect);
     EmitIndexBuffer();
 }
 
@@ -1853,7 +1856,7 @@ void Rasterizer::EmitIndexBuffer() {
     });
 }
 
-void Rasterizer::ResolveIndexBuffer(u32 index_offset) {
+void Rasterizer::ResolveIndexBuffer(u32 index_offset, bool is_indirect) {
     const auto& regs = Regs();
 
     // Figure out index type and size.
@@ -1863,11 +1866,25 @@ void Rasterizer::ResolveIndexBuffer(u32 index_offset) {
     const VAddr index_address =
         regs.index_base_address.Address<VAddr>() + index_offset * index_size;
 
-    // Bind index buffer.
-    const u32 index_buffer_size = regs.num_indices * index_size;
-    const auto [buffer, offset] =
-        buffer_cache.ObtainBuffer(index_address, index_buffer_size, false);
-    needs_barrier |= runtime.IsBufferAccessed(buffer, offset, index_buffer_size);
+    // Bind index buffer. Taken from upstream shadPS4: an indirect draw is bounded by
+    // max_index_size rather than the register, and the request is clamped to mapped memory, so
+    // the cache is never asked for a range that does not exist.
+    const u64 mapped_size = index_address != 0
+                                ? memory->ClampRangeSize(index_address,
+                                                         u64(regs.max_index_size) * index_size)
+                                : 0;
+    const auto request = VideoCore::ResolveIndexRequest(regs.num_indices, regs.max_index_size,
+                                                        is_indirect, index_size, mapped_size);
+    if (request.size == 0) {
+        // Nothing mapped to bind. One index keeps the binding valid and the draw degenerates
+        // instead of reading an unbound range; the count is already bounded by the caller.
+        const auto [buffer, offset] = buffer_cache.ObtainBuffer(index_address, index_size, false);
+        needs_barrier |= runtime.IsBufferAccessed(buffer, offset, index_size);
+        index_bind = {buffer->Handle(), offset, index_type};
+        return;
+    }
+    const auto [buffer, offset] = buffer_cache.ObtainBuffer(index_address, request.size, false);
+    needs_barrier |= runtime.IsBufferAccessed(buffer, offset, request.size);
     index_bind = {buffer->Handle(), offset, index_type};
 }
 
