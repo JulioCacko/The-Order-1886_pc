@@ -6,7 +6,7 @@
 <p align="center">
   <a href="README.pt-BR.md"><b>Português (Brasil)</b></a> ·
   <a href="README.es.md">Español</a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/order1886-windows.zip"><b>Download Windows ZIP</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/order1886-go-windows.zip"><b>Download Windows ZIP</b></a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases">Releases</a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
 </p>
@@ -39,9 +39,9 @@ GPU commands and shaders to Vulkan. The current target is **CUSA00076 on Windows
 
 ## What's new
 
-**Optional Windows Go launcher preview.** [Download the redesigned seven-page launcher](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.1), with settings search, a separate worker and local trophy history. It is a prerelease with explicit unavailable-feature explanations. [Verification and limits](docs/verification/2026-10-18-go-launcher.md). Preview.4 below remains available for Windows and Linux.
+**Preview 8 — 20 October 2026.** The Windows and Linux x86-64 packages are built from revision `e877470`, the Go launcher is the only launcher, and every rendering option states why it is unavailable while the runtime cannot honour it. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.8) · [What this build does and does not establish](docs/verification/2026-10-20-runtime-hardening.md).
 
-**Preview.4 — 18 October 2026.** Windows and experimental Linux packages include these changes.
+**Preview 8 — 20 October 2026.** These are the changes accumulated since preview 4.
 
 - **Input and direct play:** configurable mouse-to-stick camera input, sensitivity and inverted Y; **Play The Order 1886.exe** uses saved settings and the shared session/log lifecycle. Game includes desktop-shortcut and Add to Steam actions.
 - **Saves and asset mods:** original-preserving `_data` overlays with explicit enable/order/conflict controls; save backup/restore now keeps the newest backup even when many are created in the same second. External executable patches remain unsupported.
@@ -69,15 +69,18 @@ See [current status](docs/STATUS.md), [issue tracking](docs/order1886-issue-stat
 
 ## Download and start
 
-**Published download: preview.4 (October 18).** Windows and experimental Linux x86-64 packages are available. Preserve your `user` folder when upgrading.
+**Published download: preview 8 (October 20).** Windows and Linux x86-64 packages are available, both built from revision `e877470`. Preserve your `user` folder when upgrading.
 
-**[Download the Windows launcher ZIP](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/order1886-windows.zip)** ·
-[Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-preview.4) ·
-[English/Portuguese setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-preview.4/QUICKSTART.txt)
+**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/order1886-go-windows.zip)** ·
+**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/order1886-linux-x86_64.tar.gz)** ·
+[Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.8) ·
+[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/QUICKSTART.txt) ·
+[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/order1886-go-windows.zip.sha256) ·
+[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/order1886-linux-x86_64.tar.gz.sha256)
 
 The preview includes the launcher, dedicated runtime, required libraries and
 **`QUICKSTART.txt`**. No Python, MSYS2 or compiler is required. Download
-`order1886-windows.zip`; GitHub's “Source code” archives are for developers.
+`order1886-go-windows.zip`; GitHub's “Source code” archives are for developers.
 The release also provides a ZIP checksum. Game files are supplied separately
 by you; this preview retains the [known compatibility limitations](#status).
 
