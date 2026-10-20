@@ -56,7 +56,7 @@ It is not an official source-native PC port.
 package-manifest.json records shipped file hashes; bin/runtime-build.json
 identifies the source build. LICENSE and notices preserve upstream attribution
 and dependency licenses. Source attribution is in notices/ATTRIBUTION.txt.
-Build script: packaging/windows/order1886-build.ps1.
+Build script: packaging/windows/order1886-go-build.ps1 (the Go launcher is the only launcher).
 Corresponding source and complete license obligations must accompany any public
 redistribution of this development build. Game assets and trademarks belong to
 their respective owners.
