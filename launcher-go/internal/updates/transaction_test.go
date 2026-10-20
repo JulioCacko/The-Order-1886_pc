@@ -425,7 +425,7 @@ func TestRollbackDoesNotRequireUnusedNewPayload(t *testing.T) {
 	if err = tx.Apply(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.Remove(filepath.Join(root, filepath.FromSlash(tx.record.Directory), "next", "bin", "order1886-worker.exe")); err != nil {
+	if err = os.Remove(filepath.Join(root, filepath.FromSlash(tx.record.Directory), "next", filepath.FromSlash(pkgpath.Worker()))); err != nil {
 		t.Fatal(err)
 	}
 	if err = tx.Rollback(context.Background(), nil); err != nil {
