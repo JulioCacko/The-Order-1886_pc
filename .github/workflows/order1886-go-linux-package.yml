@@ -52,7 +52,8 @@ jobs:
             python3 python3-venv python3-pip \
             libx11-dev libxrandr-dev libxcursor-dev libxi-dev \
             libwayland-dev libxkbcommon-dev \
-            libfmt-dev libboost-dev librobin-map-dev libxxhash-dev libzydis-dev \
+            libfmt-dev libboost-dev robin-map-dev libxxhash-dev libzydis-dev \
+            libvulkan-memory-allocator-dev \
             glslang-dev glslang-tools spirv-tools spirv-headers spirv-cross \
             zlib1g-dev libssl-dev
       - name: Provide SDL3 (Ubuntu 24.04 does not package it yet)
