@@ -60,6 +60,21 @@ jobs:
             libasound2-dev libpulse-dev libudev-dev \
             glslang-dev glslang-tools spirv-tools spirv-headers spirv-cross \
             zlib1g-dev libssl-dev
+      - name: Provide current Vulkan headers
+        # noble ships Vulkan-Headers 1.3.275, but the renderer uses VK_KHR_compute_shader_derivatives,
+        # VK_KHR_pipeline_binary and driver ids that only exist in 1.4.x. The MSYS2 build gets 1.4.357,
+        # so the same tag is used here; the loader itself stays the distribution one.
+        run: |
+          git clone --depth 1 --branch vulkan-sdk-1.4.357.0 \
+            https://github.com/KhronosGroup/Vulkan-Headers /tmp/Vulkan-Headers
+          cmake -S /tmp/Vulkan-Headers -B /tmp/Vulkan-Headers/build -G Ninja \
+                -DCMAKE_INSTALL_PREFIX=/usr/local \
+                -DVULKAN_HEADERS_ENABLE_TESTS=OFF -DVULKAN_HEADERS_ENABLE_MODULE=OFF
+          sudo cmake --build /tmp/Vulkan-Headers/build --target install
+          # FindVulkan prefers $VULKAN_SDK/include, and pkg-config needs the prefix on its path.
+          echo "VULKAN_SDK=/usr/local" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
+          ls /usr/local/include/vulkan/vulkan.hpp
       - name: Provide SDL3 (Ubuntu 24.04 does not package it yet)
         run: |
           if pkg-config --exists sdl3; then
