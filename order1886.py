@@ -739,6 +739,7 @@ def main(argv=None):
             mounted_game = mods.build_overlay(game, user, args.mods_dir,
                                              bool(args.mods_enabled) and not args.check_imports, mod_order)
             command = build_command(runtime, user / 'prepared/boot-linked.bin', mounted_game, user, args.check_imports)
+            timing_values = timing_profile(vars(args))
             report = {'mode': mode, 'started_utc': stamp, **runtime_identity(runtime),
                       'game': str(game), 'mounted_game': str(mounted_game),
                       'mods': {'enabled': bool(args.mods_enabled) and not args.check_imports,
@@ -752,10 +753,21 @@ def main(argv=None):
                       'runtime_environment': {k: v for k, v in env.items() if k.startswith('ORDER1886_')},
                        'frame_rate_profile': prepared.get('frame_rate_profile'),
                        'display_profile': prepared.get('display_profile'),
+                       'configuration': {
+                           'timing': timing_values,
+                           'catalogue_patches': prepared.get('catalogue_patches', []),
+                           'switches': {
+                               'htile_unqualified': bool(getattr(args, 'htile', False)),
+                               'in_game_menu': bool(getattr(args, 'in_game_menu', False)),
+                               'readbacks': args.readbacks,
+                               'effect_toggles': effect_toggle_mask(runtime, vars(args)),
+                           },
+                       },
                        'settings': {'display_mode': args.display_mode, 'vsync': args.vsync,
                                     'show_fps': args.show_fps, 'presentation_filter': args.presentation_filter,
                                     'performance_capture': bool(args.performance_capture),
-                                    'frame_rate': args.frame_rate, 'fps_limit': args.frame_rate,
+                                    'frame_rate': args.frame_rate,
+                                    'fps_limit': timing_values['fps_limit'],
                                     'aspect_ratio': args.aspect_ratio, 'system_language': args.system_language}}
             write_json(logs / 'last-run.json', report)
             emit_status(f'Log: {log}', fallback=diagnostic_log)
