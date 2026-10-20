@@ -46,12 +46,13 @@ performance are tracked separately.
 
 ## Screenshot provenance
 
-Four source-launcher captures were made on October 18 using the actual
-`DesktopLauncher` and Windows Pillow window capture, after the Computer Use helper
+Four source-launcher captures were made on October 18 using the **Tk `DesktopLauncher`**, which has
+since been removed, and Windows Pillow window capture, after the Computer Use helper
 failed with `foreground window did not report a process id`. The capture fixture
 used isolated settings, did not invoke Play, and closed its own window after
 capturing Home, Graphics, Game utilities and Advanced at 1240 × 800. No UI or game
-output was generated or composited. The selected 30 FPS is a setting.
+output was generated or composited. The selected 30 FPS is a setting. They are historical evidence of the retired window, not a picture
+of the Go launcher.
 
 Images: `docs/images/order1886-{home,graphics,game,advanced}-20261018.png`.
 The October 17 cinematic image remains dated as historical evidence.

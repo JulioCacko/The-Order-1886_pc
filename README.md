@@ -103,9 +103,11 @@ For a source checkout, open `Launch The Order 1886.cmd` or run the Go launcher y
 
 ## The launcher
 
-![Current Windows launcher Home page](docs/images/order1886-home-20261018.png)
+The launcher is a Go/Wails application (`launcher-go`). The screenshots below show the **retired Tk window** and are kept as a record of the previous interface; the table describes the settings the Go launcher carries.
 
-<sub>Actual source launcher captured on October 18 at 1240 × 800 with isolated settings. This is launcher UI; the selected 30 FPS is configuration, not a benchmark.</sub>
+![Retired Tk launcher Home page](docs/images/order1886-home-20261018.png)
+
+<sub>Retired launcher captured on October 18 at 1240 × 800 with isolated settings. It is UI only; the selected 30 FPS is configuration, not a benchmark.</sub>
 
 | Page | Available controls |
 | --- | --- |
@@ -115,7 +117,7 @@ For a source checkout, open `Launch The Order 1886.cmd` or run the Go launcher y
 | **Game** | Verify files, direct-play desktop shortcut, Add to Steam, save backups, ordered asset mods and mouse controls |
 | **Advanced** | Launcher language, optional runtime, logs/folders, shader-cache clearing and manual release links |
 
-<details><summary>Current settings and utilities screenshots</summary>
+<details><summary>Retired launcher screenshots</summary>
 
 ![Graphics settings with the persistent launch bar](docs/images/order1886-graphics-20261018.png)
 
