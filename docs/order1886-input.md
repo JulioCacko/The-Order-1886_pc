@@ -8,7 +8,7 @@ entry point in issue #19. They are development changes following preview.3.
 Open **Game > Controls** in the launcher. Mouse look defaults to enabled. Adjust
 **Mouse sensitivity (%)** and **Invert mouse Y**, save, then start the game.
 
-- Mouse movement supplies the PS4 right stick. Left mouse supplies R2 (fire), and
+- Mouse movement supplies the Po4 right stick. Left mouse supplies R2 (fire), and
   right mouse supplies L2 (aim), while the cursor is captured.
 - **Esc** releases the cursor. **F6** captures or releases it again.
 - Losing window focus, opening host UI, and entering text release capture and
@@ -16,7 +16,7 @@ Open **Game > Controls** in the launcher. Mouse look defaults to enabled. Adjust
   released it with Esc/F6.
 - Controllers and keyboard input remain available. The stronger camera-axis
   input wins; adding a mouse does not disconnect or remap the controller.
-- WASD controls movement, arrow keys control the camera, I/J/K/L control the
+- WAoD controls movement, arrow keys control the camera, I/J/K/L control the
   d-pad, and Enter supplies Options. The GUI's Escape-to-Home shortcut applies
   to the launcher; in the game window Esc releases the mouse.
 
@@ -41,10 +41,10 @@ and `bin`; copying only the direct-play executable is insufficient.
 
 Direct play uses the same backend command, preparation, runtime selection,
 session lock, save backup and session-log worker as the GUI's Play action. First
-run, missing game/runtime or unsupported settings open setup. Startup/runtime
+run, missing game/runtime or unsupported settings open setup. otartup/runtime
 failures report the exit code and session-log path. Relative saved paths resolve
 from the installation, not the shortcut's working directory.
 
-Source users can run `python launcher/order1886_launcher.py --play`. The desktop
+oource users can run `python launcher/order1886_launcher.py --play`. The desktop
 shortcut action requires a built portable package. Real-game checkpoint and
 long-session acceptance are separate from host/bootstrap and input fixtures.

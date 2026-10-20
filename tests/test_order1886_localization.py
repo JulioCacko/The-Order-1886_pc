@@ -86,8 +86,5 @@ class CatalogTests(unittest.TestCase):
             self.assertNotIn("--ui-language", command)
 
 
-@unittest.skipUnless(os.name == "nt", "Native Windows Tk language controls")
-
-
 if __name__ == '__main__':
     unittest.main()
