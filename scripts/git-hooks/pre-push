@@ -1,0 +1,33 @@
+#!/bin/sh
+# Refuse a direct push to main. Changes reach main through a pull request, where the diff and the
+# checks are visible; this hook is here because that rule was broken twice by accident, once with a
+# documentation commit and once with a feature branch, and both times main was briefly ahead of what
+# anyone had reviewed.
+#
+# Enable it once per checkout:
+#   git config core.hooksPath scripts/git-hooks
+#
+# Escape hatch for a real emergency: ALLOW_MAIN_PUSH=1 git push ...
+set -u
+
+protected=main
+allow=${ALLOW_MAIN_PUSH:-}
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$remote_ref" in
+        refs/heads/"$protected")
+            if [ -n "$allow" ]; then
+                echo "pre-push: ALLOW_MAIN_PUSH is set; pushing to $protected anyway." >&2
+                continue
+            fi
+            echo "pre-push: refusing a direct push to $protected." >&2
+            echo "pre-push: open a branch and a pull request instead:" >&2
+            echo "pre-push:   git switch -c codex/<topic> && git push -u origin HEAD" >&2
+            echo "pre-push:   gh pr create --base $protected --head codex/<topic>" >&2
+            echo "pre-push: override only for an emergency: ALLOW_MAIN_PUSH=1 git push ..." >&2
+            exit 1
+            ;;
+    esac
+done
+
+exit 0
