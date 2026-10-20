@@ -1,0 +1,112 @@
+# Manual Order package build and artifact validation, for the Go launcher only.
+#
+# The previous packaging workflow built the Python/Tk launcher; that window and its builder are gone,
+# which also removed the only CI job that produced and smoke-tested a package. This restores it for
+# the Go builder: the same native build, then the package the Go launcher ships in, then the
+# portable smoke (host and package only — it never starts the game).
+#
+# Unverified until it has completed on GitHub Actions.
+name: The Order 1886 Go package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: order1886-go-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Keep source line endings and support long paths
+        shell: pwsh
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Initialize only required native dependencies
+        shell: pwsh
+        run: |
+          git submodule update --init --recursive -- `
+            gpu/third_party/imgui gpu/third_party/magic_enum `
+            gpu/third_party/miniz gpu/third_party/xbyak third_party/LibAtrac9
+          if ($LASTEXITCODE) { throw 'Required native submodule checkout failed.' }
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          release: false
+          update: true
+          install: git
+          pacboy: >-
+            toolchain:p cmake:p ninja:p pkgconf:p python:p
+            vulkan-headers:p vulkan-loader:p vulkan-memory-allocator:p glslang:p
+            sdl3:p fmt:p boost:p robin-map:p xxhash:p ffmpeg:p zydis:p
+            spirv-tools:p spirv-headers:p spirv-cross:p
+      - name: Build the Order native runtime and run CPU checks
+        run: |
+          set -euo pipefail
+          export MSYS2_ROOT="$(cygpath -u "$(cygpath -w /)")"
+          mkdir -p out
+          bash build.sh --test 2>&1 | tee out/order1886-native-build-and-cpu-tests.log
+          pacman -Q > out/ci-msys2-packages.txt
+          printf 'ORDER_RUNTIME_DLL_ROOT=%s\n' "$(cygpath -w /clang64/bin)" >> "$(cygpath -u "$GITHUB_ENV")"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: launcher-go/go.mod
+          cache-dependency-path: launcher-go/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: launcher-go/frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: '3.13'
+      - name: Build the Go portable package and smoke-test it
+        shell: pwsh
+        run: |
+          & ./packaging/windows/order1886-go-build.ps1 `
+            -Python '${{ steps.python.outputs.python-path }}' `
+            -Runtime './out/order1886-runtime.exe' `
+            -DependencyRoot $env:ORDER_RUNTIME_DLL_ROOT
+          if ($LASTEXITCODE) { throw 'Order Go package build failed.' }
+          $package = Get-ChildItem -LiteralPath out/order1886-go-package -Directory |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $package) { throw 'The Go package builder produced no output.' }
+          $manifest = Join-Path $package.FullName 'The Order 1886/package-manifest.json'
+          if (-not (Test-Path -LiteralPath $manifest)) { throw 'The package manifest is missing.' }
+          $built = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+          if ($built.update_abi -ne 'order1886-update-2') { throw 'The package does not advertise the update ABI.' }
+          if ($built.runtime_build.runtime_abi -ne 'order1886-native-1') { throw 'The package runtime is not an Order build.' }
+          "package=$($package.FullName)" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+          'Host/package smoke only. Gameplay, stability and performance remain unverified.' |
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+        id: package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: order1886-go-package
+          path: |
+            ${{ steps.package.outputs.package }}/The Order 1886/**
+          if-no-files-found: error
+      - name: Preserve build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: order1886-go-package-evidence
+          path: |
+            out/gpu-build.log
+            out/order1886-native-build-and-cpu-tests.log
+            out/runtime-build.json
+            out/ci-msys2-packages.txt
+          if-no-files-found: warn
