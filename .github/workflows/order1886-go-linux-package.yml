@@ -42,6 +42,9 @@ jobs:
             gpu/third_party/imgui gpu/third_party/magic_enum \
             gpu/third_party/miniz gpu/third_party/xbyak third_party/LibAtrac9
       - name: Install build dependencies
+        # libasound2/libpulse/libudev supply SDL3's audio and gamepad backends (runtime_audio.c,
+        # runtime_pad.c); robin-map-dev is the noble name for tsl-robin-map, and libavformat-dev is
+        # separate from libavcodec-dev although the GPU library needs both.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -54,7 +57,6 @@ jobs:
             libwayland-dev libxkbcommon-dev \
             libfmt-dev libboost-dev robin-map-dev libxxhash-dev libzydis-dev \
             libvulkan-memory-allocator-dev \
-            # SDL3's audio and gamepad backends, used by src/runtime_audio.c and runtime_pad.c.
             libasound2-dev libpulse-dev libudev-dev \
             glslang-dev glslang-tools spirv-tools spirv-headers spirv-cross \
             zlib1g-dev libssl-dev
