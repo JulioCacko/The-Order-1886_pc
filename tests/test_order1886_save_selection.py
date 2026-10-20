@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from launcher import order1886_launcher as launcher
+from launcher import order1886_common as launcher
 import order1886
 
 

@@ -244,7 +244,7 @@ class ModOverlayTests(unittest.TestCase):
 
 class LauncherModTests(unittest.TestCase):
     def test_relative_mod_root_uses_installation_in_every_working_directory(self):
-        from launcher import order1886_launcher as launcher
+        from launcher import order1886_common as launcher
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             installation, other = base / 'installation', base / 'other'
@@ -268,7 +268,7 @@ class LauncherModTests(unittest.TestCase):
     @unittest.skipUnless(os.name == 'nt', 'Native Tk malformed mod settings')
     def test_malformed_saved_mod_settings_are_visible_and_not_rewritten_on_open(self):
         import tkinter as tk
-        from launcher import order1886_launcher as launcher
+        from launcher import order1886_common as launcher
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)
             values = {'game_dir': str(state / 'missing'), 'mods_dir': 123, 'mods_enabled': 'yes', 'mod_order': []}
@@ -287,7 +287,7 @@ class LauncherModTests(unittest.TestCase):
                 window.destroy()
 
     def test_saved_direct_play_keeps_explicit_order_and_disabled_default(self):
-        from launcher import order1886_launcher as launcher
+        from launcher import order1886_common as launcher
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)
             root = state / 'mods'
@@ -308,7 +308,7 @@ class LauncherModTests(unittest.TestCase):
     @unittest.skipUnless(os.name == 'nt', 'Native Tk mod selection')
     def test_launcher_mod_selection_order_and_changed_folder_require_explicit_enable(self):
         import tkinter as tk
-        from launcher import order1886_launcher as launcher
+        from launcher import order1886_common as launcher
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)
             root = state / 'mods'

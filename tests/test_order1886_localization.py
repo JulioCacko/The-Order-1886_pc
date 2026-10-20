@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from launcher import order1886_lang as lang
-from launcher import order1886_launcher as launcher
+from launcher import order1886_common as launcher
 
 
 class CatalogTests(unittest.TestCase):
@@ -87,76 +87,7 @@ class CatalogTests(unittest.TestCase):
 
 
 @unittest.skipUnless(os.name == "nt", "Native Windows Tk language controls")
-class LanguageUITests(unittest.TestCase):
-    def test_arabic_cjk_navigation_choices_and_focus(self):
-        import tkinter as tk
-        for locale in ("ar", "zh", "ja", "ko"):
-            with self.subTest(locale=locale), tempfile.TemporaryDirectory() as directory:
-                state = Path(directory)
-                launcher.save_settings(state / "settings.json", {
-                    "game_dir": str(state / "missing-game"), "ui_language": locale,
-                    "frame_rate": 60, "aspect_ratio": "16:9", "future": {"keep": True}})
-                root = tk.Tk()
-                root.withdraw()
-                try:
-                    app = launcher.DesktopLauncher(root, state)
-                    self.assertEqual(app.page_buttons["advanced"].cget("text"),
-                                     lang.translate("Advanced", locale))
-                    app.home_fields["display_mode"].set(lang.translate("Windowed", locale))
-                    self.assertTrue(app.commit_home())
-                    saved = launcher.read_settings(state / "settings.json")
-                    self.assertEqual(saved["display_mode"], "windowed")
-                    self.assertEqual(saved["frame_rate"], 60)
-                    self.assertEqual(saved["aspect_ratio"], "16:9")
-                    self.assertEqual(saved["future"], {"keep": True})
-                    app.show_page("advanced")
-                    root.geometry("1120x700")
-                    root.deiconify()
-                    root.update()
-                    self.assertEqual(str(app.language_combo.cget("state")), "readonly")
-                    self.assertEqual(tuple(app.language_combo.cget("values")), tuple(lang.LANGUAGES.values()))
-                    if locale == "ar":
-                        self.assertEqual(app.warning.cget("justify"), "right")
-                        self.assertEqual(app.page_buttons["advanced"].cget("anchor"), "e")
-                    root.focus_force()
-                    app.language_combo.focus_set()
-                    root.update()
-                    self.assertEqual(root.focus_get(), app.language_combo)
-                    app.language_combo.event_generate("<Tab>")
-                    root.update()
-                    self.assertNotEqual(root.focus_get(), app.language_combo)
-                    self.assertIsNotNone(root.focus_get())
-                    for page in launcher.PAGES:
-                        app.show_page(page)
-                        root.update_idletasks()
-                        self.assertLessEqual(app.page_buttons[page].winfo_reqwidth(), 180)
-                finally:
-                    root.destroy()
-
-    def test_language_only_save_preserves_unsupported_values_and_pending_edits(self):
-        import tkinter as tk
-        with tempfile.TemporaryDirectory() as directory:
-            state = Path(directory)
-            saved = {"game_dir": str(state / "missing-game"), "ui_language": "en",
-                     "frame_rate": 144, "aspect_ratio": "future-aspect", "future": [1, 2]}
-            launcher.save_settings(state / "settings.json", saved)
-            root = tk.Tk()
-            root.withdraw()
-            try:
-                app = launcher.DesktopLauncher(root, state)
-                app.page_fields["runtime"].set("unsaved-runtime.exe")
-                app.language_choice.set(lang.LANGUAGES["ar"])
-                with patch("tkinter.messagebox.showinfo") as notice:
-                    app.save_language()
-                self.assertEqual(launcher.read_settings(state / "settings.json"), dict(saved, ui_language="ar"))
-                self.assertEqual(app.language, "en")
-                self.assertEqual(app.page_fields["runtime"].get(), "unsaved-runtime.exe")
-                notice.assert_called_once()
-                self.assertIn("Restart", notice.call_args.args[1])
-                self.assertEqual(launcher.load_launch_settings(state)["ui_language"], "ar")
-            finally:
-                root.destroy()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

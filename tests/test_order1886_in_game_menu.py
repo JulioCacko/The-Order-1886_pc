@@ -3,7 +3,7 @@ from pathlib import Path
 import unittest
 
 import order1886
-from launcher import order1886_launcher as launcher
+from launcher import order1886_common as launcher
 from launcher import order1886_options as options
 from launcher import order1886_worker as worker
 

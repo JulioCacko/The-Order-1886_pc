@@ -10,7 +10,7 @@ import io
 from types import SimpleNamespace
 from unittest.mock import patch
 import order1886
-from launcher import order1886_launcher as launcher
+from launcher import order1886_common as launcher
 from scripts import order1886_input as inputs
 
 ROOT = Path(__file__).resolve().parents[1]

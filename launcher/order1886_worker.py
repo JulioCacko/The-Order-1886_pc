@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.par
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 import order1886
-from launcher import order1886_launcher as legacy
+from launcher import order1886_common as legacy
 from launcher.order1886_lang import LANGUAGES, table
 from launcher.order1886_options import FIELDS, PAGES
 
