@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"io"
 	"os"
 	"os/exec"
@@ -346,9 +348,9 @@ func lockSession(ctx context.Context, state string, deadline time.Time) (*os.Fil
 // relaunchCommand builds the restart invocation for the entry point that started
 // the update, with the recorded player state and nothing else.
 func relaunchCommand(installation, state string, direct bool) *exec.Cmd {
-	name := "The Order 1886.exe"
+	name := pkgpath.Launcher()
 	if direct {
-		name = "Play The Order 1886.exe"
+		name = pkgpath.Play()
 	}
 	command := exec.Command(filepath.Join(installation, name), "--state-dir", state)
 	command.Dir = installation

@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"io"
 	"os"
 	"strings"
@@ -89,7 +91,7 @@ func packagePath(name string) error {
 	switch root {
 	case "bin", "_internal", "notices":
 		return nil
-	case "The Order 1886.exe", "Play The Order 1886.exe", "The Order 1886 Legacy.exe", "LICENSE", "QUICKSTART.txt", "README-Order1886.txt", "package-manifest.json":
+	case pkgpath.Launcher(), pkgpath.Play(), "The Order 1886 Legacy.exe", "LICENSE", "QUICKSTART.txt", "README-Order1886.txt", "package-manifest.json":
 		if root == name {
 			return nil
 		}
@@ -264,12 +266,12 @@ func StageArchive(ctx context.Context, archive, destination string, identity Ide
 	if len(entries) != len(manifest.Files)+1 {
 		return manifest, errors.New("archive contains unmanifested files")
 	}
-	for _, required := range []string{"The Order 1886.exe", "Play The Order 1886.exe", "bin/order1886-worker.exe", "bin/order1886-runtime.exe", "bin/runtime-build.json"} {
+	for _, required := range pkgpath.Required() {
 		if entries[required] == nil {
 			return manifest, fmt.Errorf("required package file is missing: %s", required)
 		}
 	}
-	if owned[strings.ToUpper("bin/order1886-runtime.exe")] != identity.RuntimeSHA256 {
+	if owned[strings.ToUpper(pkgpath.Runtime())] != identity.RuntimeSHA256 {
 		return manifest, errors.New("runtime hash differs from manifest")
 	}
 	runtimeBody, err := readEntry(entries["bin/runtime-build.json"], maxManifest)

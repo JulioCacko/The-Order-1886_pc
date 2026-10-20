@@ -3,18 +3,53 @@ from importlib import metadata
 from pathlib import Path
 import shutil
 import sys
+import sysconfig
+
+
+def cpython_licenses():
+    """Every place a CPython installation keeps its license, newest layout first.
+
+    The interpreter shipped by actions/setup-python does not keep a LICENSE in its prefix, so a single
+    `base_prefix` lookup failed on Linux after the same code had worked on Windows. Debian keeps it as
+    /usr/share/doc/python3*/copyright instead.
+    """
+    candidates = [Path(sys.base_prefix), Path(sys.prefix)]
+    stdlib = sysconfig.get_path('stdlib')
+    if stdlib:
+        candidates.append(Path(stdlib).parent)
+    found = []
+    for base in candidates:
+        if not base.is_dir():
+            continue
+        found.extend(sorted(base.glob('LICENSE*')) + sorted(base.glob('LICENCE*')))
+    if not found:
+        found.extend(sorted(Path('/usr/share/doc').glob('python3*/copyright')))
+    # prefix and base_prefix are usually the same directory; keep one copy of each notice.
+    return list(dict.fromkeys(found))
+
+
+# Shipped with the frozen worker on every platform: the bootloader and its hook data.
+SHIPPED = ("pyinstaller", "pyinstaller-hooks-contrib")
+# Used only by the Windows icon converter at packaging time, so its notice is collected when the
+# package is installed but is not a reason to fail the Linux build, where Pillow is not present.
+OPTIONAL = ("pillow",)
 
 
 def collect(destination: Path):
     destination.mkdir(parents=True, exist_ok=True)
-    base = Path(sys.base_prefix)
-    core = list(base.glob("LICENSE*"))
+    core = cpython_licenses()
     if not core:
         raise RuntimeError("The build Python installation has no license notice")
     for source in core:
         shutil.copy2(source, destination / ("CPython-" + source.name))
-    for name in ("pillow", "pyinstaller", "pyinstaller-hooks-contrib"):
-        distribution = metadata.distribution(name)
+    for name, required in [(n, True) for n in SHIPPED] + [(n, False) for n in OPTIONAL]:
+        try:
+            distribution = metadata.distribution(name)
+        except metadata.PackageNotFoundError:
+            if required:
+                raise RuntimeError(f"{name} is shipped with the worker but has no metadata")
+            print(f"notices: {name} is not installed here; no notice to collect")
+            continue
         count = 0
         for file in distribution.files or ():
             parts = file.parts
@@ -28,6 +63,7 @@ def collect(destination: Path):
             count += 1
         if not count:
             raise RuntimeError(f"No license notice found for {name}")
+    base = Path(sys.base_prefix)
     for source in (base / "tcl").rglob("license.terms"):
         target = destination / source.relative_to(base)
         target.parent.mkdir(parents=True, exist_ok=True)

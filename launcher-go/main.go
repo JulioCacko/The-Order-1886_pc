@@ -22,6 +22,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	desktop "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/updatehost"
 	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/updates"
 )
@@ -101,7 +102,7 @@ func (app *App) connect() error {
 	if app.worker != nil {
 		return nil
 	}
-	workerPath := filepath.Join(app.root, "bin", "order1886-worker.exe")
+	workerPath := filepath.Join(app.root, filepath.FromSlash(pkgpath.Worker()))
 	var command *exec.Cmd
 	if _, err := os.Stat(workerPath); err == nil {
 		command = exec.Command(workerPath, "--state-dir", app.state, "--installation-root", app.root)
