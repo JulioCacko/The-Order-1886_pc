@@ -135,7 +135,31 @@ ImageInfo::ImageInfo(const AmdGpu::DepthBuffer& buffer, u32 num_slices, VAddr ht
     meta_info.htile_addr = buffer.z_info.tile_surface_enable ? htile_address : 0;
 
     stencil_addr = write_buffer ? buffer.StencilWriteAddress() : buffer.StencilAddress();
-    stencil_size = pitch * size.height * sizeof(u8);
+    // Taken from upstream shadPS4: the stencil companion is its own surface, so it is sized per
+    // slice and multiplied by the layers, with the same tiling/alignment the depth uses. Sizing it
+    // as pitch * height truncated any layered, tiled or multisampled stencil surface.
+    if (props.has_stencil) {
+        if (props.is_tiled) {
+            stencil_size = size_t{buffer.GetStencilSliceSize()} * resources.layers;
+        } else {
+            std::tie(std::ignore, std::ignore, stencil_size) =
+                ImageSizeLinearAligned(pitch, size.height, 8, guest_samples);
+            stencil_size *= resources.layers;
+        }
+    } else {
+        stencil_size = 0;
+    }
+
+    // A stencil-only surface has no depth allocation: reading the depth address and sizing it with
+    // depth geometry decodes the whole surface from the wrong guest memory. Upstream branches on
+    // exactly this, and so do we now.
+    if (buffer.z_info.format == AmdGpu::DepthBuffer::ZFormat::Invalid) {
+        guest_address = stencil_addr;
+        guest_size = stencil_size;
+        mips_layout[0] = MipInfo(guest_size, pitch, props.is_tiled ? buffer.Height() : size.height, 0);
+        num_bits = 8;
+        return;
+    }
 
     guest_address = write_buffer ? buffer.DepthWriteAddress() : buffer.DepthAddress();
     size_t slice_bytes = 0;
