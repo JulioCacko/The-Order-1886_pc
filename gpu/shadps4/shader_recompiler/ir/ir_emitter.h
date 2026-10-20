@@ -43,6 +43,7 @@ public:
     void DebugPrint(const char* fmt, boost::container::small_vector<Value, 5> args);
 
     void Barrier();
+    void SubgroupBarrier();
     void WorkgroupMemoryBarrier();
     void DeviceMemoryBarrier();
 
