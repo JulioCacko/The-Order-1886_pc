@@ -78,6 +78,10 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
     # and the value shown in the UI was not the one applied.
     command += ["--fps-cap", str(values.get("fps_cap", 120))]
     command += ["--performance-capture", str(int(values.get("performance_capture", False)))]
+    from order1886 import GRAPHICS_DEFAULTS
+    for key, default in GRAPHICS_DEFAULTS.items():
+        value = values.get(key, default)
+        command += ["--" + key.replace("_", "-"), str(int(value)) if type(value) is bool else str(value)]
     # Live runtime switches stay off the command line unless the player asked for them.
     if values.get("htile_unqualified"):
         command += ["--htile"]
@@ -211,6 +215,7 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         "mods_enabled": saved.get("mods_enabled", False),
         "mod_order": saved.get("mod_order", []),
         "selected_patches": saved.get("selected_patches", []),
+        **{key: saved.get(key, default) for key, default in order1886.GRAPHICS_DEFAULTS.items()},
     }
     for key, allowed, default in (
         ("display_mode", ("windowed", "borderless", "fullscreen"), "borderless"),

@@ -25,7 +25,10 @@ enum DebugView : int { DebugNone = 0, DebugReactive = 1, DebugMotion = 2, DebugV
 inline constexpr int OutputWidths[] = {1280, 1920, 2560, 3840};
 inline constexpr int OutputHeights[] = {720, 1080, 1440, 2160};
 inline constexpr int OutputCount = 4;
-inline constexpr int OutputDefault = 1; ///< 1920x1080, the game's own size
+/// -1: the presentation frame follows the window. Otherwise the frame is created at the
+/// selected size (fit to the game's aspect) and the swapchain blit fits it to the window.
+inline constexpr int OutputAutomatic = -1;
+inline constexpr int OutputDefault = OutputAutomatic;
 
 struct Values {
     std::atomic<int> upscaler{UpscalerOff};
@@ -81,7 +84,7 @@ struct Values {
     std::atomic<bool> fsr4_auto_exposure{false};
     std::atomic<bool> fsr4_invert_jitter{false};
     std::atomic<int> active_render_width{0}, active_render_height{0};
-    std::atomic<int> output_res{OutputDefault}; ///< index into OutputWidths
+    std::atomic<int> output_res{OutputDefault}; ///< index into OutputWidths, or OutputAutomatic
     /// Live resolution and preset changes (run.sh): 0 off by default (startup patch, fastest
     /// on the Steam Deck and older GPUs), -1 auto (strong discrete GPUs), 1 on. On restart.
     std::atomic<int> live_resolution{0};

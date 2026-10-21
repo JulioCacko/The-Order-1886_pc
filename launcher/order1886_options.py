@@ -15,10 +15,6 @@ TEMPORAL = ("Two things are missing: verified Order depth, motion, jitter, histo
 RENDERER = "This setting is not exposed by the validated Order launch profile yet; backend wiring and qualification are pending."
 PATCH = "No hash-verified recipe for this executable is available yet."
 FG = "Frame-generation presentation, synchronization and latency qualification are pending."
-# RCAS is wired to the runtime but the Order profile forces it off, so availability has to say
-# that rather than blaming missing wiring.
-SHARPENING = ("RCAS is wired to the runtime but the Order profile forces it off; the value cannot "
-              "take effect yet.")
 FIELDS = []
 
 
@@ -51,17 +47,19 @@ field("presentation_filter", "Upscaling", "graphics", "select", "fsr1", "Choose 
        ("xess", "Intel XeSS", "The runtime has no XeSS identifier yet, so even a qualified temporal "
         "renderer could not select it (#13).")])
 field("vsync", "VSync", "graphics", "boolean", True, "Synchronize presentation with the display.")
-field("output_resolution", "Output resolution", "graphics", "select", "automatic", "Output dimensions and game-rendered dimensions are reported separately.",
-      [("automatic", "Current runtime default", ""), ("1280x720", "1280 × 720", RENDERER),
-       ("1920x1080", "1920 × 1080", RENDERER), ("2560x1440", "2560 × 1440", RENDERER),
-       ("3840x2160", "3840 × 2160", RENDERER)], reason=RENDERER)
+field("output_resolution", "Output resolution", "graphics", "select", "automatic",
+      "Size of the presented image before it is fitted to the window. The game still renders at its own size, so a larger output is upscaled by the Upscaling filter, not native 4K; a smaller one costs less and is stretched to the window. Output dimensions and game-rendered dimensions are reported separately.",
+      [("automatic", "Match the window", ""), ("1280x720", "1280 × 720 output", ""),
+       ("1920x1080", "1920 × 1080 output", ""), ("2560x1440", "2560 × 1440 output", ""),
+       ("3840x2160", "3840 × 2160 output (upscaled, not native 4K)", "")])
 field("upscale_preset", "Upscaler quality", "graphics", "select", "quality", "Quality presets require a qualified temporal provider.",
       [(x, x.title(), TEMPORAL) for x in ("native", "quality", "balanced", "performance")], reason=TEMPORAL)
 field("sharpness", "Sharpening", "graphics", "number", 0,
-      "RCAS is wired to the runtime but the Order profile forces it off, so the value cannot take effect yet.",
-      reason=SHARPENING, minimum=0, maximum=100)
-field("anisotropy", "Anisotropic filtering", "graphics", "select", 1, "Texture-filter overrides need matched visual validation.",
-      [(x, str(x) + "×", RENDERER) for x in (1, 2, 4, 8, 16)], reason=RENDERER)
+      "RCAS sharpening strength in percent; 0 turns it off. It runs with FSR 1 upscaling, or when the output matches the game's size; with Linear upscaling to a larger output it has no pass to run in.",
+      minimum=0, maximum=100)
+field("anisotropy", "Anisotropic filtering", "graphics", "select", 1,
+      "Raises filtering to at least this level on filtered, mipmapped textures; depth and point-sampled textures keep the game's own sampling. Applies on next launch; visual qualification is pending.",
+      [(x, "Game default" if x == 1 else str(x) + "×", "") for x in (1, 2, 4, 8, 16)])
 for key, label in (("film_grain", "Film grain"), ("motion_blur", "Motion blur"),
                    ("depth_of_field", "Depth of field"), ("chromatic_aberration", "Chromatic aberration"),
                    ("model_detail", "Model detail")):
@@ -92,13 +90,21 @@ field("readbacks", "GPU readback policy", "performance", "select", "relaxed",
        ("precise", "Precise — experimental", ""), ("disabled", "Disabled", "Required buffer readbacks cannot be disabled in the Order profile.")])
 for key, label, default in (("overlay_frametime", "Overlay: frame time", True), ("overlay_gpu", "Overlay: GPU", False),
                             ("overlay_cpu", "Overlay: CPU", False), ("overlay_memory", "Overlay: RAM / VRAM", False)):
-    field(key, label, "performance", "boolean", default, "Individual overlay items are not yet wired to this launch profile.", reason=RENDERER)
-for key, label, kind, default in (("frames_queued", "Queued frames", "number", 2),
-                                ("async_shaders", "Asynchronous shaders", "boolean", False),
-                                ("background_warmup", "Background pipeline warmup", "boolean", False),
-                                ("parallel_warmup", "Parallel pipeline warmup", "boolean", False),
-                                ("speculative_readbacks", "Speculative GPU readbacks", "boolean", False)):
-    field(key, label, "performance", kind, default, "Retain the correctness baseline until this path is qualified.", reason=RENDERER, minimum=1, maximum=4)
+    field(key, label, "performance", "boolean", default, "Shown in the performance overlay when it is on.")
+field("frames_queued", "Queued frames", "performance", "select", 1,
+      "How many frames the GPU command thread may run ahead of the GPU. 1 is the paced baseline; 2 can raise throughput at the cost of latency; Unbounded removes the wait and can make frame delivery bursty.",
+      [(1, "1 — baseline", ""), (2, "2 (unqualified)", ""), (0, "Unbounded (unqualified)", "")])
+UNQUALIFIED = "Off by default: the correctness baseline. Turning it on is unqualified for stability and visuals; use it to help measure the path."
+for key, label, detail in (
+        ("async_shaders", "Asynchronous shaders (unqualified)",
+         "Compile new pipelines off the GPU thread; draws that need one are skipped until it is ready, so stutter becomes brief missing geometry."),
+        ("background_warmup", "Background pipeline warmup (unqualified)",
+         "Load cached pipelines while the game runs instead of on a loading screen before the first frame."),
+        ("parallel_warmup", "Parallel pipeline warmup (unqualified)",
+         "Build cached pipelines on several CPU threads during warmup."),
+        ("speculative_readbacks", "Deferred image readbacks (unqualified)",
+         "Copy GPU-written images back to guest memory later, in batches, instead of waiting at each CPU access.")):
+    field(key, label, "performance", "boolean", False, detail + " " + UNQUALIFIED)
 field("mouse_look", "Mouse camera", "controls", "boolean", True, "Map mouse movement to the game camera; release capture when focus is lost.")
 field("mouse_sensitivity", "Mouse sensitivity", "controls", "number", 100, "Camera sensitivity in percent.", minimum=10, maximum=500)
 field("mouse_invert_y", "Invert vertical camera", "controls", "boolean", False, "Invert vertical mouse movement.")
