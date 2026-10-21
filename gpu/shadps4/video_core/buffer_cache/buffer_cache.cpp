@@ -16,6 +16,7 @@
 #include "video_core/amdgpu/liverpool.h"
 #include "video_core/buffer_cache/buffer.h"
 #include "video_core/buffer_cache/buffer_cache.h"
+#include "video_core/buffer_cache/deferred_readback_merge.h"
 #include "video_core/buffer_cache/memory_tracker.h"
 #include "video_core/renderer_vulkan/vk_graphics_pipeline.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
@@ -100,6 +101,14 @@ BufferCache::BufferCache(const Vulkan::Instance& instance_, Vulkan::Scheduler& s
     bda_pagetable_buffer = std::make_unique<Buffer>(
         instance, 0, bda_pagetable_size, MemoryType::DeviceLocal, "BDA Page Table Buffer");
     runtime.FillBuffer(bda_pagetable_buffer.get(), 0u, bda_pagetable_size, 0u);
+    // Write faults beside GPU-written bytes are deferred instead of waiting for the whole GPU.
+    // Relaxed readbacks only: the snapshot reads guest pages that the other modes keep
+    // read-protected.
+    if (const char* env = std::getenv("ORDER1886_DEFER_BUFFER_READBACK"); env && env[0] == '0') {
+        deferred_readbacks_enabled = false;
+    }
+    deferred_readbacks_enabled = deferred_readbacks_enabled &&
+                                 EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Relaxed;
 }
 
 BufferCache::~BufferCache() = default;
@@ -163,6 +172,21 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
             std::max<VAddr>(Common::AlignDown(device_addr, WindowSize), arena->cpu_addr);
         const VAddr window_end = std::min<VAddr>(
             std::max<VAddr>(window_start + WindowSize, device_addr + size), arena_end);
+        if (is_write && deferred_readbacks_enabled &&
+            !Ps4Toggle::Disabled(Ps4Toggle::DeferredReadbacks)) {
+            bool on_gpu;
+            {
+                std::scoped_lock lock{gpu_ranges_mutex};
+                on_gpu = gpu_modified_ranges.Intersects(device_addr, size);
+            }
+            if (!on_gpu && DeferReadback(arena, window_start, window_end - window_start)) {
+                memory_tracker->MarkRegionAsCpuModified(device_addr, size);
+                return;
+            }
+        }
+        // GPU data of earlier deferred readbacks in this window must reach guest memory
+        // before this readback completes.
+        WaitDeferredReadbacks(window_start, window_end - window_start);
         DownloadMemory(arena, window_start, window_end - window_start);
         if (is_write) {
             memory_tracker->MarkRegionAsCpuModified(device_addr, size);
@@ -214,6 +238,148 @@ void BufferCache::DownloadMemory(const Buffer* arena, VAddr device_addr, u64 siz
                                 copy.size);
     }
     memory_tracker->UnmarkRegionAsGpuModified(device_addr, size);
+}
+
+bool BufferCache::DeferReadback(const Buffer* arena, VAddr device_addr, u64 size) {
+    std::vector<std::pair<VAddr, u64>> pages;
+    memory_tracker->ForEachDownloadRange<false>(
+        device_addr, size, [&](u64 address, u64 range) { pages.emplace_back(address, range); });
+    std::vector<std::pair<VAddr, u64>> parts;
+    u64 total = 0, snapshot_size = 0;
+    {
+        std::scoped_lock lock{gpu_ranges_mutex};
+        for (const auto& [address, range] : pages) {
+            gpu_modified_ranges.ForEachInRange(address, range, [&](VAddr start, VAddr end) {
+                parts.emplace_back(start, end - start);
+                total += Common::AlignUp(end - start, 64);
+                snapshot_size += end - start;
+            });
+        }
+        // Big readbacks (rare, tens of MiB) keep the waiting path: no snapshot that size.
+        constexpr u64 MaxDeferredBytes = 4_MB;
+        if (total > MaxDeferredBytes) {
+            return false;
+        }
+        for (const auto& [address, range] : pages) {
+            gpu_modified_ranges.Subtract(address, range);
+        }
+    }
+    if (total == 0) {
+        memory_tracker->UnmarkRegionAsGpuModified(device_addr, size);
+        return true;
+    }
+    DeferredBatch batch{};
+    batch.staging = staging_pool.Request(total, MemoryType::HostCached, 0, true);
+    batch.snapshot.resize(snapshot_size);
+    std::vector<vk::BufferCopy> copies;
+    u64 offset = 0, snapshot_offset = 0;
+    for (const auto& [addr, part] : parts) {
+        copies.push_back(vk::BufferCopy{
+            .srcOffset = addr - arena->cpu_addr,
+            .dstOffset = batch.staging.offset + offset,
+            .size = part,
+        });
+        memory->CopySparseMemory(addr, batch.snapshot.data() + snapshot_offset, part);
+        batch.items.push_back({addr, part, offset, snapshot_offset});
+        offset += Common::AlignUp(part, 64);
+        snapshot_offset += part;
+    }
+    runtime.CopyBuffer(arena, batch.staging.buffer, copies);
+    batch.tick = scheduler.CurrentTick(); // signalled by the flush that ends this submission
+    {
+        // Pending before the pages stop being GPU-modified: no upload in between takes them.
+        std::scoped_lock lock{deferred_mutex};
+        for (const auto& item : batch.items) {
+            pending_readbacks.Add(item.addr, item.size);
+        }
+        deferred_readbacks.push_back(std::move(batch));
+        has_pending_readbacks.store(true, std::memory_order_relaxed);
+    }
+    memory_tracker->UnmarkRegionAsGpuModified(device_addr, size);
+    return true;
+}
+
+void BufferCache::ApplyDeferredReadbacks() {
+    // Ranges whose guest bytes changed before the GPU data arrived: uploaded again from guest
+    // memory (now merged), outside deferred_mutex (the tracker lock is taken under it in
+    // SynchronizeMemory).
+    std::vector<std::pair<VAddr, u64>> reupload;
+    {
+        std::scoped_lock lock{deferred_mutex};
+        bool applied = false;
+        while (!deferred_readbacks.empty() && scheduler.IsFree(deferred_readbacks.front().tick)) {
+            DeferredBatch batch = std::move(deferred_readbacks.front());
+            deferred_readbacks.pop_front();
+            applied = true;
+            batch.staging.buffer->Invalidate(batch.staging.offset, batch.staging.size);
+            // GPU data goes where the guest left its bytes as they were at the fault.
+            ApplyDeferredBatch(
+                batch, deferred_readbacks,
+                [&](const DeferredItem& item) { return batch.staging.mapped + item.staging_offset; },
+                [&](VAddr addr, u8* dst, u64 size) { memory->CopySparseMemory(addr, dst, size); },
+                [&](VAddr addr, const u8* src, u64 size) {
+                    memory->TryWriteBacking(reinterpret_cast<void*>(addr), src, size);
+                },
+                [&](const DeferredItem& item, u64 changed) {
+                    if (!changed) {
+                        return;
+                    }
+                    std::scoped_lock ranges{gpu_ranges_mutex};
+                    if (!gpu_modified_ranges.Intersects(item.addr, item.size)) {
+                        reupload.emplace_back(item.addr, item.size);
+                    }
+                });
+            staging_pool.FreeDeferred(batch.staging);
+        }
+        if (applied) {
+            pending_readbacks.Clear();
+            for (const auto& batch : deferred_readbacks) {
+                for (const auto& item : batch.items) {
+                    pending_readbacks.Add(item.addr, item.size);
+                }
+            }
+            has_pending_readbacks.store(!deferred_readbacks.empty(), std::memory_order_relaxed);
+        }
+    }
+    for (const auto& [addr, size] : reupload) {
+        memory_tracker->MarkRegionAsCpuModified(addr, size);
+    }
+}
+
+void BufferCache::WaitDeferredReadbacks(VAddr addr, u64 size) {
+    if (!has_pending_readbacks.load(std::memory_order_relaxed)) {
+        return;
+    }
+    u64 needed = 0;
+    {
+        std::scoped_lock lock{deferred_mutex};
+        for (const auto& batch : deferred_readbacks) {
+            for (const auto& item : batch.items) {
+                if (addr < item.addr + item.size && item.addr < addr + size) {
+                    needed = std::max(needed, batch.tick);
+                }
+            }
+        }
+    }
+    if (!needed) {
+        return;
+    }
+    if (!scheduler.IsFree(needed)) {
+        if (needed >= scheduler.CurrentTick()) {
+            scheduler.Finish(); // still being recorded
+        } else {
+            scheduler.Wait(needed);
+        }
+    }
+    ApplyDeferredReadbacks();
+}
+
+bool BufferCache::PendingReadback(VAddr addr, u64 size) {
+    if (!has_pending_readbacks.load(std::memory_order_relaxed)) {
+        return false;
+    }
+    std::scoped_lock lock{deferred_mutex};
+    return pending_readbacks.Intersects(addr, size);
 }
 
 namespace {
@@ -431,7 +597,8 @@ bool BufferCache::IsRegionCpuModified(VAddr addr, size_t size) {
 }
 
 bool BufferCache::IsRegionGpuModified(VAddr addr, size_t size) {
-    return memory_tracker->IsRegionGpuModified(addr, size);
+    // Bytes of a deferred readback are only up to date in the arena.
+    return memory_tracker->IsRegionGpuModified(addr, size) || PendingReadback(addr, size);
 }
 
 void BufferCache::ProcessFaultBuffer() {
@@ -563,11 +730,27 @@ bool BufferCache::SynchronizeMemory(const Buffer* arena, VAddr device_addr, u32 
     boost::container::small_vector<vk::BufferCopy, 4> copies;
     size_t total_size_bytes{};
     const Buffer* src_buffer{};
+    const auto add_copy = [&](u64 addr, u64 size) {
+        copies.emplace_back(total_size_bytes, addr, size);
+        total_size_bytes += size;
+    };
     memory_tracker->ForEachUploadRange(
         device_addr, size, is_written,
         [&](u64 addr, u64 size) {
-            copies.emplace_back(total_size_bytes, addr, size);
-            total_size_bytes += size;
+            // The guest's copy of deferred readback bytes is stale until it arrives; the arena
+            // keeps them.
+            if (!has_pending_readbacks.load(std::memory_order_relaxed)) {
+                add_copy(addr, size);
+                return;
+            }
+            std::scoped_lock lock{deferred_mutex};
+            pending_readbacks.ForEachNotInRange(addr, size, add_copy);
+            // Pending bytes the guest wrote after the fault are newer than the arena's GPU
+            // data (ApplyDeferredReadbacks keeps these bytes in guest memory).
+            ForEachRewrittenPending(
+                deferred_readbacks, addr, size,
+                [&](VAddr src, u8* dst, u64 n) { memory->CopySparseMemory(src, dst, n); },
+                add_copy);
         },
         [&] { src_buffer = UploadCopies(arena, copies, total_size_bytes); });
 

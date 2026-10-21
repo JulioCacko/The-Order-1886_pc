@@ -133,6 +133,8 @@ def run(name, args, output):
         command.append('--show-fps')
     for setting in VARIANTS[name]:
         command += ['--setting', setting]
+    for item in args.env:
+        command += ['--env', item]
     shots = output / 'screens' / name
     shots.mkdir(parents=True)
     timers = [threading.Timer(delay, lambda d=delay: ImageGrab.grab().save(shots / f'screen_{d:g}s.png'))
@@ -196,6 +198,8 @@ def main():
     parser.add_argument('--measure-after', type=float, default=0,
                         help='frame times count only from this many seconds into the trace')
     parser.add_argument('--savedata', type=Path, help='savedata tree copied into the isolated state')
+    parser.add_argument('--env', action='append', default=[], metavar='KEY=VALUE',
+                        help='extra runtime environment for every run, e.g. ORDER1886_FRAME_STATS=1')
     parser.add_argument('--only', nargs='+', choices=list(VARIANTS), help='run a subset (baseline is always run)')
     args = parser.parse_args()
     output = args.output_dir.resolve()
