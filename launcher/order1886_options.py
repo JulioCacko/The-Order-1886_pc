@@ -79,7 +79,7 @@ field("frame_generation", "Frame generation", "performance", "select", "off", "G
        ("xess", "Intel XeSS Frame Generation", FG + " Requires the Windows D3D12 presentation bridge.")], reason=FG)
 field("show_fps", "Performance overlay", "performance", "boolean", True, "Show the runtime performance overlay.")
 field("htile_unqualified", "HTILE metadata adaptation (unqualified)", "performance", "boolean", False,
-      "Off by default. The adapted HTILE metadata clear/read path has no matched gameplay, visual or frame-cost qualification yet (#5), so leave it off unless you are helping to measure it. Turning it on lets metadata clears skip their real shader work and lets buffer reads take the tracked HTILE word instead.")
+      "Off by default. The adapted HTILE metadata read path has no matched gameplay, visual or frame-cost qualification yet (#5), so leave it off unless you are helping to measure it. Turning it on lets buffer reads take the tracked HTILE word instead.")
 field("synchronous_recording", "Synchronous command recording (unqualified)", "performance", "boolean", False,
       "Off by default and unqualified for performance, stability and visuals. The runtime normally records Vulkan commands on its own recording thread and hands them over; turning this on records each command on the thread that submits it, so no work moves between threads. It does not change what the game draws. A runtime honours it only when its build declares the live switch file.")
 field("texture_update_locking", "Locked texture update checks (unqualified)", "performance", "boolean", False,

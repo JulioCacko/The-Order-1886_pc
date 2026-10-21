@@ -1909,11 +1909,10 @@ bool Rasterizer::IsComputeMetaClear(const Pipeline* pipeline) {
     if (!pipeline->IsCompute()) {
         return false;
     }
-    // ORDER1886_HTILE=0 runs the real dispatch: skipping it relies on the adapted
-    // metadata clear heuristic, which is not qualified for gameplay or visuals yet.
-    if (!EmulatorSettings.HtileEnabled()) {
-        return false;
-    }
+    // Not gated by ORDER1886_HTILE: the skip is what marks the slices cleared, and a depth
+    // pass only clears its attachment when they are. Running the real dispatch instead left
+    // gameplay depth uncleared (a flat sky frame), so only the buffer-read substitution
+    // (BufferCache::MaterializeHtile) is gated.
 
     // Most of the time when a metadata is updated with a shader it gets cleared. It means
     // we can skip the whole dispatch and update the tracked state instead. Also, it is not
