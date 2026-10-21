@@ -104,6 +104,9 @@ def main():
             parser.error('State and diagnostics must remain outside the original game directory')
     if output.exists():
         parser.error('--output-dir must be new so previous captures cannot be overwritten')
+    # Copying a seed into a folder inside itself would recurse through its own copy.
+    if args.cache_seed and args.cache_seed.resolve() in (output, *output.parents):
+        parser.error('--output-dir must be outside --cache-seed')
     metadata = order.inspect_game(game)
     runtime = order.find_runtime(args.runtime)
     if runtime is None:
