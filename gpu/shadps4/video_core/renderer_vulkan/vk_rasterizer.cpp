@@ -27,6 +27,7 @@
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_hle.h"
+#include "video_core/renderer_vulkan/vk_temporal_probe.h"
 #include "video_core/texture_cache/image_rejection.h"
 #include "video_core/texture_cache/index_buffer_request.h"
 #include "video_core/texture_cache/image_view.h"
@@ -1282,6 +1283,9 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
         }
     });
     DebugState.IncDispatch();
+    if (cs.pgm_hash == OrderTemporalResolveHash && TemporalProbeEnabled()) {
+        RunTemporalProbe(*this, std::span{bound_images.data(), bound_images.size()});
+    }
 
     // diagnostics: ORDER1886_DIAG_IMAGES=1 writes the images a dispatch read and wrote, after
     // it, while a frame capture records (ORDER1886_CAPTURE_TRIGGER).

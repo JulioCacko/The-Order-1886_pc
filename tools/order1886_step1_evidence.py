@@ -137,6 +137,8 @@ def run(name, args, output):
                '--frame-delay', *map(str, args.delays)]
     if args.frame_capture is not None:
         command += ['--frame-capture', *map(str, args.frame_capture)]
+    if args.temporal_probe:
+        command.append('--temporal-probe')
     if args.dump_shaders:
         command.append('--dump-shaders')
     if args.cache_seed:
@@ -208,6 +210,7 @@ def main():
     parser.add_argument('--frame-rate', type=int, choices=[30, 60], default=60)
     parser.add_argument('--frame-capture', type=float, nargs='+', metavar='SECONDS',
                         help='also record one frame census and its pass images (probe --frame-capture)')
+    parser.add_argument('--temporal-probe', action='store_true', help='also run the temporal input probe (#7)')
     parser.add_argument('--dump-shaders', action='store_true', help='also dump guest and SPIR-V shaders')
     parser.add_argument('--cache-seed', type=Path, help='GPU cache copied into every run (warm start)')
     parser.add_argument('--measure-after', type=float, default=0,

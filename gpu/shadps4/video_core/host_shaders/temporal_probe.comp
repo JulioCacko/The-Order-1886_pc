@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Temporal input probe (#7): run after The Order's own temporal resolve (cs 92311aca) on the
+// same inputs. It resolves the MSAA scene color, keeps it for the next frame, and measures
+// how well the previous frame's resolved color predicts this one at the position the game's
+// velocity gives, for both sign conventions and for no motion at all. Nothing it writes is
+// presented; the sums are read back and logged.
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0) uniform texture2DMS scene_color;
+layout(binding = 1) uniform texture2D velocity;
+layout(binding = 2) uniform sampler2D previous;
+layout(binding = 3, rgba16f) uniform writeonly image2D resolved;
+layout(binding = 4, std430) buffer Sums {
+    uint error[3]; // no motion, +velocity, -velocity; |delta luma| * 4096 (mean deltas stay far from overflow)
+    uint pixels;   // unsaturated moving pixels compared
+    uint saturated;
+    uint moving;
+} sums;
+
+layout(push_constant) uniform Constants {
+    uvec2 size;
+    float scale;     // pixels per velocity unit (constant 63 of the game's pass: 16)
+    uint samples;
+    uint has_previous;
+} pc;
+
+float Luma(vec3 c) {
+    c = max(c, vec3(0.0));
+    vec3 t = c / (1.0 + c);
+    return dot(t, vec3(0.299, 0.587, 0.114));
+}
+
+void main() {
+    const ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(uvec2(p), pc.size))) {
+        return;
+    }
+    vec3 color = vec3(0.0);
+    for (uint s = 0; s < pc.samples; ++s) {
+        color += max(texelFetch(scene_color, p, int(s)).rgb, vec3(0.0));
+    }
+    color /= float(pc.samples);
+    imageStore(resolved, p, vec4(color, 1.0));
+    if (pc.has_previous == 0) {
+        return;
+    }
+
+    // The game's decoding (cs 92311aca): R and G are magnitudes, the 2-bit alpha holds the signs.
+    const vec4 v = texelFetch(velocity, p, 0);
+    const uint signs = uint(round(v.a * 3.0));
+    const vec2 motion = vec2(-v.r * ((signs & 1u) != 0u ? -1.0 : 1.0),
+                             v.g * ((signs & 2u) != 0u ? 1.0 : -1.0));
+    const float magnitude = max(abs(motion.x), abs(motion.y));
+    if (magnitude >= 0.98) {
+        atomicAdd(sums.saturated, 1u);
+        return;
+    }
+    if (magnitude * pc.scale < 0.75) {
+        return; // under a pixel: no hypothesis can be told apart
+    }
+    atomicAdd(sums.moving, 1u);
+    const vec2 center = vec2(p) + 0.5;
+    const vec2 offsets[3] = vec2[3](vec2(0.0), motion * pc.scale, -motion * pc.scale);
+    float deltas[3];
+    for (int i = 0; i < 3; ++i) {
+        const vec2 at = center + offsets[i];
+        if (any(lessThan(at, vec2(1.0))) || any(greaterThan(at, vec2(pc.size) - 1.0))) {
+            return; // compare only pixels every hypothesis can sample
+        }
+        deltas[i] = abs(Luma(textureLod(previous, at / vec2(pc.size), 0.0).rgb) - Luma(color));
+    }
+    for (int i = 0; i < 3; ++i) {
+        atomicAdd(sums.error[i], uint(deltas[i] * 4096.0 + 0.5));
+    }
+    atomicAdd(sums.pixels, 1u);
+}
