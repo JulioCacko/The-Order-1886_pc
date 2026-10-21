@@ -51,8 +51,10 @@ int main(void) {
     /* Without a console a failed assert opens a dialog and the test run waits on it. */
     _set_error_mode(_OUT_TO_STDERR);
 #endif
-    /* Native Windows has no /tmp; the working directory always exists. */
-    const char *tmp=getenv("TMPDIR") ? getenv("TMPDIR") : getenv("TEMP") ? getenv("TEMP") : ".";
+    /* Native Windows has no /tmp; the working directory always exists. Empty counts as unset. */
+    const char *tmp=getenv("TMPDIR");
+    if (!tmp || !*tmp) tmp=getenv("TEMP");
+    if (!tmp || !*tmp) tmp=".";
     char path[1024];
     snprintf(path,sizeof(path),"%s/order1886-pad-test-XXXXXX",tmp);
     int fd=mkstemp(path);
