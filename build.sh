@@ -13,6 +13,10 @@ case $(uname -s) in
 MINGW*|MSYS*)
     # shellcheck source=msys2-env.sh
     source ./msys2-env.sh
+    # MSYS2 bash started from another MSYS runtime (Git Bash, agent shells) drops TMP, TEMP and
+    # TMPDIR, so native tools cannot make temp files: windres stops with "Unable to create temp
+    # file" and pad-test's mkstemp fails. /tmp exists in every MSYS2 install.
+    export TMPDIR=${TMPDIR:-/tmp} TMP=${TMP:-/tmp} TEMP=${TEMP:-/tmp}
     for tool in clang cmake ninja pkg-config; do
         command -v "$tool" >/dev/null || { echo "Need $tool from MSYS2 CLANG64 (docs/order1886-build.md)." >&2; exit 1; }
     done
