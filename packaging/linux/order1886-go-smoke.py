@@ -61,7 +61,10 @@ def main() -> None:
     if not bundled:
         raise SystemExit('No libraries were bundled beside the GPU library.')
     for binary in (package / 'bin/order1886-runtime', gpu / 'libps4gpu.so'):
-        listing = subprocess.run(['ldd', str(binary)], capture_output=True, text=True, check=True).stdout
+        # As a player starts it: no LD_LIBRARY_PATH (the build job points it at /usr/local/lib).
+        plain = {key: value for key, value in os.environ.items() if key != 'LD_LIBRARY_PATH'}
+        listing = subprocess.run(['ldd', str(binary)], capture_output=True, text=True, check=True,
+                                 env=plain).stdout
         for line in listing.splitlines():
             name, _, resolved = line.strip().partition(' => ')
             if 'not found' in resolved:
