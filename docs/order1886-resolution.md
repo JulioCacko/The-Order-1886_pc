@@ -12,9 +12,12 @@ between two different measurements: **what renders the scene, and what presents 
 - **Output size.** The size of the presented image. Graphics → **Output resolution** sets
   it: "Match the window" (the default, `output_res=automatic`) follows the window, and a
   fixed choice (`output_res=2560x1440` and so on) makes the presenter create its frame at
-  that size, fitted to the game's aspect (`Presenter::SetExpectedGameSize`). FSR 1 and
-  RCAS run at that size, and the final swapchain blit fits the result to the window. The
-  runtime prints the chosen output at start (`Settings: output ...`).
+  that size, fitted to the game's aspect (`Presenter::SetExpectedGameSize`). FSR 1 runs
+  only when the game's image is smaller than that size in both dimensions. Sharpening
+  (RCAS) runs with that FSR 1 pass, or alone when the image already matches the output
+  size. With Linear and a larger output, neither runs, so there is no sharpening on that
+  path (`Ps4Graphics::FsrPassRuns`). The final swapchain blit fits the result to the
+  window. The runtime prints the chosen output at start (`Settings: output ...`).
 
 A larger output does not make the scene render larger, and a smaller output does not make
 it render smaller. Any claim that one implies the other is wrong.

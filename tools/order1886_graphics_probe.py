@@ -116,9 +116,11 @@ def main():
                     'show_fps': args.show_fps, 'presentation_filter': args.presentation_filter,
                     'frame_rate': args.frame_rate, 'aspect_ratio': args.aspect_ratio}
         for item in args.setting:
-            key, _, value = item.partition('=')
-            if key not in (*order.GRAPHICS_DEFAULTS, 'fps_cap', 'in_game_menu'):
-                parser.error(f'Unknown graphics setting: {key}')
+            key, separator, value = item.partition('=')
+            if not separator or key not in (*order.GRAPHICS_DEFAULTS, 'fps_cap', 'in_game_menu'):
+                parser.error(f'--setting expects KEY=VALUE with a known graphics setting: {item!r}')
+            if value.lower() in ('true', 'false', 'on', 'off'):
+                value = '1' if value.lower() in ('true', 'on') else '0'
             settings[key] = int(value) if value.isdigit() else value
             if key == 'in_game_menu':
                 settings[key] = bool(settings[key])

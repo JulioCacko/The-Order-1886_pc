@@ -48,6 +48,21 @@ VARIANTS = {
 SHOW_FPS = {'overlay-none', 'overlay-all'}
 
 
+SCANCODES = {'space': 0x39, 'down': 0x50, 'up': 0x48, 'enter': 0x1C}
+
+
+def key_tap(text):
+    """SECONDS:KEY for --keys, checked before any run starts."""
+    at, _, key = text.partition(':')
+    try:
+        seconds = float(at)
+    except ValueError:
+        seconds = -1.0
+    if not 0 <= seconds < float('inf') or key not in SCANCODES:
+        raise argparse.ArgumentTypeError(f'expected SECONDS:KEY with KEY in {", ".join(SCANCODES)}: {text!r}')
+    return seconds, key
+
+
 def press(key):
     """Tap a key in the game window (Space is Cross in runtime_pad.c's default map)."""
     import ctypes
@@ -64,7 +79,7 @@ def press(key):
     user32.keybd_event(0x12, 0, 2, 0)
     if user32.GetForegroundWindow() != found[0]:
         return
-    code = {'space': 0x39, 'down': 0x50, 'up': 0x48, 'enter': 0x1C}[key]
+    code = SCANCODES[key]
     extended = 1 if key in ('down', 'up') else 0
     user32.keybd_event(0, code, 8 | extended, 0)  # KEYEVENTF_SCANCODE
     threading.Event().wait(0.15)
@@ -122,8 +137,7 @@ def run(name, args, output):
     shots.mkdir(parents=True)
     timers = [threading.Timer(delay, lambda d=delay: ImageGrab.grab().save(shots / f'screen_{d:g}s.png'))
               for delay in args.delays]
-    timers += [threading.Timer(float(at), press, (key,)) for at, key in
-               (item.split(':') for item in args.keys)]
+    timers += [threading.Timer(at, press, (key,)) for at, key in args.keys]
     process = subprocess.Popen(command, cwd=ROOT)
     for timer in timers:
         timer.start()
@@ -135,17 +149,22 @@ def run(name, args, output):
     frames = {kind: sorted(to_png(raw) for raw in (folder / 'frames').glob(f'{kind}_*.raw'))
               for kind in ('display', 'output')}
     trace = folder / 'frame-trace-complete.csv'
-    text = (folder / 'frame-trace.csv').read_text(encoding='utf-8')
-    header, *rows = text[:text.rfind('\n')].split('\n')  # drop the row cut by the timeout
-    if args.measure_after and rows:
-        # Keep only the steady scene: rows later than measure_after seconds past the first one.
-        start = int(rows[0].split(',')[1]) + int(args.measure_after * 1e9)
-        rows = [row for row in rows if int(row.split(',')[1]) >= start]
-    trace.write_text('\n'.join([header, *rows]) + '\n', encoding='utf-8', newline='')
-    try:
-        timing = perf_report.measure(trace)
-    except (perf_report.TraceError, OSError) as error:
-        timing = {'error': str(error)}
+    raw_trace = folder / 'frame-trace.csv'
+    text = raw_trace.read_text(encoding='utf-8') if raw_trace.is_file() else ''
+    if '\n' not in text:
+        # A runtime that crashed early may leave no trace, or not even a complete header.
+        timing = {'error': f'{raw_trace.name}: missing or without a complete line'}
+    else:
+        header, *rows = text[:text.rfind('\n')].split('\n')  # drop the row cut by the timeout
+        if args.measure_after and rows:
+            # Keep only the steady scene: rows later than measure_after seconds past the first one.
+            start = int(rows[0].split(',')[1]) + int(args.measure_after * 1e9)
+            rows = [row for row in rows if int(row.split(',')[1]) >= start]
+        trace.write_text('\n'.join([header, *rows]) + '\n', encoding='utf-8', newline='')
+        try:
+            timing = perf_report.measure(trace)
+        except (perf_report.TraceError, OSError) as error:
+            timing = {'error': str(error)}
     return {'settings': VARIANTS[name], 'status': record['status'], 'exit_code': record['exit_code'],
             'settings_line': next((line.strip() for line in log.splitlines() if 'Settings: output' in line), None),
             'frames': {kind: [str(p.relative_to(output)) for p in paths] for kind, paths in frames.items()},
@@ -169,7 +188,7 @@ def main():
     parser.add_argument('--delays', type=float, nargs='+', required=True,
                         help='seconds after launch for each frame dump and screenshot')
     parser.add_argument('--timeout', type=float, required=True)
-    parser.add_argument('--keys', nargs='*', default=[], metavar='SECONDS:KEY',
+    parser.add_argument('--keys', nargs='*', default=[], metavar='SECONDS:KEY', type=key_tap,
                         help='key taps after launch (space, down, up, enter), e.g. 45:space')
     parser.add_argument('--runtime', type=Path, help='runtime to test (default: the built one)')
     parser.add_argument('--frame-rate', type=int, choices=[30, 60], default=60)
