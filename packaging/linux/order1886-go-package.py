@@ -71,14 +71,15 @@ def bundle_libraries(binaries: list[Path], target: Path) -> list[str]:
         binary = pending.pop()
         result = subprocess.run(['ldd', str(binary)], capture_output=True, text=True, check=True)
         for line in result.stdout.splitlines():
-            match = re.match(r'\s*(\S+) => (\S+)', line)
+            # "name => /some path/with spaces.so (0x...)" or "name => not found"
+            match = re.match(r'\s*(\S+) => (.+?)(?: \(0x[0-9a-f]+\))?$', line)
             if not match:
                 continue
             name, resolved = match.groups()
             if name in seen or SYSTEM_LIBRARY.match(name):
                 continue
             seen.add(name)
-            if resolved == 'not':
+            if resolved == 'not found':
                 fail(f'{binary.name} needs {name}, which is not installed on the build machine')
             source = Path(resolved)
             if source.parent == target:

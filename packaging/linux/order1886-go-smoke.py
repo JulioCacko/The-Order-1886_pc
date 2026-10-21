@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -65,7 +66,8 @@ def main() -> None:
             name, _, resolved = line.strip().partition(' => ')
             if 'not found' in resolved:
                 raise SystemExit(f'{binary.name}: {name} is not found')
-            if name in bundled and not Path(resolved.split(' ')[0]).resolve().is_relative_to(gpu):
+            path = re.sub(r' \(0x[0-9a-f]+\)$', '', resolved)  # paths here contain spaces
+            if name in bundled and not Path(path).resolve().is_relative_to(gpu):
                 raise SystemExit(f'{binary.name} loads {name} from outside the package: {resolved}')
 
     with tempfile.TemporaryDirectory(prefix='Order Go smoke ') as temporary:
