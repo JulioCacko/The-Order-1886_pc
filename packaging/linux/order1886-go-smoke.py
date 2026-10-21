@@ -61,6 +61,11 @@ def main() -> None:
     if not bundled:
         raise SystemExit('No libraries were bundled beside the GPU library.')
     for binary in (package / 'bin/order1886-runtime', gpu / 'libps4gpu.so'):
+        # Their own dependencies must come from the package. A library the system stack loads first
+        # (libnuma through a system driver, say) may resolve outside it, which is harmless.
+        dynamic = subprocess.run(['readelf', '-d', str(binary)], capture_output=True, text=True,
+                                 check=True).stdout
+        needed = set(re.findall(r'Shared library: \[([^\]]+)\]', dynamic))
         # As a player starts it: no LD_LIBRARY_PATH (the build job points it at /usr/local/lib).
         plain = {key: value for key, value in os.environ.items() if key != 'LD_LIBRARY_PATH'}
         listing = subprocess.run(['ldd', str(binary)], capture_output=True, text=True, check=True,
@@ -70,7 +75,7 @@ def main() -> None:
             if 'not found' in resolved:
                 raise SystemExit(f'{binary.name}: {name} is not found')
             path = re.sub(r' \(0x[0-9a-f]+\)$', '', resolved)  # paths here contain spaces
-            if name in bundled and not Path(path).resolve().is_relative_to(gpu):
+            if name in needed & bundled and not Path(path).resolve().is_relative_to(gpu):
                 raise SystemExit(f'{binary.name} loads {name} from outside the package: {resolved}')
 
     with tempfile.TemporaryDirectory(prefix='Order Go smoke ') as temporary:
