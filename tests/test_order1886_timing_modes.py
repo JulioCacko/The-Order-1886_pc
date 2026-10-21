@@ -48,6 +48,15 @@ class TimingModeTests(unittest.TestCase):
         # A cap below the engine rate is the only way it changes the presented rate.
         self.assertEqual(order1886.timing_profile({'frame_rate': 60, 'fps_cap': 30})['fps_limit'], 30)
 
+    def test_ninety_keeps_the_cap_rule_and_unlocked_takes_the_cap(self):
+        self.assertEqual(environment({'frame_rate': 90})['ORDER1886_FPS_LIMIT'], '90')
+        self.assertEqual(environment({'frame_rate': 90, 'fps_cap': 60})['ORDER1886_FPS_LIMIT'], '60')
+        for cap in (30, 120, 240):
+            with self.subTest(cap=cap):
+                env = environment({'frame_rate': 0, 'fps_cap': cap})
+                self.assertEqual(env['ORDER1886_FPS_LIMIT'], str(cap))
+                self.assertEqual(env['ORDER1886_VBLANK_HZ'], '60')
+
     def test_vsync_stays_a_presentation_switch(self):
         self.assertFalse(order1886.timing_profile({'frame_rate': 60, 'vsync': False})['vsync'])
         self.assertTrue(order1886.timing_profile({'frame_rate': 60})['vsync'])

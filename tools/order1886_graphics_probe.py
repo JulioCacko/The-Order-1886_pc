@@ -82,7 +82,7 @@ def main():
                         help='Seconds after launch before requesting a frame; one capture per value')
     parser.add_argument('--display-mode', choices=['windowed', 'borderless', 'fullscreen'], default='windowed')
     parser.add_argument('--presentation-filter', choices=['linear', 'fsr1'], default='fsr1')
-    parser.add_argument('--frame-rate', type=int, choices=[30, 60], default=30)
+    parser.add_argument('--frame-rate', type=int, choices=order.timing.RATES, default=30)
     parser.add_argument('--aspect-ratio', choices=['original', '16:9'], default='original')
     parser.add_argument('--frame-trace', action=argparse.BooleanOptionalAction, default=True,
                         help='record guest flips and summarize distinct render-work intervals')
@@ -92,7 +92,7 @@ def main():
     parser.add_argument('--cache-seed', type=Path, help='copy this GPU cache in instead of starting cold')
     parser.add_argument('--setting', action='append', default=[], metavar='KEY=VALUE',
                         help='a launcher graphics setting (order1886.GRAPHICS_DEFAULTS, fps_cap, '
-                             'in_game_menu), repeatable')
+                             'in_game_menu, vsync), repeatable')
     args = parser.parse_args()
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error('--timeout must be finite and positive')
@@ -117,7 +117,7 @@ def main():
                     'frame_rate': args.frame_rate, 'aspect_ratio': args.aspect_ratio}
         for item in args.setting:
             key, separator, value = item.partition('=')
-            if not separator or key not in (*order.GRAPHICS_DEFAULTS, 'fps_cap', 'in_game_menu'):
+            if not separator or key not in (*order.GRAPHICS_DEFAULTS, 'fps_cap', 'in_game_menu', 'vsync'):
                 parser.error(f'--setting expects KEY=VALUE with a known graphics setting: {item!r}')
             if value.lower() in ('true', 'false', 'on', 'off'):
                 value = '1' if value.lower() in ('true', 'on') else '0'

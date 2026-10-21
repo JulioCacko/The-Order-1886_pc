@@ -47,7 +47,7 @@ Estructura adaptada de [mateussmeneses/theorder1886-port](https://github.com/mat
 | --- | --- |
 | Home | Carpeta del juego, opciones rápidas y Play/Stop |
 | Graphics | Pantalla, relación de aspecto, FSR 1/Linear y VSync |
-| Performance | 30 FPS, 60 FPS experimental y overlay F9 |
+| Performance | 30 FPS, 60/90 FPS y Unlocked experimentales, y overlay F9 |
 | Game | Archivos, accesos directos/Steam, guardados, mods de assets y ratón |
 | Advanced | Idioma del launcher, runtime, registros, caché y releases manuales |
 
@@ -66,7 +66,7 @@ Desde el código fuente, ejecuta `Launch The Order 1886.cmd` o el launcher de Go
 
 ## Estado y rendimiento
 
-El launcher ofrece Ventana/Sin bordes/Pantalla completa, VSync y overlay de rendimiento (F9). **60 FPS es opcional y experimental**: falta verificar contenido sensible al tiempo, incluidos los capítulos 6 y 9. El objetivo es salida 3840 × 2160 con reescalado permitido y 60 FPS sostenidos durante gameplay; aún no se ha alcanzado.
+El launcher ofrece Ventana/Sin bordes/Pantalla completa, VSync y overlay de rendimiento (F9). **60 FPS, 90 FPS y Unlocked son opcionales y experimentales**: falta verificar contenido sensible al tiempo, incluidos los capítulos 6 y 9. El objetivo es salida 3840 × 2160 con reescalado permitido y 60 FPS sostenidos durante gameplay; aún no se ha alcanzado.
 
 Consulta el [informe completo del estado actual, en inglés](docs/STATUS.md), la [evidencia del runtime](docs/order1886-runtime-status.md) y el [plan 4K/60](docs/order1886-4k60-verification.md). Un bloqueo anterior del PC requirió reinicio manual; la causa sigue siendo desconocida. Las pruebas de CPU y del launcher no demuestran estabilidad ni jugabilidad.
 

@@ -51,15 +51,18 @@ int main() {
     assert(submissions==10000 && warnings==1 && debug==10000);
     assert(sceVideoOutSubmitFlip(1,-1,1,123)==ORBIS_OK);
     assert(warnings==1);
+    // Mode 2 is the unlocked frame-rate recipe's immediate flip, also submitted every frame.
+    for(int j=0;j<100;++j) assert(sceVideoOutSubmitFlip(1,0,2,123)==ORBIS_OK);
+    assert(warnings==2);
     assert(sceVideoOutSubmitFlip(1,0,77,123)==ORBIS_OK);
     assert(sceVideoOutSubmitFlip(1,0,77,123)==ORBIS_OK);
-    assert(warnings==3);
+    assert(warnings==4);
     assert(sceVideoOutSubmitFlip(1,16,3,123)==ORBIS_VIDEO_OUT_ERROR_INVALID_INDEX);
     instance.port.buffer_slots[0].group_index=-1;
     assert(sceVideoOutSubmitFlip(1,0,3,123)==ORBIS_VIDEO_OUT_ERROR_INVALID_INDEX);
     instance.full=true;
     assert(sceVideoOutSubmitFlip(1,1,3,123)==ORBIS_VIDEO_OUT_ERROR_FLIP_QUEUE_FULL);
-    assert(errors==4 && warnings==3 && submissions==10004);
+    assert(errors==4 && warnings==4 && submissions==10104);
 }
 ''', cxx=True)
 
