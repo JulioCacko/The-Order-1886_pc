@@ -83,7 +83,7 @@ class FrameRateRecipeTests(unittest.TestCase):
 
     def test_unsupported_rate_and_self_hash_are_explicit_errors(self):
         before = self.source.read_bytes()
-        with self.assertRaisesRegex(ValueError, '30 or 60'):
+        with self.assertRaisesRegex(ValueError, '30, 60 or 90'):
             timing.validate_source(self.source, 120, METADATA)
         with self.assertRaisesRegex(ValueError, 'SELF SHA256'):
             timing.validate_source(self.source, 60, METADATA)
@@ -148,6 +148,99 @@ class FrameRateRecipeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'RIP target'):
                     timing.apply_prepared(boot, profile)
             self.assertEqual(hashlib.sha256(boot.read_bytes()).hexdigest(), before_hash)
+
+
+def write_high_rate_fixture(path):
+    """Every 90/unlocked site as the verified executable has it, in a 60-site boot fixture."""
+    image_offset = write_boot_fixture(path) - SITE_RVA
+    with Path(path).open('r+b') as stream:
+        for rva, expected, _ in timing.edits(timing.UNLOCKED) + timing.edits(90):
+            stream.seek(image_offset + rva)
+            stream.write(expected)
+    return image_offset
+
+
+@contextmanager
+def verified_high_rate_source(source, rate):
+    with verified_fixture_source(source):
+        yield timing.validate_source(source, rate, METADATA)
+
+
+class HighRateRecipeTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.base = Path(temporary.name)
+        self.source = self.base / 'original eboot.bin'
+        self.source.write_bytes(b'owned original fixture')
+
+    def test_sites_encode_the_interval_global_and_the_engine_constants(self):
+        for rva, expected, _ in timing.edits(timing.UNLOCKED):
+            if rva != timing.SYNC_ARGUMENTS_RVA:  # mov dword [RIP+disp32], imm32
+                self.assertEqual(rva + 10 + struct.unpack_from('<i', expected, 2)[0], timing.TARGET_GLOBAL_RVA)
+        self.assertEqual(timing.interval_write(SITE_RVA, 2), SIGNATURE)
+        pacer = timing.pacer_instruction(timing.PACER_MICROSECONDS)
+        self.assertEqual(timing.PACER_RVA + 11 + struct.unpack_from('<i', pacer, 3)[0], timing.TARGET_GLOBAL_RVA)
+        self.assertEqual(pacer.hex(), '446935adb1d8001a410000')
+
+    def test_ninety_sets_interval_one_everywhere_and_shortens_the_pacer(self):
+        changes = {rva: new for rva, _, new in timing.edits(90)}
+        self.assertEqual(changes[timing.SYNC_ARGUMENTS_RVA], b'-frontend -syncinterval 1\0')
+        self.assertEqual(sorted(changes), sorted([timing.SYNC_ARGUMENTS_RVA, 0x4507be, 0x7658dd, 0x765b6e,
+                                                  timing.PACER_RVA]))
+        self.assertEqual(struct.unpack_from('<I', changes[timing.PACER_RVA], 7)[0], 11111)
+        self.assertTrue(all(struct.unpack_from('<I', new, 6)[0] == 1 for rva, new in changes.items()
+                            if rva in timing.INTERVAL_WRITES))
+
+    def test_unlocked_sets_interval_zero_at_every_write_and_keeps_the_pacer(self):
+        changes = {rva: new for rva, _, new in timing.edits(timing.UNLOCKED)}
+        self.assertEqual(changes[timing.SYNC_ARGUMENTS_RVA], b'-frontend -syncinterval 0\0')
+        self.assertEqual(sorted(changes), sorted([timing.SYNC_ARGUMENTS_RVA, *timing.INTERVAL_WRITES]))
+        self.assertTrue(all(new[6:] == b'\0' * 4 for rva, new in changes.items() if rva in timing.INTERVAL_WRITES))
+
+    def test_apply_changes_only_the_recipe_bytes(self):
+        for rate in (90, timing.UNLOCKED):
+            with self.subTest(rate=rate):
+                boot = self.base / f'derived {rate}.bin'
+                image_offset = write_high_rate_fixture(boot)
+                before = bytearray(boot.read_bytes())
+                with verified_high_rate_source(self.source, rate) as profile:
+                    result = timing.apply_prepared(boot, profile)
+                after = boot.read_bytes()
+                for rva, _, new in timing.edits(rate):
+                    before[image_offset + rva:image_offset + rva + len(new)] = new
+                self.assertEqual(after, bytes(before))
+                self.assertTrue(result['applied'])
+                self.assertEqual(result['engine_fps'], rate)
+                self.assertIn('Chapter 6 and 9', result['warning'])
+                self.assertEqual(self.source.read_bytes(), b'owned original fixture')
+
+    def test_one_mismatched_site_writes_nothing_and_reapplication_is_rejected(self):
+        boot = self.base / 'derived boot.bin'
+        image_offset = write_high_rate_fixture(boot)
+        with boot.open('r+b') as stream:
+            stream.seek(image_offset + timing.PACER_RVA)
+            stream.write(b'\x90')
+        before = boot.read_bytes()
+        with verified_high_rate_source(self.source, 90) as profile:
+            with self.assertRaisesRegex(ValueError, 'signature mismatch at RVA 0x835b9c'):
+                timing.apply_prepared(boot, profile)
+            self.assertEqual(boot.read_bytes(), before)
+            write_high_rate_fixture(boot)
+            timing.apply_prepared(boot, profile)
+            patched = boot.read_bytes()
+            with self.assertRaisesRegex(ValueError, 'signature mismatch'):
+                timing.apply_prepared(boot, profile)
+            self.assertEqual(boot.read_bytes(), patched)
+
+    def test_stale_recipe_hash_is_refused(self):
+        boot = self.base / 'derived boot.bin'
+        write_high_rate_fixture(boot)
+        before = boot.read_bytes()
+        with verified_high_rate_source(self.source, timing.UNLOCKED) as profile:
+            with self.assertRaisesRegex(ValueError, 'stale'):
+                timing.apply_prepared(boot, {**profile, 'recipe_sha256': timing.recipe_sha256(90)})
+        self.assertEqual(boot.read_bytes(), before)
 
 
 if __name__ == '__main__':

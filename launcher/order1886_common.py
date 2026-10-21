@@ -226,10 +226,10 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
             values[key] = default
     # A saved value the backend cannot honour is a launch-blocking error, not something to rewrite
     # silently: a player who once chose 90 FPS would otherwise be told nothing and run at 30.
-    if type(values["frame_rate"]) is not int or values["frame_rate"] not in (30, 60):
+    if type(values["frame_rate"]) is not int or values["frame_rate"] not in order1886.timing.RATES:
         raise ValueError(
-            f"Saved game frame rate {values['frame_rate']!r} is not supported: the backend accepts 30 or "
-            "60 FPS. Choose one of those, or the higher rates stay unavailable (#14).")
+            f"Saved game frame rate {values['frame_rate']!r} is not supported: the backend accepts 30, "
+            "60 or 90 FPS, or Unlocked (#14).")
     if type(values["mouse_sensitivity"]) is not int or not 10 <= values["mouse_sensitivity"] <= 500:
         values["mouse_sensitivity"] = 100
     return values
