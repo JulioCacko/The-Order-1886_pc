@@ -74,7 +74,7 @@ for key, label, detail in (
         ("chromatic_aberration", "Chromatic aberration", "The colour fringing toward the edges of the lens.")):
     field(key, label, "graphics", "boolean", True, detail + POST_EFFECT)
 field("frame_rate", "Game frame rate", "performance", "select", 30,
-      "30 FPS is native. 60, 90 and Unlocked are experimental: the game clock follows measured time, but Chapter 6/9 QTE checks remain required, and gameplay timing above 60 FPS is unmeasured because the tested scene renders at about 5 FPS on an RTX 3070. Unlocked runs as fast as the presentation frame cap allows; on a 60 Hz display, VSync holds every rate at 60.",
+      "30 FPS is native. 60, 90 and Unlocked are experimental: the game clock follows measured time, but Chapter 6/9 QTE checks remain required, and gameplay timing above 60 FPS is still unmeasured: at 60 FPS the tested courtyard runs at about 53 FPS on an RTX 3070. Unlocked runs as fast as the presentation frame cap allows; on a 60 Hz display, VSync holds every rate at 60.",
       [(30, "30 FPS — native", ""), (60, "60 FPS — experimental", ""),
        (90, "90 FPS — experimental", ""), (0, "Unlocked — experimental", "")])
 field("in_game_menu", "In-game settings menu", "performance", "boolean", False, "Off by default. The menu, its tabs and the settings it changes while the game runs are unqualified for this title: input capture, focus and stability have not been verified in gameplay, so enable it only to help test it. Insert or R3+R2 toggles it when enabled.")
