@@ -59,9 +59,10 @@ class ReadBackingTests(unittest.TestCase):
 using u32=uint32_t; using u64=uint64_t; using VAddr=u64;
 #define LOG_TRACE(...) ((void)0)
 namespace Shader { enum class SwStage { Compute }; }
-// The runtime gate reads ORDER1886_HTILE and is off by default; this fixture models
-// a player who opted in, which is the path the recognizer asserts.
-static struct { bool HtileEnabled() const { return true; } } EmulatorSettings;
+// ORDER1886_HTILE is off by default and must not stop a clear from being recognised:
+// that skip is what marks depth cleared. The fixture models the default, so a gate
+// added back to the recognizer fails the supported case below.
+[[maybe_unused]] static struct { bool HtileEnabled() const { return false; } } EmulatorSettings;
 struct Sharp { u64 base_address=0x1000, size=16; u64 GetSize() const { return size; } };
 struct Info;
 struct Desc { bool is_written=true; Sharp sharp; bool IsSpecial() const { return false; }

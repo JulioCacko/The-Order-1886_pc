@@ -34,8 +34,8 @@ public:
         }();
         return value;
     }
-    // ORDER1886_HTILE=1 opts into the adapted HTILE metadata path: a metadata clear
-    // may skip its real dispatch, and a buffer read may take the tracked HTILE word.
+    // ORDER1886_HTILE=1 opts into the adapted HTILE read path: a buffer read may take the
+    // tracked HTILE word. Metadata clears skip their dispatch either way (IsComputeMetaClear).
     // Off by default because that path has no matched gameplay, visual or frame-cost
     // qualification yet, and because a scene that renders wrongly must stay fixable
     // without rebuilding the runtime.
