@@ -27,7 +27,7 @@ import time
 
 SCRIPTS = (
     'prepare.py', 'link_modules.py', 'link_libc.py', 'save_backup.py',
-    'order1886_frame_rate.py', 'order1886_display.py', 'order1886_cache.py',
+    'order1886_frame_rate.py', 'order1886_display.py', 'order1886_post_effects.py', 'order1886_cache.py',
     'order1886_steam.py', 'order1886_mods.py', 'order1886_trophy_history.py',
     'order1886_input.py', 'order1886_frame_trace.py', 'order1886_perf_report.py',
     # order1886.py imports this by name from the shipped scripts/ directory.
