@@ -60,10 +60,19 @@ field("sharpness", "Sharpening", "graphics", "number", 0,
 field("anisotropy", "Anisotropic filtering", "graphics", "select", 1,
       "Raises filtering to at least this level on filtered, mipmapped textures; depth and point-sampled textures keep the game's own sampling. Applies on next launch; visual qualification is pending.",
       [(x, "Game default" if x == 1 else str(x) + "×", "") for x in (1, 2, 4, 8, 16)])
-for key, label in (("film_grain", "Film grain"), ("motion_blur", "Motion blur"),
-                   ("depth_of_field", "Depth of field"), ("chromatic_aberration", "Chromatic aberration"),
-                   ("model_detail", "Model detail")):
-    field(key, label, "graphics", "boolean", True, "Preserve the original effect until a verified game-specific control is implemented (#16).", reason=PATCH)
+# Each switch edits the prepared copy of the executable (scripts/order1886_post_effects.py) so the
+# game takes its own path for a lens without that effect. There is no model-detail switch: the
+# only level-of-detail control found in the executable is a frame-capture flag with no located
+# reader, so offering one would be a placebo (#16).
+POST_EFFECT = (" On is the original image. Off zeroes the effect's strength in a hash-checked prepared "
+               "copy of the executable, applied on next launch; the original game files stay unchanged "
+               "and gameplay with the effect off is unqualified.")
+for key, label, detail in (
+        ("film_grain", "Film grain", "The animated grain noise laid over the final image."),
+        ("motion_blur", "Motion blur", "The camera and object motion blur of the full-screen effects pass."),
+        ("depth_of_field", "Depth of field", "The out-of-focus blur of cutscenes and aiming; distance fog blur is kept."),
+        ("chromatic_aberration", "Chromatic aberration", "The colour fringing toward the edges of the lens.")):
+    field(key, label, "graphics", "boolean", True, detail + POST_EFFECT)
 field("frame_rate", "Game frame rate", "performance", "select", 30,
       "30 FPS is native. 60, 90 and Unlocked are experimental: the game clock follows measured time, but Chapter 6/9 QTE checks remain required, and gameplay timing above 60 FPS is unmeasured because the tested scene renders at about 5 FPS on an RTX 3070. Unlocked runs as fast as the presentation frame cap allows; on a 60 Hz display, VSync holds every rate at 60.",
       [(30, "30 FPS — native", ""), (60, "60 FPS — experimental", ""),

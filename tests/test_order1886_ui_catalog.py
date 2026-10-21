@@ -60,11 +60,11 @@ class UiCatalogTests(unittest.TestCase):
                     self.assertTrue(lang.table(locale).get(key, '').strip())
 
     def test_untranslated_keys_are_counted_and_can_only_shrink(self):
-        # 75 UI keys are translated by order1886_lang_ui_translations.py; everything else
+        # 74 UI keys are translated by order1886_lang_ui_translations.py; everything else
         # is English on purpose, which docs/order1886-localization-policy.md enumerates.
         # The count is derived, so a translator shrinking it never breaks this test, while
         # dropping a translation does: the translated total is pinned separately below.
-        expected = {locale: len(lang.UI_KEYS) - 75 for locale in lang.LANGUAGES if locale != 'en'}
+        expected = {locale: len(lang.UI_KEYS) - 74 for locale in lang.LANGUAGES if locale != 'en'}
         for locale, count in expected.items():
             with self.subTest(locale=locale):
                 self.assertEqual(len(lang.untranslated(locale)), count)
@@ -74,7 +74,7 @@ class UiCatalogTests(unittest.TestCase):
             if locale == 'en':
                 continue
             with self.subTest(locale=locale):
-                self.assertEqual(len(UI_TRANSLATIONS[locale]), 75,
+                self.assertEqual(len(UI_TRANSLATIONS[locale]), 74,
                                  'the translated subset is pinned; add keys to the policy doc first')
 
     def test_english_is_the_source_text(self):

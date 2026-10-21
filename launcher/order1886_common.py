@@ -99,6 +99,11 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
         command += ["--runtime", values["runtime"]]
     # Catalogued recipes the player selected travel to preparation, where each one is
     # validated against the build identity and its expected bytes before any edit.
+    # A post effect the player turned off travels to preparation, which patches a prepared copy.
+    from order1886 import post_effects
+    disabled = [key for key in post_effects.EFFECTS if values.get(key, True) is False]
+    if disabled:
+        command += ["--disable-effects", ",".join(disabled)]
     selected = values.get("selected_patches") or []
     if selected:
         command += ["--patches", ",".join(str(name) for name in selected)]
@@ -216,6 +221,7 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         "mod_order": saved.get("mod_order", []),
         "selected_patches": saved.get("selected_patches", []),
         **{key: saved.get(key, default) for key, default in order1886.GRAPHICS_DEFAULTS.items()},
+        **{key: bool(saved.get(key, True)) for key in order1886.post_effects.EFFECTS},
     }
     for key, allowed, default in (
         ("display_mode", ("windowed", "borderless", "fullscreen"), "borderless"),
@@ -248,6 +254,9 @@ def validate_launch_game(game: Path, values: dict) -> None:
     try:
         order1886.timing.validate_source(game / "eboot.bin", values.get("frame_rate", 30), metadata)
         order1886.display.validate_source(game / "eboot.bin", values.get("aspect_ratio", "original"), metadata)
+        order1886.post_effects.validate_source(
+            game / "eboot.bin", [key for key in order1886.post_effects.EFFECTS if values.get(key, True) is False],
+            metadata)
     except ValueError as exc:
         raise ValueError(translate(
             "Selected settings do not match this executable. Detected APP_VER {app_ver}, VERSION {version}.\n\n"
