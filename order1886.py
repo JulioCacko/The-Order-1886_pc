@@ -362,6 +362,7 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     if type(system_language) is not int or not 0 <= system_language <= 29:
         raise ValueError('System language must be an integer from 0 to 29')
     profile = timing_profile(settings)
+    graphics = graphics_settings(settings)
     env = runtime_process_environment(runtime, inherited)
     env.update({
         'ORDER1886_CONFIG': str(user / 'runtime.ini'), 'ORDER1886_USER_DIR': str(user),
@@ -371,9 +372,12 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
         # Off by default: the HTILE adaptation is unqualified for gameplay, visuals
         # and frame cost, so a player can keep it out of the launch path.
         'ORDER1886_HTILE': '1' if htile else '0',
-        # Reuse validated cached pipelines before playback rather than compiling during it.
-        'ORDER1886_PIPELINE_BINARIES': '0', 'ORDER1886_BACKGROUND_WARMUP': '0',
-        'ORDER1886_PARALLEL_WARMUP': '0',
+        # Reuse validated cached pipelines before playback rather than compiling during it,
+        # unless the player opted in to warming them up while the game runs.
+        'ORDER1886_PIPELINE_BINARIES': '0',
+        'ORDER1886_BACKGROUND_WARMUP': '1' if graphics['background_warmup'] else '0',
+        'ORDER1886_PARALLEL_WARMUP': '1' if graphics['parallel_warmup'] else '0',
+        'ORDER1886_DEFERRED_READBACK': '1' if graphics['speculative_readbacks'] else '0',
         # Keep unverified speculative SRT work off the normal Order launch path.
         'ORDER1886_PREP_WORKERS': '0',
         # Opt-in: the in-game menu and the settings it edits live are unqualified.
@@ -467,6 +471,31 @@ def menu_settings_import(state, values):
         changed['frame_rate'] = limit
     return changed
 
+OUTPUT_RESOLUTIONS = ('automatic', '1280x720', '1920x1080', '2560x1440', '3840x2160')
+# Launcher key -> default. Booleans arrive as bool from settings.json and as 0/1 from the CLI.
+GRAPHICS_DEFAULTS = {'output_resolution': 'automatic', 'sharpness': 0, 'anisotropy': 1, 'frames_queued': 1,
+                     'overlay_frametime': True, 'overlay_gpu': False, 'overlay_cpu': False,
+                     'overlay_memory': False, 'async_shaders': False, 'background_warmup': False,
+                     'parallel_warmup': False, 'speculative_readbacks': False}
+
+
+def graphics_settings(settings):
+    """Validate the launcher's graphics and runtime-path settings; every one reaches the runtime."""
+    values = {key: settings.get(key, default) for key, default in GRAPHICS_DEFAULTS.items()}
+    if values['output_resolution'] not in OUTPUT_RESOLUTIONS:
+        raise ValueError('Invalid output resolution')
+    for key, allowed in (('sharpness', range(0, 101)), ('anisotropy', (1, 2, 4, 8, 16)),
+                         ('frames_queued', (0, 1, 2))):
+        if type(values[key]) is not int or values[key] not in allowed:
+            raise ValueError(f'Invalid {key.replace("_", " ")}: {values[key]!r}')
+    for key, default in GRAPHICS_DEFAULTS.items():
+        if type(default) is bool:
+            if values[key] not in (True, False, 0, 1):
+                raise ValueError(f'{key.replace("_", " ").capitalize()} must be on or off')
+            values[key] = bool(values[key])
+    return values
+
+
 def write_runtime_config(user, settings):
     sensitivity = settings.get('mouse_sensitivity', 100)
     if type(sensitivity) is not int or not 10 <= sensitivity <= 500:
@@ -479,11 +508,21 @@ def write_runtime_config(user, settings):
         raise ValueError('Invalid presentation filter')
     frame_rate = timing.validate_frame_rate(settings.get('frame_rate', 30))
     profile = timing_profile(settings)
+    graphics = graphics_settings(settings)
+    memory = int(graphics['overlay_memory'])
     values = {'display_mode': mode, 'vsync': int(bool(settings.get('vsync', True))),
               'show_fps': int(bool(settings.get('show_fps', False))),
               'fps_limit': profile['fps_limit'] if profile['fps_limit'] is not None else 0,
-              'render_resolution': 'native', 'presentation_filter': presentation_filter, 'frames_queued': 1,
-              'overlay_fps': 1, 'overlay_frametime': 1, 'overlay_gpu': 1,
+              'render_resolution': 'native', 'presentation_filter': presentation_filter,
+              'output_res': graphics['output_resolution'],
+              'rcas': int(graphics['sharpness'] > 0), 'rcas_strength': graphics['sharpness'],
+              # The runtime's "off" is 0; the launcher shows it as the game's own 1x.
+              'anisotropy': 0 if graphics['anisotropy'] == 1 else graphics['anisotropy'],
+              'frames_queued': graphics['frames_queued'],
+              'async_shaders': int(graphics['async_shaders']),
+              'overlay_fps': 1, 'overlay_frametime': int(graphics['overlay_frametime']),
+              'overlay_gpu': int(graphics['overlay_gpu']),
+              'overlay_cpu': int(graphics['overlay_cpu']), 'overlay_ram': memory, 'overlay_vram': memory,
               'mouse_look': int(bool(settings.get('mouse_look', True))),
               'mouse_sensitivity': sensitivity,
               'mouse_invert_y': int(bool(settings.get('mouse_invert_y', False)))}
@@ -632,6 +671,17 @@ def argument_parser():
     parser.add_argument('--performance-capture', type=int, choices=[0, 1], default=0,
                         help='Record frame times and slow-frame diagnostics in session logs')
     parser.add_argument('--show-fps', type=int, choices=[0, 1], default=0)
+    parser.add_argument('--output-resolution', choices=OUTPUT_RESOLUTIONS, default='automatic',
+                        help='Presented image size before it is fitted to the window; not an internal render size')
+    parser.add_argument('--sharpness', type=int, choices=range(0, 101), default=0,
+                        help='RCAS sharpening strength in percent; 0 is off')
+    parser.add_argument('--anisotropy', type=int, choices=[1, 2, 4, 8, 16], default=1)
+    parser.add_argument('--frames-queued', type=int, choices=[0, 1, 2], default=1,
+                        help='Frames the GPU command thread may run ahead; 0 is unbounded')
+    for name, default in (('overlay-frametime', 1), ('overlay-gpu', 0), ('overlay-cpu', 0),
+                          ('overlay-memory', 0), ('async-shaders', 0), ('background-warmup', 0),
+                          ('parallel-warmup', 0), ('speculative-readbacks', 0)):
+        parser.add_argument('--' + name, type=int, choices=[0, 1], default=default)
     parser.add_argument('--mouse-look', type=int, choices=[0, 1], default=1)
     parser.add_argument('--mouse-sensitivity', type=int, default=100,
                         help='Mouse-to-stick sensitivity, 10 to 500 percent (default: 100)')
@@ -768,7 +818,8 @@ def main(argv=None):
                                     'performance_capture': bool(args.performance_capture),
                                     'frame_rate': args.frame_rate,
                                     'fps_limit': timing_values['fps_limit'],
-                                    'aspect_ratio': args.aspect_ratio, 'system_language': args.system_language}}
+                                    'aspect_ratio': args.aspect_ratio, 'system_language': args.system_language,
+                                    **graphics_settings(vars(args))}}
             write_json(logs / 'last-run.json', report)
             emit_status(f'Log: {log}', fallback=diagnostic_log)
             emit_status(f'Runtime: {report["runtime"]} | SHA256 {report["runtime_sha256"]}', fallback=diagnostic_log)

@@ -9,8 +9,15 @@ between two different measurements: **what renders the scene, and what presents 
   and has no setting that changes it: `render_resolution` is written as `native` into
   `runtime.ini` (`order1886.py`, `write_runtime_config`) meaning "the guest's own size",
   not "4K".
-- **Output size.** The window or display the finished image is presented to. Presentation
-  scaling happens here, after the frame exists.
+- **Output size.** The size of the presented image. Graphics → **Output resolution** sets
+  it: "Match the window" (the default, `output_res=automatic`) follows the window, and a
+  fixed choice (`output_res=2560x1440` and so on) makes the presenter create its frame at
+  that size, fitted to the game's aspect (`Presenter::SetExpectedGameSize`). FSR 1 runs
+  only when the game's image is smaller than that size in both dimensions. Sharpening
+  (RCAS) runs with that FSR 1 pass, or alone when the image already matches the output
+  size. With Linear and a larger output, neither runs, so there is no sharpening on that
+  path (`Ps4Graphics::FsrPassRuns`). The final swapchain blit fits the result to the
+  window. The runtime prints the chosen output at start (`Settings: output ...`).
 
 A larger output does not make the scene render larger, and a smaller output does not make
 it render smaller. Any claim that one implies the other is wrong.
@@ -38,12 +45,10 @@ need are tracked in #7, and the providers themselves in #10–#13.
 
 Nothing in this project renders the scene at 3840×2160 today:
 
-- `output_resolution` is **unavailable** with a reason, and every fixed choice in it
-  (1280×720 … 3840×2160) is unavailable too. Only "current runtime default" is offered.
-- The runtime's 3840×2160 path exists as an output enum, but no upscaler consumes it and
-  the launcher never selects it.
-- `tests/test_order1886_native_resolution.py` fails if any available setting's label or
-  description mentions 3840 or 4K, so a 4K claim cannot be smuggled in as a toggle.
+- `output_resolution` offers 3840×2160 as an **output**: the game's own frame upscaled by
+  the Upscaling filter to that size. Its label says "upscaled, not native 4K".
+- `tests/test_order1886_native_resolution.py` fails if an available choice mentions 3840 or
+  4K without saying it is not native 4K, so a 4K claim cannot be smuggled in as a toggle.
 
 Establishing native 4K feasibility needs a matched capture on real hardware: internal and
 output dimensions, scaling settings, build and image quality recorded together. That is
@@ -51,7 +56,7 @@ the remaining acceptance work on #2, and this document deliberately does not pre
 
 ## What to record in a report about resolution
 
-1. The output the window is presented at.
+1. The window size and the `output_res` in `runtime.ini`.
 2. The internal size the runtime reports for that session (the runtime prints it; the
    launcher's Performance page reports configured values, not measured ones).
 3. The `presentation_filter` in `runtime.ini`.

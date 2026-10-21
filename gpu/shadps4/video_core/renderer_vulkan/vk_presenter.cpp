@@ -1057,6 +1057,12 @@ void Presenter::SetExpectedGameSize(s32 width, s32 height) {
     if (width <= 0 || height <= 0) {
         return; // no surface (minimized window): keep the last frame size
     }
+    // A selected output resolution replaces the window size: FSR 1 / RCAS render at that
+    // size and the swapchain blit fits the result to the window.
+    if (const int out = Ps4Settings::Get().startup_output_res; out != Ps4Settings::OutputAutomatic) {
+        width = Ps4Settings::OutputWidths[out];
+        height = Ps4Settings::OutputHeights[out];
+    }
     const float ratio = (float)width / (float)height;
 
     expected_frame_height = height;

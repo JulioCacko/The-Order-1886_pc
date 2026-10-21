@@ -125,6 +125,7 @@ void Set(Values& v, const std::string& key, const std::string& value) {
     } else if (key == "live_resolution") {
         v.live_resolution = value == "auto" ? -1 : std::clamp(i, 0, 1);
     } else if (key == "output_res") {
+        v.output_res = OutputAutomatic;
         for (int r = 0; r < OutputCount; ++r) {
             if (value == std::to_string(OutputWidths[r]) + "x" + std::to_string(OutputHeights[r])) {
                 v.output_res = r;
@@ -179,13 +180,12 @@ void Load() {
             Set(v, key, value);
         }
     }
-    // No inherited engine reconstruction, cheats, HUD, or speculative readbacks.
+    // No inherited engine reconstruction, cheats, HUD, or speculative readbacks. Sharpening
+    // (rcas) and asynchronous shaders are launcher settings and keep the values read above.
     v.upscaler = UpscalerOff;
     v.object_motion = false;
     v.jitter = false;
-    v.rcas = false;
     v.live_resolution = 0;
-    v.async_shaders = false;
     v.deferred_readback = false;
     v.stale_readback = false;
     v.startup_preset = v.preset;
@@ -196,6 +196,14 @@ void Load() {
     v.startup_deferred_readback = v.deferred_readback;
     v.startup_stale_readback = v.stale_readback;
     v.startup_anisotropy = v.anisotropy;
+    const int out = v.output_res;
+    std::printf("Settings: output %s, sharpening %s (%d), anisotropy %d, async shaders %d, "
+                "frames queued %d, overlay items 0x%x\n",
+                out == OutputAutomatic ? "window"
+                                       : (std::to_string(OutputWidths[out]) + "x" +
+                                          std::to_string(OutputHeights[out])).c_str(),
+                v.rcas ? "on" : "off", v.rcas_strength.load(), v.anisotropy.load(),
+                int(v.async_shaders.load()), v.frames_queued.load(), v.overlay_items.load());
 }
 
 bool GraphicsNeedRestart() {

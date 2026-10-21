@@ -140,7 +140,8 @@ int main() {
         out << "presentation_filter=fsr1\nfsr1=0\nrcas=1\nupscaler=fsr4\nobject_motion=1\n";
     }
     Ps4Settings::Load();
-    assert(v.fsr1 && !v.rcas && !v.object_motion && v.upscaler == Ps4Settings::UpscalerOff);
+    // Sharpening is a launcher setting now; engine reconstruction stays forced off.
+    assert(v.fsr1 && v.rcas && !v.object_motion && v.upscaler == Ps4Settings::UpscalerOff);
     Ps4Settings::Save();
     assert(Read(path).find("presentation_filter=fsr1\n") != std::string::npos);
     {

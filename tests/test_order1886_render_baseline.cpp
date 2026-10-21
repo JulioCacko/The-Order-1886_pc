@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <type_traits>
@@ -59,6 +60,29 @@ int main() {
     assert(defaults.startup_upscaler == Ps4Settings::UpscalerOff);
     assert(!defaults.startup_object_motion && !defaults.startup_deferred_readback &&
            !defaults.startup_stale_readback);
+    assert(defaults.output_res == Ps4Settings::OutputAutomatic);
+    // Any launcher cap from 30 to 240 is honoured as written; 0 stays uncapped.
+    assert(Ps4Graphics::ParseFpsLimit(45) == 45 && Ps4Graphics::ParseFpsLimit(0) == 0);
+    assert(Ps4Graphics::ParseFpsLimit(10) == 30 && Ps4Graphics::ParseFpsLimit(500) == 240);
+    // Launcher settings survive Load(): sharpening, async shaders and output size are no
+    // longer forced off after the file is read.
+    {
+        const char* ini = "order1886_render_baseline_test.ini";
+        FILE* file = std::fopen(ini, "w");
+        std::fputs("rcas=1\nrcas_strength=40\nasync_shaders=1\noutput_res=3840x2160\nfps_limit=45\n", file);
+        std::fclose(file);
+#ifdef _WIN32
+        _putenv_s("ORDER1886_CONFIG", ini);
+#else
+        setenv("ORDER1886_CONFIG", ini, 1);
+#endif
+        Ps4Settings::Load();
+        const auto& loaded = Ps4Settings::Get();
+        assert(loaded.rcas && loaded.rcas_strength == 40 && loaded.async_shaders);
+        assert(loaded.startup_output_res == 3 && loaded.fps_limit == 45);
+        assert(loaded.upscaler == Ps4Settings::UpscalerOff);
+        std::remove(ini);
+    }
     AmdGpu::no_msaa.store(true);
     assert(!AmdGpu::NoMsaa());
     using Factor = AmdGpu::BlendControl::BlendFactor;

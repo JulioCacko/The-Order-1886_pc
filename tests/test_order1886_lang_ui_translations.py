@@ -123,7 +123,7 @@ class CatalogueWiringTests(unittest.TestCase):
     def test_the_untouched_keys_stay_english_on_purpose(self):
         for locale in UI_TRANSLATIONS:
             for key in ("HTILE metadata adaptation (unqualified)", "VSync", "VBlank",
-                        "GPU readback policy", "Speculative GPU readbacks"):
+                        "GPU readback policy", "Deferred image readbacks (unqualified)"):
                 with self.subTest(locale=locale, key=key):
                     self.assertEqual(lang.table(locale)[key], key)
 

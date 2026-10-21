@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include <algorithm>
 #include <array>
 #include <string_view>
 namespace Ps4Graphics {
@@ -14,7 +15,9 @@ inline int IndexOf(const auto& values, const auto& value, int fallback = 0) {
     return fallback;
 }
 inline int ParseDisplayMode(std::string_view value) { return IndexOf(DisplayModeKeys, value); }
-inline int ParseFpsLimit(int value) { return IndexOf(FpsLimits, value, -1) >= 0 ? value : 0; }
+/// 0 is uncapped; any other cap is honoured within the launcher's 30-240 range (FpsLimits are
+/// only the menu's presets).
+inline int ParseFpsLimit(int value) { return value <= 0 ? 0 : std::clamp(value, 30, 240); }
 inline constexpr std::array<int, 5> Anisotropies = {0, 2, 4, 8, 16};
 inline int ParseAnisotropy(int value) { return IndexOf(Anisotropies, value, -1) >= 0 ? value : 0; }
 inline constexpr std::array<int, 3> FramesQueued = {1, 2, 0};

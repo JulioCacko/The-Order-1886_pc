@@ -44,23 +44,26 @@ class OriginalResolutionPathTests(unittest.TestCase):
         self.assertEqual(values['presentation_filter'], 'fsr1')
         self.assertEqual(values['render_resolution'], 'native')
 
-    def test_output_resolution_stays_unavailable_with_a_reason(self):
+    def test_output_resolution_is_an_output_size_not_an_internal_render(self):
         select = field('output_resolution')
-        self.assertFalse(select['available'])
+        self.assertTrue(select['available'])
         self.assertIn('separately', select['description'].lower())
+        self.assertIn('not native 4k', select['description'].lower())
         for choice in select['choices']:
             if choice['value'] != 'automatic':
-                self.assertFalse(choice['available'])
-                self.assertTrue(choice['reason'])
+                self.assertIn('output', choice['label'].lower())
+        values = runtime_settings({'output_resolution': '2560x1440'})
+        self.assertEqual(values['output_res'], '2560x1440')
+        self.assertEqual(values['render_resolution'], 'native')
 
     def test_the_launcher_does_not_configure_a_four_k_internal_render(self):
-        # No selectable choice may offer 4K, and a description may only mention it to deny
-        # it, so a "native 4K" claim cannot be smuggled in as a toggle.
+        # A selectable 4K choice must say it is an upscaled output, and a description may only
+        # mention 4K to deny it, so a "native 4K" claim cannot be smuggled in as a toggle.
         for item in options.FIELDS:
             for choice in item.get('choices', []):
                 text = choice['label'].lower()
-                if '3840' in text or '4k' in text:
-                    self.assertFalse(choice['available'], f"{item['key']}: {choice['label']}")
+                if ('3840' in text or '4k' in text) and choice['available']:
+                    self.assertIn('not native 4k', text, f"{item['key']}: {choice['label']}")
             if item['available']:
                 text = (item['label'] + ' ' + item['description']).lower()
                 if '3840' in text or '4k' in text:
