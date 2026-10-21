@@ -60,7 +60,7 @@ jobs:
             libvulkan-memory-allocator-dev \
             libasound2-dev libpulse-dev libudev-dev \
             glslang-dev glslang-tools spirv-tools spirv-headers spirv-cross \
-            zlib1g-dev libssl-dev
+            zlib1g-dev libssl-dev patchelf
       - name: Select a compiler that supports C++23 explicit object parameters
         # The shader compiler uses `auto& f(this Self& self, ...)`. clang and MSVC accept it; GCC 13,
         # which noble ships, does not, so the Linux build uses clang - the same family the Windows

@@ -53,6 +53,21 @@ def main() -> None:
     if not os.access(package / 'The Order 1886', os.X_OK):
         raise SystemExit('The launcher is not executable in the package.')
 
+    # Every library the packager bundled must be the one the runtime loads, so a machine without the
+    # build host's FFmpeg, SDL3, fmt or Zydis still starts it.
+    gpu = package / 'bin/gpu'
+    bundled = {path.name for path in gpu.iterdir()} - {'libps4gpu.so'}
+    if not bundled:
+        raise SystemExit('No libraries were bundled beside the GPU library.')
+    for binary in (package / 'bin/order1886-runtime', gpu / 'libps4gpu.so'):
+        listing = subprocess.run(['ldd', str(binary)], capture_output=True, text=True, check=True).stdout
+        for line in listing.splitlines():
+            name, _, resolved = line.strip().partition(' => ')
+            if 'not found' in resolved:
+                raise SystemExit(f'{binary.name}: {name} is not found')
+            if name in bundled and not Path(resolved.split(' ')[0]).resolve().is_relative_to(gpu):
+                raise SystemExit(f'{binary.name} loads {name} from outside the package: {resolved}')
+
     with tempfile.TemporaryDirectory(prefix='Order Go smoke ') as temporary:
         root = Path(temporary) / 'Portable ç 日本語'
         shutil.copytree(package, root, symlinks=True)

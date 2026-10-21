@@ -19,11 +19,23 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import tarfile
 import time
+
+# Libraries every Linux desktop with a Vulkan driver provides, and that must come from the system:
+# the C/C++ runtime, the Vulkan loader and the graphics, display and audio stacks the drivers and
+# SDL load. Everything else the runtime links is bundled, so the package does not depend on the
+# build machine's FFmpeg, SDL3, fmt or Zydis versions.
+SYSTEM_LIBRARY = re.compile(
+    r'^(ld-linux.*|lib(c|m|dl|rt|pthread|util|resolv|anl|stdc\+\+|gcc_s|atomic)\.so.*'
+    r'|libvulkan\.so.*|lib(GL|GLX|EGL|GLdispatch|OpenGL|gbm|drm|va|va-drm|va-x11|vdpau)\b.*'
+    r'|lib(X|x)[^/]*\.so.*|libwayland-.*|libdecor-.*|libasound\.so.*|libpulse.*|libjack.*'
+    r'|libpipewire-.*|libdbus-1\.so.*|libsystemd\.so.*|libudev\.so.*|libz\.so.*|libexpat\.so.*'
+    r'|libffi\.so.*|libbsd\.so.*|libmd\.so.*|libcap\.so.*)$')
 
 SCRIPTS = (
     'prepare.py', 'link_modules.py', 'link_libc.py', 'save_backup.py',
@@ -49,6 +61,34 @@ def elf_or_fail(path: Path, what: str) -> None:
             fail(f'{what} is not an ELF binary: {path}')
     if not os.access(path, os.X_OK):
         fail(f'{what} is not executable: {path}')
+
+
+def bundle_libraries(binaries: list[Path], target: Path) -> list[str]:
+    """Copy the non-system shared-library closure of `binaries` into `target` (bin/gpu, already on
+    the runtime's RUNPATH) and point every bundled library's RUNPATH at its own directory."""
+    pending, seen, bundled = list(binaries), set(), []
+    while pending:
+        binary = pending.pop()
+        result = subprocess.run(['ldd', str(binary)], capture_output=True, text=True, check=True)
+        for line in result.stdout.splitlines():
+            match = re.match(r'\s*(\S+) => (\S+)', line)
+            if not match:
+                continue
+            name, resolved = match.groups()
+            if name in seen or SYSTEM_LIBRARY.match(name):
+                continue
+            seen.add(name)
+            if resolved == 'not':
+                fail(f'{binary.name} needs {name}, which is not installed on the build machine')
+            source = Path(resolved)
+            if source.parent == target:
+                continue  # libps4gpu.so itself
+            shutil.copy2(source.resolve(), target / name)
+            bundled.append(name)
+            pending.append(target / name)
+    for library in (*[target / name for name in bundled], target / 'libps4gpu.so'):
+        subprocess.run(['patchelf', '--set-rpath', '$ORIGIN', str(library)], check=True)
+    return sorted(bundled)
 
 
 def main() -> None:
@@ -100,6 +140,10 @@ def main() -> None:
     (destination / 'bin/order1886-runtime').chmod(0o755)
     (destination / 'bin/gpu').mkdir()
     shutil.copy2(gpu, destination / 'bin/gpu/libps4gpu.so')
+    # The runtime stays byte-identical to its receipt; its RUNPATH already starts with $ORIGIN/gpu.
+    bundled = bundle_libraries([destination / 'bin/order1886-runtime', destination / 'bin/gpu/libps4gpu.so'],
+                               destination / 'bin/gpu')
+    print(f'Bundled {len(bundled)} libraries: {", ".join(bundled)}', flush=True)
     shutil.copy2(identity_path, destination / 'bin/runtime-build.json')
     shutil.copytree(worker, destination / 'bin/order1886-worker')
     for entry in (destination / 'bin/order1886-worker').iterdir():
