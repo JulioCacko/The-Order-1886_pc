@@ -14,6 +14,7 @@
 #endif
 #ifdef _WIN32
 #include <windows.h>
+#include <dbghelp.h>
 #else
 #include <sys/mman.h>
 #include <malloc.h>
@@ -121,6 +122,23 @@ static void describe_address(char *out, size_t size, uintptr_t address) {
     }
     snprintf(out,size,"%p",(void *)address);
 }
+/* ORDER1886_FATAL_DUMP=<file>: also write a minidump of every thread's stack at the fault, so a
+ * debugger can unwind host code that keeps no frame pointers. CREATE_NEW keeps existing dumps. */
+static void write_fault_dump(EXCEPTION_POINTERS *info) {
+    typedef BOOL (WINAPI *WriteDump)(HANDLE,DWORD,HANDLE,MINIDUMP_TYPE,PMINIDUMP_EXCEPTION_INFORMATION,
+                                     PMINIDUMP_USER_STREAM_INFORMATION,PMINIDUMP_CALLBACK_INFORMATION);
+    MINIDUMP_EXCEPTION_INFORMATION exception={GetCurrentThreadId(),info,FALSE};
+    const char *path=getenv("ORDER1886_FATAL_DUMP");
+    if (!path || !*path) return;
+    HMODULE library=LoadLibraryExW(L"dbghelp.dll",NULL,LOAD_LIBRARY_SEARCH_SYSTEM32);
+    WriteDump write=library ? (WriteDump)(void *)GetProcAddress(library,"MiniDumpWriteDump") : NULL;
+    HANDLE file=CreateFileA(path,GENERIC_WRITE,0,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,NULL);
+    if (write && file!=INVALID_HANDLE_VALUE)
+        fprintf(stderr,"Fault dump: %s (%s)\n",path,
+                write(GetCurrentProcess(),GetCurrentProcessId(),file,(MINIDUMP_TYPE)(MiniDumpWithThreadInfo|MiniDumpWithIndirectlyReferencedMemory),&exception,NULL,NULL) ? "written" : "failed");
+    if (file!=INVALID_HANDLE_VALUE) CloseHandle(file);
+    if (library) FreeLibrary(library);
+}
 static int fatal_reported;
 static LONG fatal_exception(EXCEPTION_POINTERS *info) {
     if (__atomic_exchange_n(&fatal_reported,1,__ATOMIC_ACQ_REL)) { Sleep(INFINITE); }
@@ -148,6 +166,7 @@ static LONG fatal_exception(EXCEPTION_POINTERS *info) {
         rbp=frame[0];
     }
     if (isa_table) isa_rewrite_report(isa_table,stderr);
+    write_fault_dump(info);
     fflush(NULL);
     TerminateProcess(GetCurrentProcess(),3);
     return EXCEPTION_CONTINUE_SEARCH;

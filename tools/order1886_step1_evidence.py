@@ -136,7 +136,12 @@ def run(name, args, output):
               for kind in ('display', 'output')}
     trace = folder / 'frame-trace-complete.csv'
     text = (folder / 'frame-trace.csv').read_text(encoding='utf-8')
-    trace.write_text(text[:text.rfind('\n') + 1], encoding='utf-8', newline='')  # drop the row cut by the timeout
+    header, *rows = text[:text.rfind('\n')].split('\n')  # drop the row cut by the timeout
+    if args.measure_after and rows:
+        # Keep only the steady scene: rows later than measure_after seconds past the first one.
+        start = int(rows[0].split(',')[1]) + int(args.measure_after * 1e9)
+        rows = [row for row in rows if int(row.split(',')[1]) >= start]
+    trace.write_text('\n'.join([header, *rows]) + '\n', encoding='utf-8', newline='')
     try:
         timing = perf_report.measure(trace)
     except (perf_report.TraceError, OSError) as error:
@@ -169,6 +174,8 @@ def main():
     parser.add_argument('--runtime', type=Path, help='runtime to test (default: the built one)')
     parser.add_argument('--frame-rate', type=int, choices=[30, 60], default=60)
     parser.add_argument('--cache-seed', type=Path, help='GPU cache copied into every run (warm start)')
+    parser.add_argument('--measure-after', type=float, default=0,
+                        help='frame times count only from this many seconds into the trace')
     parser.add_argument('--savedata', type=Path, help='savedata tree copied into the isolated state')
     parser.add_argument('--only', nargs='+', choices=list(VARIANTS), help='run a subset (baseline is always run)')
     args = parser.parse_args()

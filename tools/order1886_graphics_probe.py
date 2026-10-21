@@ -87,6 +87,8 @@ def main():
     parser.add_argument('--frame-trace', action=argparse.BooleanOptionalAction, default=True,
                         help='record guest flips and summarize distinct render-work intervals')
     parser.add_argument('--show-fps', action='store_true')
+    parser.add_argument('--fatal-dump', action='store_true',
+                        help='write fault.dmp (the stack of every thread) if the runtime faults')
     parser.add_argument('--cache-seed', type=Path, help='copy this GPU cache in instead of starting cold')
     parser.add_argument('--setting', action='append', default=[], metavar='KEY=VALUE',
                         help='a launcher graphics setting (order1886.GRAPHICS_DEFAULTS, fps_cap, '
@@ -131,6 +133,8 @@ def main():
         env = order.runtime_environment(runtime, user, settings)
         env['ORDER1886_GPU_USER_DIR'] = str(cache)
         trace_path = output / 'frame-trace.csv'
+        if args.fatal_dump:
+            env['ORDER1886_FATAL_DUMP'] = str(output / 'fault.dmp')
         if args.frame_trace:
             env['ORDER1886_FRAME_TRACE'] = str(trace_path)
         capture_timers = []
