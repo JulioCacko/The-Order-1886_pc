@@ -116,7 +116,7 @@ The launcher is a Go/Wails application (`launcher-go`). The screenshots below sh
 | --- | --- |
 | **Home** | Game folder, display, presentation filter, frame rate and Play/Stop |
 | **Graphics** | Window mode, original/experimental 16:9 aspect, FSR 1/Linear and VSync |
-| **Performance** | Native 30 FPS, experimental 60 FPS and F9 overlay |
+| **Performance** | Native 30 FPS, experimental 60/90 FPS and Unlocked, and F9 overlay |
 | **Game** | Verify files, direct-play desktop shortcut, Add to Steam, save backups, ordered asset mods and mouse controls |
 | **Advanced** | Launcher language, optional runtime, logs/folders, shader-cache clearing and manual release links |
 
@@ -148,8 +148,9 @@ For mouse look, open **Game → Controls**: sensitivity and inverted Y persist. 
 by this build. The 4K/60 target is **3840×2160 output with upscaling acceptable**,
 preserved detail and sustained 60 FPS in gameplay. It has not passed.
 
-**60 FPS is experimental.** The timing recipe warns of possible QTE softlocks
-in Chapters 6 and 9. A host presentation rate or selected cap does not establish
+**60 FPS, 90 FPS and Unlocked are experimental.** The 60 FPS recipe warns of possible
+QTE softlocks in Chapters 6 and 9, and gameplay timing above 60 FPS has not been measured.
+On a 60 Hz display, VSync holds every rate at 60. A host presentation rate or selected cap does not establish
 that the game produces that many new frames. Use the 30 FPS baseline first.
 
 ## Known problems and reporting
@@ -159,7 +160,7 @@ that the game produces that many new frames. Use the 30 FPS baseline first.
 | `Image exceeds device format limits`, `layers=8029/2048` | Preserve the boot log and matching `last-run.json`. Descriptor validation and targeted inactive-resource guards remain enabled. Keep the matching descriptor/shader evidence; the original crash is not closed by a timeout run. |
 | Low or varying frame rate | Include the scene, settings, GPU/driver and matching log. Shader compilation and compatibility work remain in progress. |
 | Runtime missing or identity rejected | Keep the complete package together, or build a matching runtime. Use Advanced for an explicit runtime override. |
-| Experimental 60 FPS timing problems | Return to 30 FPS and report the chapter and reproduction steps. |
+| Experimental 60/90 FPS or Unlocked timing problems | Return to 30 FPS and report the chapter and reproduction steps. |
 
 Open **Advanced → Open log folder**. When
 [reporting a problem](https://github.com/JulioCacko/The-Order-1886_pc/issues), include

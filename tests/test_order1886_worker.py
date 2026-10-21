@@ -53,7 +53,7 @@ class WorkerTests(unittest.TestCase):
         self.assertFalse((self.state / "session.lock").exists())
 
     def test_invalid_and_unavailable_values_do_not_write(self):
-        for values in ({"frame_rate": 90}, {"mouse_sensitivity": True},
+        for values in ({"frame_rate": 120}, {"mouse_sensitivity": True},
                        {"mouse_sensitivity": 501}, {"ui_language": "no"},
                        {"frame_generation": "dlss"}, {"command": "anything"}):
             with self.subTest(values=values), self.assertRaises(ValueError):

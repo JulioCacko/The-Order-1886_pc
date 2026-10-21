@@ -44,6 +44,7 @@ VARIANTS = {
     'parallel-warmup': ['parallel_warmup=1'],
     'deferred-readbacks': ['speculative_readbacks=1'],
     'fps-cap-45': ['fps_cap=45', 'in_game_menu=1'],
+    'fps-cap-240': ['fps_cap=240'],  # with --frame-rate 0 the cap is the unlocked rate
     'upscaler-fsr3': [],
 }
 SHOW_FPS = {'overlay-none', 'overlay-all'}
@@ -99,6 +100,27 @@ def press(key, hold=0.15):
     user32.keybd_event(0, code, 8 | 2 | extended, 0)
 
 
+SAVE_LOADED = "save data 'Playthrough00' mounted"
+
+
+def continue_save(log, stop, start, every=4.0, limit=12):
+    """Tap Space (Cross) until the runtime mounts the copied playthrough save.
+
+    Boot and menu timing change with the engine rate, so fixed key times can land on the
+    wrong menu item and leave the run on the title screen instead of the player's save.
+    """
+    taps = 0
+    if stop.wait(start):
+        return taps
+    while taps < limit and not stop.is_set():
+        if log.is_file() and SAVE_LOADED in log.read_text(encoding='utf-8', errors='replace'):
+            break
+        press('space')
+        taps += 1
+        stop.wait(every)
+    return taps
+
+
 def _owner(hwnd):
     import ctypes
     from ctypes import wintypes
@@ -152,7 +174,7 @@ def run(name, args, output):
         command.append('--show-fps')
     if name in UPSCALER:
         command += ['--upscaler', UPSCALER[name]]
-    for setting in VARIANTS[name]:
+    for setting in [*VARIANTS[name], f'vsync={args.vsync}']:
         command += ['--setting', setting]
     shots = output / 'screens' / name
     shots.mkdir(parents=True)
@@ -162,9 +184,17 @@ def run(name, args, output):
     process = subprocess.Popen(command, cwd=ROOT)
     for timer in timers:
         timer.start()
+    stop, taps = threading.Event(), []
+    if args.continue_save is not None:
+        driver = threading.Thread(target=lambda: taps.append(
+            continue_save(folder / 'native.log', stop, args.continue_save)))
+        driver.start()
     process.wait()
+    stop.set()
     for timer in timers:
         timer.cancel()
+    if args.continue_save is not None:
+        driver.join()
     record = json.loads((folder / 'run.json').read_text(encoding='utf-8'))
     log = (folder / 'native.log').read_text(encoding='utf-8', errors='replace')
     frames = {kind: sorted(to_png(raw) for raw in (folder / 'frames').glob(f'{kind}_*.raw'))
@@ -187,6 +217,7 @@ def run(name, args, output):
         except (perf_report.TraceError, OSError) as error:
             timing = {'error': str(error)}
     return {'settings': VARIANTS[name], 'status': record['status'], 'exit_code': record['exit_code'],
+            'save_loaded': SAVE_LOADED in log, 'continue_taps': taps[0] if taps else None,
             'settings_line': next((line.strip() for line in log.splitlines() if 'Settings: output' in line), None),
             'frames': {kind: [str(p.relative_to(output)) for p in paths] for kind, paths in frames.items()},
             'screens': sorted(str(p.relative_to(output)) for p in shots.glob('*.png')),
@@ -211,8 +242,14 @@ def main():
     parser.add_argument('--timeout', type=float, required=True)
     parser.add_argument('--keys', nargs='*', default=[], metavar='SECONDS:KEY', type=key_tap,
                         help='key presses after launch, e.g. 45:space or 160:right:2 (held 2 s)')
+    parser.add_argument('--vsync', type=int, choices=[0, 1], default=1,
+                        help='0 presents without waiting for the display, so a 60 Hz monitor does not cap the rate')
+    parser.add_argument('--continue-save', type=float, metavar='SECONDS',
+                        help='from this many seconds after launch, tap Space every 4 s until the copied '
+                             "playthrough save is mounted (needs --savedata); replaces fixed menu keys")
     parser.add_argument('--runtime', type=Path, help='runtime to test (default: the built one)')
-    parser.add_argument('--frame-rate', type=int, choices=[30, 60], default=60)
+    parser.add_argument('--frame-rate', type=int, choices=[30, 60, 90, 0], default=60,
+                        help='engine rate; 0 is unlocked (paced by fps_cap)')
     parser.add_argument('--frame-capture', type=float, nargs='+', metavar='SECONDS',
                         help='also record one frame census and its pass images (probe --frame-capture)')
     parser.add_argument('--temporal-probe', action='store_true', help='also run the temporal input probe (#7)')
@@ -223,6 +260,8 @@ def main():
     parser.add_argument('--savedata', type=Path, help='savedata tree copied into the isolated state')
     parser.add_argument('--only', nargs='+', choices=list(VARIANTS), help='run a subset (baseline is always run)')
     args = parser.parse_args()
+    if args.continue_save is not None and not args.savedata:
+        parser.error('--continue-save needs --savedata')
     output = args.output_dir.resolve()
     output.mkdir(parents=True)
     if args.savedata:
@@ -239,7 +278,7 @@ def main():
         timing = result['timing']
         frame_ms = timing.get('frame_time_ms', {})
         diffs = [d and round(d['mean_abs'], 2) for d in result['vs_baseline']['output']]
-        print(f"{name:20} {result['status']:14} fps={timing.get('fps') or 0:6.2f} "
+        print(f"{name:20} {result['status']:14} save={result['save_loaded']} fps={timing.get('fps') or 0:6.2f} "
               f"p50={frame_ms.get('p50') or 0:6.2f} p99={frame_ms.get('p99') or 0:7.2f} "
               f"output-diff={diffs}\n    {result['settings_line']}")
 

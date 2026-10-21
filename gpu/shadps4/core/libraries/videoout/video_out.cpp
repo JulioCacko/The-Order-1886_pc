@@ -160,10 +160,11 @@ s32 PS4_SYSV_ABI sceVideoOutSubmitFlip(s32 handle, s32 bufferIndex, s32 flipMode
         return ORBIS_VIDEO_OUT_ERROR_INVALID_HANDLE;
     }
 
-    // The Order submits mode 3 every frame; retain its warning once without per-frame log I/O.
-    static std::atomic_flag mode_three_reported{};
-    if (flipMode != 1 &&
-        (flipMode != 3 || !mode_three_reported.test_and_set(std::memory_order_relaxed))) {
+    // The Order submits mode 3 every frame, or mode 2 at its unlocked sync interval 0; retain
+    // each warning once without per-frame log I/O.
+    static std::atomic_flag mode_two_reported{}, mode_three_reported{};
+    auto* reported = flipMode == 2 ? &mode_two_reported : flipMode == 3 ? &mode_three_reported : nullptr;
+    if (flipMode != 1 && (!reported || !reported->test_and_set(std::memory_order_relaxed))) {
         LOG_WARNING(Lib_VideoOut, "flipmode = {}", flipMode);
     }
 
