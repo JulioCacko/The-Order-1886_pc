@@ -129,7 +129,7 @@ class OrderBackendTests(unittest.TestCase):
                 self.assertEqual(env['ORDER1886_VBLANK_HZ'], '60')
                 order1886.write_runtime_config(self.user, settings)
                 self.assertIn(f'fps_limit={rate}\n', (self.user / 'runtime.ini').read_text())
-        with self.assertRaisesRegex(ValueError, '30 or 60'):
+        with self.assertRaisesRegex(ValueError, '30, 60 or 90'):
             order1886.write_runtime_config(self.user, {'frame_rate': 120})
 
     def test_launcher_language_codes_use_orbis_system_language_ids(self):

@@ -665,8 +665,9 @@ def argument_parser():
     parser.add_argument('--display-mode', choices=['windowed', 'borderless', 'fullscreen'], default='windowed')
     parser.add_argument('--presentation-filter', choices=['linear', 'fsr1'], default='fsr1',
                         help='Output scaling filter; game rendering and timing stay native')
-    parser.add_argument('--frame-rate', type=int, choices=[30, 60], default=30,
-                        help='30 is the native baseline; 60 is experimental with known QTE risks')
+    parser.add_argument('--frame-rate', type=int, choices=timing.RATES, default=30,
+                        help='30 is the native baseline; 60, 90 and 0 (unlocked) are experimental, '
+                             'with Chapter 6/9 QTE behaviour unaccepted')
     parser.add_argument('--system-language', type=int, choices=range(30), default=1,
                         help='PS4 system language ID; game requires installed language assets (default: English US)')
     parser.add_argument('--fps-cap', type=int, choices=range(30, 241), default=120,
@@ -761,8 +762,8 @@ def main(argv=None):
                 raise ValueError('Order runtime not found in this installation. Build build.sh or explicitly select a runtime in Settings.')
             if runtime is not None:
                 validate_input_settings(runtime, vars(args))
-            if args.frame_rate == 60:
-                emit_status(timing.WARNING, fallback=diagnostic_log)
+            if args.frame_rate != 30:
+                emit_status(timing.recipe(args.frame_rate)['warning'], fallback=diagnostic_log)
             if args.aspect_ratio == '16:9':
                 emit_status(display.WARNING, fallback=diagnostic_log)
             selected = [name.strip() for name in str(args.patches).split(',') if name.strip()]
@@ -779,12 +780,12 @@ def main(argv=None):
                     and prepared['display_profile'].get('source_verified') is True
                     and prepared['display_profile'].get('recipe_sha256') == display.recipe_sha256('16:9')):
                 raise ValueError('Full-screen 16:9 requires a verified prepared aspect recipe')
-            if args.frame_rate == 60 and not (prepared.get('frame_rate_profile', {}).get('applied') is True
+            if args.frame_rate != 30 and not (prepared.get('frame_rate_profile', {}).get('applied') is True
                     and prepared['frame_rate_profile'].get('source_verified') is True
-                    and prepared['frame_rate_profile'].get('engine_fps') == 60
-                    and prepared['frame_rate_profile'].get('host_fps_limit') == 60
-                    and prepared['frame_rate_profile'].get('recipe_sha256') == timing.recipe_sha256(60)):
-                raise ValueError('Experimental 60 FPS requires a verified prepared timing recipe')
+                    and prepared['frame_rate_profile'].get('engine_fps') == args.frame_rate
+                    and prepared['frame_rate_profile'].get('host_fps_limit') == args.frame_rate
+                    and prepared['frame_rate_profile'].get('recipe_sha256') == timing.recipe_sha256(args.frame_rate)):
+                raise ValueError(f'{timing.FEATURES[args.frame_rate]} requires a verified prepared timing recipe')
             if args.prepare_only:
                 return 0
             write_runtime_config(user, vars(args))
