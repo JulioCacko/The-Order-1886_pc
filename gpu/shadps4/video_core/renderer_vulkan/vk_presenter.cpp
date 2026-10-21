@@ -17,6 +17,7 @@
 #include "ps4_graphics.h"
 #include "video_core/renderer_vulkan/vk_temporal_upscaler.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
+#include "video_core/renderer_vulkan/vk_upscale_providers.h"
 #include "video_core/renderer_vulkan/vk_warmup_inbox.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 #include "video_core/texture_cache/image.h"
@@ -318,6 +319,7 @@ Presenter::Presenter(Frontend::WindowSDL& window_, AmdGpu::Liverpool* liverpool_
     }
 
     fsr_pass.Create(device, instance.GetAllocator(), num_images);
+    ReportUpscalerFallback(Ps4Settings::Get().requested_upscaler, DetectUpscaleProviders(instance));
     pp_pass.Create(device, swapchain.GetSurfaceFormat().format);
     Ps4Overlay::Init(instance, swapchain.GetSurfaceFormat().format, num_images);
 
