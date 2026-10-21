@@ -33,7 +33,7 @@ import time
 SYSTEM_LIBRARY = re.compile(
     r'^(ld-linux.*|lib(c|m|dl|rt|pthread|util|resolv|anl|stdc\+\+|gcc_s|atomic)\.so.*'
     r'|libvulkan\.so.*|lib(GL|GLX|EGL|GLdispatch|OpenGL|gbm|drm|va|va-drm|va-x11|vdpau)\b.*'
-    r'|lib(X|x)[^/]*\.so.*|libwayland-.*|libdecor-.*|libasound\.so.*|libpulse.*|libjack.*'
+    r'|libX[A-Za-z0-9]*\.so.*|libxcb.*|libxkbcommon.*|libxshmfence.*|libwayland-.*|libdecor-.*|libasound\.so.*|libpulse.*|libjack.*'
     r'|libpipewire-.*|libdbus-1\.so.*|libsystemd\.so.*|libudev\.so.*|libz\.so.*|libexpat\.so.*'
     r'|libffi\.so.*|libbsd\.so.*|libmd\.so.*|libcap\.so.*)$')
 
