@@ -550,6 +550,11 @@ static void DumpRaw(const Instance& instance, Scheduler& scheduler, vk::CommandB
 
 Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& attribute,
                                VAddr cpu_address) {
+    // CPU-submitted (non-EOP) flips run between GPU commands (Liverpool::SendCommand), possibly
+    // while the draw recording thread still records into the same command buffer; recording
+    // the frame directly then races it inside the driver (TOport 5534ce9). Let that thread
+    // finish first (no-op elsewhere).
+    rasterizer->DrainDrawPipe();
     // ORDER1886_FRAME_DUMP_TRIGGER=<file>: when the file exists it is removed and this frame's
     // guest display buffer and presented image are written to ORDER1886_DUMP_DIR (default out/dump)
     // as raw 32-bit pixels (menus and movies included; the upscaler dumps scene frames only).

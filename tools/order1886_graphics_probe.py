@@ -90,6 +90,8 @@ def main():
     parser.add_argument('--fatal-dump', action='store_true',
                         help='write fault.dmp (the stack of every thread) if the runtime faults')
     parser.add_argument('--cache-seed', type=Path, help='copy this GPU cache in instead of starting cold')
+    parser.add_argument('--env', action='append', default=[], metavar='KEY=VALUE',
+                        help='extra runtime environment (diagnostics such as ORDER1886_FRAME_STATS=1), repeatable')
     parser.add_argument('--setting', action='append', default=[], metavar='KEY=VALUE',
                         help='a launcher graphics setting (order1886.GRAPHICS_DEFAULTS, fps_cap, '
                              'in_game_menu, vsync), repeatable')
@@ -137,6 +139,9 @@ def main():
             cache.mkdir()
         env = order.runtime_environment(runtime, user, settings)
         env['ORDER1886_GPU_USER_DIR'] = str(cache)
+        for item in args.env:
+            key, _, value = item.partition('=')
+            env[key] = value
         trace_path = output / 'frame-trace.csv'
         if args.fatal_dump:
             env['ORDER1886_FATAL_DUMP'] = str(output / 'fault.dmp')
