@@ -81,3 +81,25 @@ count is mapped by `video_core/amdgpu/ps4_msaa.h`. Velocity saturates (|v| ≥ 0
 
 A provider therefore replaces this one dispatch. Its inputs are the MSAA scene color (resolved first),
 depth `…7c0000`, decoded velocity and exposure, and its output goes where `…c00000` went.
+
+## A provider in place of the resolve
+
+`video_core/renderer_vulkan/vk_order_resolve.cpp` does this when `runtime.ini` asks for an
+upscaler (`upscaler=fsr3` or `upscaler=dlss`) and that provider loads (`vk_upscale_providers.cpp`).
+The design comes from IgorAugustoHH/The-Order-1886-PC-Port (`vk_order_dlss.cpp`), moved onto the
+provider ABI in `shim/order1886_upscale.h`.
+
+1. Every draw remembers the depth target drawn with the MSAA RGBA16F scene color, and whether the
+   scene's depth-writing draws test with Greater (reversed depth).
+2. After the game's resolve dispatch, `host_shaders/order_resolve_prep.comp` writes the provider's
+   inputs: color resolved with the game's `1 / (1 + exposure · luma)` weights (RGBA16F), velocity
+   decoded as above and multiplied by constant 63 (RG16F, pixels, previous minus current), and
+   depth sample 0 (R32F).
+3. The provider runs at the scene size (1:1, no jitter, motion scale 1) into its own RGBA16F image,
+   which is then copied over the resolve's output. That output is also the game's history, so
+   motion blur, depth of field, bloom and the tonemap read the provider's result unchanged.
+4. The game's resolve still runs first. If the inputs are not recognised or the provider fails,
+   its result stays, and the log says why.
+
+Camera planes and field of view are placeholders (near 0.1, infinite far, 0.7 rad) until the
+game's camera constants are located.

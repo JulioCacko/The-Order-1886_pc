@@ -44,8 +44,11 @@ VARIANTS = {
     'parallel-warmup': ['parallel_warmup=1'],
     'deferred-readbacks': ['speculative_readbacks=1'],
     'fps-cap-45': ['fps_cap=45', 'in_game_menu=1'],
+    'upscaler-fsr3': [],
 }
 SHOW_FPS = {'overlay-none', 'overlay-all'}
+# Variants that ask the runtime for a provider in place of the game's temporal resolve (#7).
+UPSCALER = {'upscaler-fsr3': 'fsr3'}
 
 
 SCANCODES = {'space': 0x39, 'down': 0x50, 'up': 0x48, 'left': 0x4B, 'right': 0x4D, 'enter': 0x1C}
@@ -147,6 +150,8 @@ def run(name, args, output):
         command += ['--runtime', str(args.runtime)]
     if name in SHOW_FPS:
         command.append('--show-fps')
+    if name in UPSCALER:
+        command += ['--upscaler', UPSCALER[name]]
     for setting in VARIANTS[name]:
         command += ['--setting', setting]
     shots = output / 'screens' / name

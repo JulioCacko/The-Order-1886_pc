@@ -136,12 +136,16 @@ void ReportUpscalerFallback(int requested, std::span<const UpscaleProvider> prov
     const auto it = std::ranges::find_if(providers, [&](const UpscaleProvider& provider) {
         return std::string_view(provider.key) == key;
     });
-    const std::string status = it == providers.end() ? "no provider is built for it"
-                               : it->available       ? it->name + " loads on this device"
-                                                     : it->reason;
-    // The Order's temporal resolve is not routed to a provider yet (#10-#13), so the explicit
-    // fallback is the presentation path, whatever the provider status.
-    std::printf("Upscaler: %s requested (%s); not integrated with The Order yet, presenting with %s\n",
+    if (it != providers.end() && it->available) {
+        // vk_order_resolve.cpp runs it in place of the game's temporal resolve, at native size.
+        std::printf("Upscaler: %s requested; %s replaces the game's temporal resolve, presenting "
+                    "with %s\n",
+                    key, it->name.c_str(), path);
+        return;
+    }
+    const std::string status = it == providers.end() ? "no provider is built for it" : it->reason;
+    std::printf("Upscaler: %s requested (%s); the game's temporal resolve stays, presenting with "
+                "%s\n",
                 key, status.c_str(), path);
 }
 

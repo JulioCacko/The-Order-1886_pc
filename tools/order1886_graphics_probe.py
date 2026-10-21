@@ -89,6 +89,9 @@ def main():
     parser.add_argument('--show-fps', action='store_true')
     parser.add_argument('--temporal-probe', action='store_true',
                         help='log whether the game velocity predicts the previous frame (#7)')
+    parser.add_argument('--upscaler', choices=['fsr3', 'dlss'],
+                        help='ask the runtime for this provider in place of the game temporal resolve (#7); '
+                             'the launcher does not offer it yet')
     parser.add_argument('--fatal-dump', action='store_true',
                         help='write fault.dmp (the stack of every thread) if the runtime faults')
     parser.add_argument('--frame-capture', type=float, nargs='+', metavar='SECONDS',
@@ -129,6 +132,9 @@ def main():
             if key == 'in_game_menu':
                 settings[key] = bool(settings[key])
         order.write_runtime_config(user, settings)
+        if args.upscaler:
+            with (user / 'runtime.ini').open('a', encoding='utf-8') as config:
+                config.write(f'upscaler={args.upscaler}\n')
         order.save_backup.backup(user)
         output.mkdir(parents=True)
         cache = output / 'gpu'

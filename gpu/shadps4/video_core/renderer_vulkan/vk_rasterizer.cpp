@@ -27,6 +27,7 @@
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_hle.h"
+#include "video_core/renderer_vulkan/vk_order_resolve.h"
 #include "video_core/renderer_vulkan/vk_temporal_probe.h"
 #include "video_core/texture_cache/image_rejection.h"
 #include "video_core/texture_cache/index_buffer_request.h"
@@ -271,7 +272,7 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     } else {
         db_desc.first = {};
     }
-
+    OnSceneTargets(texture_cache, cb_descs[0].first, db_desc.first, regs.depth_control);
 }
 
 static std::pair<u32, u32> GetDrawOffsets(
@@ -1283,6 +1284,12 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
         }
     });
     DebugState.IncDispatch();
+    // ponytail: the game's resolve still runs first so its result remains when the provider
+    // fails; skip it once the provider path is proven if its cost shows up in the frame time.
+    if (IsOrderTemporalResolve(cs.pgm_hash)) {
+        ReplaceTemporalResolve(*this, std::span{bound_images.data(), bound_images.size()},
+                               cs.FlatUserData());
+    }
     if (cs.pgm_hash == OrderTemporalResolveHash && TemporalProbeEnabled()) {
         RunTemporalProbe(*this, std::span{bound_images.data(), bound_images.size()});
     }

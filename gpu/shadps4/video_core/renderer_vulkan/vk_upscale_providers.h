@@ -25,7 +25,7 @@ struct UpscaleProvider {
 std::span<const UpscaleProvider> DetectUpscaleProviders(const Instance& instance);
 
 /// Logs which presentation path runs when an upscaler was requested (`requested`, a
-/// Ps4Settings::Upscaler) and the reason it cannot run yet.
+/// Ps4Settings::Upscaler): the provider replacing the game's temporal resolve, or why none can.
 void ReportUpscalerFallback(int requested, std::span<const UpscaleProvider> providers);
 
 } // namespace Vulkan
