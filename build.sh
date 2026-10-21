@@ -36,7 +36,7 @@ MINGW*|MSYS*)
                trophy-history audio-downmix cpu-check isa-emulate isa-stub tsc-clock
                png-decode aliasing depth-stencil-state async-compiler warmup-inbox
                wave-stats pass-census frame-capture async-pipeline-cache
-               async-fetch-snapshot readback-queue wait-diagnostics readback-sources page-state selective-readbacks htile-metadata image-rejection image-type-map upstream-fixes sampler-validity index-buffer-request stencil-surface missing-imports gnm-decisions shared-memory-barriers)
+               async-fetch-snapshot readback-queue wait-diagnostics readback-sources page-state selective-readbacks htile-metadata image-rejection image-type-map upstream-fixes sampler-validity index-buffer-request stencil-surface missing-imports gnm-decisions shared-memory-barriers irq-controller)
         ninja -C out/gpu "${tests[@]/%/-test}"
         for test in "${tests[@]}"; do
             case $test in
