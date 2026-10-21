@@ -48,22 +48,26 @@ VARIANTS = {
 SHOW_FPS = {'overlay-none', 'overlay-all'}
 
 
-SCANCODES = {'space': 0x39, 'down': 0x50, 'up': 0x48, 'enter': 0x1C}
+SCANCODES = {'space': 0x39, 'down': 0x50, 'up': 0x48, 'left': 0x4B, 'right': 0x4D, 'enter': 0x1C}
+# Pseudo-keys: a slow relative mouse drag for HOLD seconds (mouse look), 2 px every 10 ms.
+MOUSE_MOVES = {'mouse-right': (2, 0), 'mouse-left': (-2, 0)}
 
 
 def key_tap(text):
-    """SECONDS:KEY for --keys, checked before any run starts."""
-    at, _, key = text.partition(':')
+    """SECONDS:KEY[:HOLD] for --keys, checked before any run starts (HOLD seconds, default 0.15)."""
+    at, _, rest = text.partition(':')
+    key, _, hold_text = rest.partition(':')
     try:
-        seconds = float(at)
+        seconds, hold = float(at), float(hold_text or 0.15)
     except ValueError:
-        seconds = -1.0
-    if not 0 <= seconds < float('inf') or key not in SCANCODES:
-        raise argparse.ArgumentTypeError(f'expected SECONDS:KEY with KEY in {", ".join(SCANCODES)}: {text!r}')
-    return seconds, key
+        seconds, hold = -1.0, -1.0
+    if not (0 <= seconds < float('inf') and 0 < hold <= 30) or key not in (*SCANCODES, *MOUSE_MOVES):
+        raise argparse.ArgumentTypeError(
+            f'expected SECONDS:KEY[:HOLD] with KEY in {", ".join((*SCANCODES, *MOUSE_MOVES))}: {text!r}')
+    return seconds, key, hold
 
 
-def press(key):
+def press(key, hold=0.15):
     """Tap a key in the game window (Space is Cross in runtime_pad.c's default map)."""
     import ctypes
     user32 = ctypes.windll.user32
@@ -79,10 +83,16 @@ def press(key):
     user32.keybd_event(0x12, 0, 2, 0)
     if user32.GetForegroundWindow() != found[0]:
         return
+    if key in MOUSE_MOVES:
+        dx, dy = MOUSE_MOVES[key]
+        for _ in range(max(1, int(hold / 0.01))):
+            user32.mouse_event(1, dx, dy, 0, 0)  # MOUSEEVENTF_MOVE, relative
+            threading.Event().wait(0.01)
+        return
     code = SCANCODES[key]
-    extended = 1 if key in ('down', 'up') else 0
+    extended = 1 if key in ('down', 'up', 'left', 'right') else 0
     user32.keybd_event(0, code, 8 | extended, 0)  # KEYEVENTF_SCANCODE
-    threading.Event().wait(0.15)
+    threading.Event().wait(hold)
     user32.keybd_event(0, code, 8 | 2 | extended, 0)
 
 
@@ -125,6 +135,10 @@ def run(name, args, output):
                '--state-dir', str(output / 'state'), '--output-dir', str(folder),
                '--timeout', str(args.timeout), '--dump-frame', '--frame-rate', str(args.frame_rate),
                '--frame-delay', *map(str, args.delays)]
+    if args.frame_capture is not None:
+        command += ['--frame-capture', *map(str, args.frame_capture)]
+    if args.dump_shaders:
+        command.append('--dump-shaders')
     if args.cache_seed:
         command += ['--cache-seed', str(args.cache_seed.resolve())]
     if args.runtime:
@@ -137,7 +151,7 @@ def run(name, args, output):
     shots.mkdir(parents=True)
     timers = [threading.Timer(delay, lambda d=delay: ImageGrab.grab().save(shots / f'screen_{d:g}s.png'))
               for delay in args.delays]
-    timers += [threading.Timer(at, press, (key,)) for at, key in args.keys]
+    timers += [threading.Timer(at, press, (key, hold)) for at, key, hold in args.keys]
     process = subprocess.Popen(command, cwd=ROOT)
     for timer in timers:
         timer.start()
@@ -189,9 +203,12 @@ def main():
                         help='seconds after launch for each frame dump and screenshot')
     parser.add_argument('--timeout', type=float, required=True)
     parser.add_argument('--keys', nargs='*', default=[], metavar='SECONDS:KEY', type=key_tap,
-                        help='key taps after launch (space, down, up, enter), e.g. 45:space')
+                        help='key presses after launch, e.g. 45:space or 160:right:2 (held 2 s)')
     parser.add_argument('--runtime', type=Path, help='runtime to test (default: the built one)')
     parser.add_argument('--frame-rate', type=int, choices=[30, 60], default=60)
+    parser.add_argument('--frame-capture', type=float, nargs='+', metavar='SECONDS',
+                        help='also record one frame census and its pass images (probe --frame-capture)')
+    parser.add_argument('--dump-shaders', action='store_true', help='also dump guest and SPIR-V shaders')
     parser.add_argument('--cache-seed', type=Path, help='GPU cache copied into every run (warm start)')
     parser.add_argument('--measure-after', type=float, default=0,
                         help='frame times count only from this many seconds into the trace')

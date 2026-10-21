@@ -89,6 +89,8 @@ def main():
     parser.add_argument('--show-fps', action='store_true')
     parser.add_argument('--fatal-dump', action='store_true',
                         help='write fault.dmp (the stack of every thread) if the runtime faults')
+    parser.add_argument('--frame-capture', type=float, nargs='+', metavar='SECONDS',
+                        help='record a frame census plus its pass images at each of these times after launch')
     parser.add_argument('--cache-seed', type=Path, help='copy this GPU cache in instead of starting cold')
     parser.add_argument('--setting', action='append', default=[], metavar='KEY=VALUE',
                         help='a launcher graphics setting (order1886.GRAPHICS_DEFAULTS, fps_cap, '
@@ -155,6 +157,16 @@ def main():
                     trigger.touch()
             env['ORDER1886_DUMP_DIR'] = str(frames)
             env['ORDER1886_FRAME_DUMP_TRIGGER'] = str(trigger)
+        if args.frame_capture is not None:
+            # One frame's pass census (capture/) and every pass target and dispatch image (diag/).
+            capture_trigger = output / 'frame-capture.request'
+            for delay in args.frame_capture:
+                capture_timers.append(threading.Timer(delay, capture_trigger.touch))
+                capture_timers[-1].daemon = True
+            env['ORDER1886_CAPTURE_TRIGGER'] = str(capture_trigger)
+            env['ORDER1886_CAPTURE_DIR'] = str(output / 'capture')
+            env['ORDER1886_DIAG_DIR'] = str(output / 'diag')
+            env['ORDER1886_DIAG_IMAGES'] = '1'
         command = order.build_command(runtime, user / 'prepared/boot-linked.bin', game, user)
         log = output / 'native.log'
         record = output / 'run.json'
