@@ -30,7 +30,7 @@ else stays English until a person who speaks the language owns the wording.
   `Unlocked`, `Unavailable`, `uncapped`, `Downloading`, `Ready to install`,
   `Update available`, `Update failed`);
 - field labels that are short and unambiguous (`Game frame rate`, `Motion blur`,
-  `Film grain`, `Depth of field`, `Chromatic aberration`, `Model detail`,
+  `Film grain`, `Depth of field`, `Chromatic aberration`,
   `Mouse camera`, `Mouse sensitivity`, `Invert vertical camera`, `Controller vibration`,
   `Keyboard buttons`, `Controller buttons`);
 - the graphics-preset level names that are ordinary words (`Quality`, `Balanced`).
@@ -64,7 +64,7 @@ else stays English until a person who speaks the language owns the wording.
 - **Ambiguous one-word labels** (`Framing`, `Native`). Both could be read as composition
   or as a resolution claim, and a wrong guess is worse than English.
 
-75 of the 261 UI keys are translated. The remaining 186 are English in all twelve
+74 of the 274 UI keys are translated. The remaining 200 are English in all twelve
 non-English languages on purpose, and their reasons are the classes above.
 
 ## The translated keys
@@ -76,7 +76,7 @@ non-English languages on purpose, and their reasons are the classes above.
 `Game & Content`, `Game frame rate`, `Game installation`, `Install and restart`,
 `Install and restart?`, `Installation tools`, `Invert vertical camera`,
 `Keyboard buttons`, `Launch configuration`, `Main navigation`, `Manage game and saves`,
-`Model detail`, `Motion blur`, `Mouse camera`, `Mouse sensitivity`, `No session yet`,
+`Motion blur`, `Mouse camera`, `Mouse sensitivity`, `No session yet`,
 `No update checked yet`, `Off`, `On`, `Open installation`, `Open logs`,
 `Open player data`, `Open updates`, `Player data`, `Quality`, `Ready to install`,
 `Report an issue`, `Reset`, `Reset section`, `Reset section?`, `Restore`,

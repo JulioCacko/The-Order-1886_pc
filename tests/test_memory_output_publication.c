@@ -24,8 +24,14 @@ static void protect_output(int inaccessible) {
 static void output_fault(void) {
     // A protected guest result may call back into GPU work needing these locks.
     assert(!exclusive_depth);
+#ifdef _WIN32
+    assert(!read_depth);
+    assert(TryAcquireSRWLockExclusive(&lock));
+    ReleaseSRWLockExclusive(&lock);
+#else
     assert(!pthread_rwlock_trywrlock(&lock));
     assert(!pthread_rwlock_unlock(&lock));
+#endif
     assert(!pthread_mutex_trylock(&mapping_lock));
     assert(!pthread_mutex_unlock(&mapping_lock));
     ++faults;

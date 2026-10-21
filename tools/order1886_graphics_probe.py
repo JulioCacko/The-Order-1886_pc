@@ -97,9 +97,11 @@ def main():
     parser.add_argument('--frame-capture', type=float, nargs='+', metavar='SECONDS',
                         help='record a frame census plus its pass images at each of these times after launch')
     parser.add_argument('--cache-seed', type=Path, help='copy this GPU cache in instead of starting cold')
+    parser.add_argument('--env', action='append', default=[], metavar='KEY=VALUE',
+                        help='extra runtime environment (diagnostics such as ORDER1886_FRAME_STATS=1), repeatable')
     parser.add_argument('--setting', action='append', default=[], metavar='KEY=VALUE',
                         help='a launcher graphics setting (order1886.GRAPHICS_DEFAULTS, fps_cap, '
-                             'in_game_menu, vsync), repeatable')
+                             'in_game_menu, vsync, or a post effect such as film_grain=0), repeatable')
     args = parser.parse_args()
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error('--timeout must be finite and positive')
@@ -118,22 +120,24 @@ def main():
     runtime = order.find_runtime(args.runtime)
     if runtime is None:
         parser.error('Build the dedicated Order runtime first')
+    settings = {'display_mode': args.display_mode, 'vsync': True,
+                'show_fps': args.show_fps, 'presentation_filter': args.presentation_filter,
+                'frame_rate': args.frame_rate, 'aspect_ratio': args.aspect_ratio}
+    for item in args.setting:
+        key, separator, value = item.partition('=')
+        if not separator or key not in (*order.GRAPHICS_DEFAULTS, 'fps_cap', 'in_game_menu', 'vsync',
+                                        *order.post_effects.EFFECTS):
+            parser.error(f'--setting expects KEY=VALUE with a known graphics setting: {item!r}')
+        if value.lower() in ('true', 'false', 'on', 'off'):
+            value = '1' if value.lower() in ('true', 'on') else '0'
+        settings[key] = int(value) if value.isdigit() else value
+        if key == 'in_game_menu' or key in order.post_effects.EFFECTS:
+            settings[key] = bool(settings[key])
+    disabled_effects = [key for key in order.post_effects.EFFECTS if settings.get(key) is False]
     user.mkdir(parents=True, exist_ok=True)
     with order.session_lock(user):
         prepared = order.prepare_game(game, user / 'prepared', frame_rate=args.frame_rate,
-                                      aspect_ratio=args.aspect_ratio)
-        settings = {'display_mode': args.display_mode, 'vsync': True,
-                    'show_fps': args.show_fps, 'presentation_filter': args.presentation_filter,
-                    'frame_rate': args.frame_rate, 'aspect_ratio': args.aspect_ratio}
-        for item in args.setting:
-            key, separator, value = item.partition('=')
-            if not separator or key not in (*order.GRAPHICS_DEFAULTS, 'fps_cap', 'in_game_menu', 'vsync'):
-                parser.error(f'--setting expects KEY=VALUE with a known graphics setting: {item!r}')
-            if value.lower() in ('true', 'false', 'on', 'off'):
-                value = '1' if value.lower() in ('true', 'on') else '0'
-            settings[key] = int(value) if value.isdigit() else value
-            if key == 'in_game_menu':
-                settings[key] = bool(settings[key])
+                                      aspect_ratio=args.aspect_ratio, disabled_effects=disabled_effects)
         order.write_runtime_config(user, settings)
         if args.upscaler:
             with (user / 'runtime.ini').open('a', encoding='utf-8') as config:
@@ -147,6 +151,9 @@ def main():
             cache.mkdir()
         env = order.runtime_environment(runtime, user, settings)
         env['ORDER1886_GPU_USER_DIR'] = str(cache)
+        for item in args.env:
+            key, _, value = item.partition('=')
+            env[key] = value
         trace_path = output / 'frame-trace.csv'
         if args.temporal_probe:
             env['ORDER1886_TEMPORAL_PROBE'] = '1'
@@ -190,6 +197,7 @@ def main():
                   'image_sha256': prepared['image_sha256'],
                   'frame_rate_profile': prepared.get('frame_rate_profile'),
                   'display_profile': prepared.get('display_profile'),
+                  'post_effects_profile': prepared.get('post_effects_profile'),
                   'internal_resolution': 'native',
                   'guest_frame_trace': None,
                   'frame_capture_identities': [], 'command': command,

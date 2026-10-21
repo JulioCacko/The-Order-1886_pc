@@ -32,6 +32,7 @@ import link_modules
 import save_backup
 import order1886_frame_rate as timing
 import order1886_display as display
+import order1886_post_effects as post_effects
 import order1886_mods as mods
 import order1886_input as inputs
 import order1886_patches as patch_catalogue
@@ -155,7 +156,7 @@ def write_json(path, value):
     temporary.replace(path)
 
 
-def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=()):
+def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=(), disabled_effects=()):
     game, out = Path(game).resolve(), Path(out).resolve()
     metadata = inspect_game(game)
     # Prevent accidental writes to the extracted game, even with custom CLI arguments.
@@ -165,13 +166,17 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=()):
     selected_patches = patch_catalogue.select(patches, metadata)
     profile = timing.validate_source(game / 'eboot.bin', frame_rate, metadata)
     display_profile = display.validate_source(game / 'eboot.bin', aspect_ratio, metadata)
+    effects_profile = post_effects.validate_source(game / 'eboot.bin', disabled_effects, metadata)
     fingerprint = {name: sha256(game / name) for name in REQUIRED_FILES}
-    for name in ('prepare.py', 'link_modules.py', 'link_libc.py', 'order1886_frame_rate.py', 'order1886_display.py'):
+    for name in ('prepare.py', 'link_modules.py', 'link_libc.py', 'order1886_frame_rate.py', 'order1886_display.py',
+                 'order1886_post_effects.py'):
         fingerprint['tool/' + name] = sha256(SCRIPTS / name)
     fingerprint.update(frame_rate=profile['engine_fps'], host_fps_limit=profile['host_fps_limit'],
                        frame_rate_recipe_sha256=profile['recipe_sha256'], runtime_abi=RUNTIME_ABI,
                        preparation_schema=3, aspect_ratio=aspect_ratio,
                        display_recipe_sha256=display_profile['recipe_sha256'],
+                       disabled_effects=effects_profile['disabled'],
+                       post_effects_recipe_sha256=effects_profile['recipe_sha256'],
                        patches=patch_catalogue.patch_fingerprint(selected_patches))
     manifest = out / 'prepared.json'
     try:
@@ -182,7 +187,8 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=()):
     if (previous.get('inputs') == fingerprint and previous.get('game') == str(game)
             and image.is_file() and previous.get('image_sha256') == sha256(image)
             and (frame_rate == 30 or previous.get('frame_rate_profile', {}).get('applied') is True)
-            and (aspect_ratio == 'original' or previous.get('display_profile', {}).get('applied') is True)):
+            and (aspect_ratio == 'original' or previous.get('display_profile', {}).get('applied') is True)
+            and (not effects_profile['disabled'] or previous.get('post_effects_profile', {}).get('applied') is True)):
         emit_status('Prepared image verified; reusing cached image.', fallback=out.parent / 'logs/backend.log')
         return previous
     out.mkdir(parents=True, exist_ok=True)
@@ -191,6 +197,7 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=()):
     prepare.prepare(game, out)
     profile = timing.apply_prepared(out / 'boot.bin', profile)
     display_profile = display.apply_prepared(out / 'boot.bin', display_profile)
+    effects_profile = post_effects.apply_prepared(out / 'boot.bin', effects_profile)
     # Catalogued recipes edit the derived image, never the guest executable; the fingerprint
     # already binds that image to the eboot.bin hash it was produced from.
     applied_patches = patch_catalogue.apply_to_prepared(out / 'boot.bin', selected_patches, metadata)
@@ -198,6 +205,7 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=()):
     result = {'game': str(game), 'title_id': metadata['TITLE_ID'], 'inputs': fingerprint,
               'frame_rate_profile': profile,
               'display_profile': display_profile,
+              'post_effects_profile': effects_profile,
               'catalogue_patches': applied_patches,
               'image_sha256': sha256(image), 'status': 'prepared; gameplay unverified'}
     write_json(manifest, result)
@@ -692,6 +700,9 @@ def argument_parser():
     parser.add_argument('--mods-dir', default='', help='Folder containing explicitly selected asset mod folders')
     parser.add_argument('--mods-enabled', type=int, choices=[0, 1], default=0)
     parser.add_argument('--mods-order', default='[]', help='JSON list of enabled mod folder names; later entries win')
+    parser.add_argument('--disable-effects', default='',
+                        help='Comma-separated post effects to turn off in the prepared image ('
+                             + ', '.join(post_effects.EFFECTS) + '); empty keeps them all')
     parser.add_argument('--patches', default='',
                         help='Comma-separated catalogued patch ids applied inside the prepared image; empty applies none')
     # Live switches the runtime honours through its own toggle file; both are experimental.
@@ -756,8 +767,15 @@ def main(argv=None):
             if args.aspect_ratio == '16:9':
                 emit_status(display.WARNING, fallback=diagnostic_log)
             selected = [name.strip() for name in str(args.patches).split(',') if name.strip()]
+            disabled_effects = [name.strip() for name in str(args.disable_effects).split(',') if name.strip()]
+            if disabled_effects:
+                emit_status(post_effects.WARNING, fallback=diagnostic_log)
             prepared = prepare_game(game, user / 'prepared', frame_rate=args.frame_rate,
-                                    aspect_ratio=args.aspect_ratio, patches=selected)
+                                    aspect_ratio=args.aspect_ratio, patches=selected,
+                                    disabled_effects=disabled_effects)
+            if disabled_effects and not (prepared.get('post_effects_profile', {}).get('applied') is True
+                    and prepared['post_effects_profile'].get('recipe_sha256') == post_effects.recipe_sha256(disabled_effects)):
+                raise ValueError('Turning post effects off requires a verified prepared post-effect recipe')
             if args.aspect_ratio == '16:9' and not (prepared.get('display_profile', {}).get('applied') is True
                     and prepared['display_profile'].get('source_verified') is True
                     and prepared['display_profile'].get('recipe_sha256') == display.recipe_sha256('16:9')):
@@ -804,6 +822,7 @@ def main(argv=None):
                       'runtime_environment': {k: v for k, v in env.items() if k.startswith('ORDER1886_')},
                        'frame_rate_profile': prepared.get('frame_rate_profile'),
                        'display_profile': prepared.get('display_profile'),
+                       'post_effects_profile': prepared.get('post_effects_profile'),
                        'configuration': {
                            'timing': timing_values,
                            'catalogue_patches': prepared.get('catalogue_patches', []),

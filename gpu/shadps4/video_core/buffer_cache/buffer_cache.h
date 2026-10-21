@@ -5,8 +5,10 @@
 
 #include "ps4_copy.h"
 
+#include <atomic>
 #include <deque>
 #include <mutex>
+#include <vector>
 #include <boost/container/small_vector.hpp>
 
 #include "common/interval_set.h"
@@ -15,6 +17,7 @@
 #include "video_core/buffer_cache/fault_manager.h"
 #include "video_core/buffer_cache/range_set.h"
 #include "video_core/renderer_vulkan/vk_semaphore.h"
+#include "video_core/renderer_vulkan/vk_staging_buffer_pool.h"
 
 namespace AmdGpu {
 struct Liverpool;
@@ -113,6 +116,14 @@ public:
     /// Commits pending sparse buffer memory binds. Must be called before every scheduler submit.
     void SubmitPendingArenaBinds(Vulkan::SubmitInfo& info);
 
+    /// Called after each submission (Rasterizer::OnSubmit): writes the deferred readbacks
+    /// whose submission completed to guest memory.
+    void OnSubmitted() {
+        if (has_pending_readbacks.load(std::memory_order_relaxed)) {
+            ApplyDeferredReadbacks();
+        }
+    }
+
 private:
     struct ArenaBinds {
         const Buffer* arena;
@@ -166,6 +177,34 @@ private:
     Buffer gds_buffer;
     RangeSet gpu_modified_ranges;
     std::mutex gpu_ranges_mutex;
+
+    /// Deferred readbacks (from TOport 32efe96, GPL-2.0). A guest write beside (not on)
+    /// GPU-written bytes of a page goes on at once; those bytes are copied to host memory in the
+    /// current submission and written to guest memory once it completes. Until then uploads
+    /// skip them (the arena holds the newest data) and the guest's bytes at the fault are kept
+    /// to spot later CPU writes.
+    struct DeferredItem {
+        VAddr addr;
+        u64 size;
+        u64 staging_offset;
+        u64 snapshot_offset;
+    };
+    struct DeferredBatch {
+        u64 tick{};
+        Vulkan::StagingBufferRef staging{};
+        std::vector<DeferredItem> items;
+        std::vector<u8> snapshot;
+    };
+    bool DeferReadback(const Buffer* arena, VAddr device_addr, u64 size);
+    void ApplyDeferredReadbacks();
+    /// Waits for the deferred readbacks overlapping the range and writes them to guest memory.
+    void WaitDeferredReadbacks(VAddr addr, u64 size);
+    bool PendingReadback(VAddr addr, u64 size);
+    std::mutex deferred_mutex;
+    std::deque<DeferredBatch> deferred_readbacks; ///< oldest first
+    RangeSet pending_readbacks; ///< GPU bytes of deferred_readbacks (guarded by deferred_mutex)
+    std::atomic<bool> has_pending_readbacks{false};
+    bool deferred_readbacks_enabled = true; ///< ORDER1886_DEFER_BUFFER_READBACK=0 turns it off
 
     std::unique_ptr<FaultManager> fault_manager;
     std::unique_ptr<Buffer> bda_pagetable_buffer;

@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 import order1886_perf_report as perf_report  # noqa: E402
 
 PROBE = ROOT / 'tools' / 'order1886_graphics_probe.py'
+EFFECT_PROBE = ROOT / 'tools' / 'order1886_post_effect_probe.py'
 OVERLAY_ALL = ['overlay_frametime=1', 'overlay_gpu=1', 'overlay_cpu=1', 'overlay_memory=1']
 VARIANTS = {
     'baseline': [],
@@ -44,6 +45,11 @@ VARIANTS = {
     'parallel-warmup': ['parallel_warmup=1'],
     'deferred-readbacks': ['speculative_readbacks=1'],
     'fps-cap-45': ['fps_cap=45', 'in_game_menu=1'],
+    # Step 10 (#16): each post effect off in a prepared image of its own.
+    'motion-blur-off': ['motion_blur=0'],
+    'depth-of-field-off': ['depth_of_field=0'],
+    'film-grain-off': ['film_grain=0'],
+    'chromatic-aberration-off': ['chromatic_aberration=0'],
     'fps-cap-240': ['fps_cap=240'],  # with --frame-rate 0 the cap is the unlocked rate
     'upscaler-fsr3': [],
 }
@@ -52,32 +58,37 @@ SHOW_FPS = {'overlay-none', 'overlay-all'}
 UPSCALER = {'upscaler-fsr3': 'fsr3'}
 
 
-SCANCODES = {'space': 0x39, 'down': 0x50, 'up': 0x48, 'left': 0x4B, 'right': 0x4D, 'enter': 0x1C}
+# Arrows are the right stick (camera) in runtime_pad.c's keyboard map; R is L2 (aim).
+SCANCODES = {'space': 0x39, 'down': 0x50, 'up': 0x48, 'left': 0x4B, 'right': 0x4D, 'enter': 0x1C, 'r': 0x13}
+EXTENDED = {'down', 'up', 'left', 'right'}
 # Pseudo-keys: a slow relative mouse drag for HOLD seconds (mouse look), 2 px every 10 ms.
 MOUSE_MOVES = {'mouse-right': (2, 0), 'mouse-left': (-2, 0)}
 
 
 def key_tap(text):
-    """SECONDS:KEY[:HOLD] for --keys, checked before any run starts (HOLD seconds, default 0.15)."""
+    """SECONDS:KEY[:HOLD] for --keys, checked before any run starts; HOLD defaults to a tap."""
     at, _, rest = text.partition(':')
-    key, _, hold_text = rest.partition(':')
+    key, _, hold = rest.partition(':')
     try:
-        seconds, hold = float(at), float(hold_text or 0.15)
+        seconds, held = float(at), float(hold or 0.15)
     except ValueError:
-        seconds, hold = -1.0, -1.0
-    if not (0 <= seconds < float('inf') and 0 < hold <= 30) or key not in (*SCANCODES, *MOUSE_MOVES):
+        seconds = held = -1.0
+    if not 0 <= seconds < float('inf') or not 0 < held < 60 or key not in (*SCANCODES, *MOUSE_MOVES):
         raise argparse.ArgumentTypeError(
             f'expected SECONDS:KEY[:HOLD] with KEY in {", ".join((*SCANCODES, *MOUSE_MOVES))}: {text!r}')
-    return seconds, key, hold
+    return seconds, key, held
 
 
-def press(key, hold=0.15):
-    """Tap a key in the game window (Space is Cross in runtime_pad.c's default map)."""
+def press(key, runtime, hold=0.15):
+    """Tap a key in the game window (Space is Cross in runtime_pad.c's default map).
+
+    Only a window of the runtime under test counts: another session's runtime may be open.
+    """
     import ctypes
     user32 = ctypes.windll.user32
     found = []
     callback = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(
-        lambda hwnd, _: (found.append(hwnd) if user32.IsWindowVisible(hwnd) and _owner(hwnd) == 'order1886-runtime.exe'
+        lambda hwnd, _: (found.append(hwnd) if user32.IsWindowVisible(hwnd) and _owner(hwnd) == runtime
                          else None) or True)
     user32.EnumWindows(callback, 0)
     if not found:
@@ -94,7 +105,7 @@ def press(key, hold=0.15):
             threading.Event().wait(0.01)
         return
     code = SCANCODES[key]
-    extended = 1 if key in ('down', 'up', 'left', 'right') else 0
+    extended = 1 if key in EXTENDED else 0
     user32.keybd_event(0, code, 8 | extended, 0)  # KEYEVENTF_SCANCODE
     threading.Event().wait(hold)
     user32.keybd_event(0, code, 8 | 2 | extended, 0)
@@ -103,7 +114,7 @@ def press(key, hold=0.15):
 SAVE_LOADED = "save data 'Playthrough00' mounted"
 
 
-def continue_save(log, stop, start, every=4.0, limit=12):
+def continue_save(log, stop, start, runtime, every=4.0, limit=12):
     """Tap Space (Cross) until the runtime mounts the copied playthrough save.
 
     Boot and menu timing change with the engine rate, so fixed key times can land on the
@@ -115,7 +126,7 @@ def continue_save(log, stop, start, every=4.0, limit=12):
     while taps < limit and not stop.is_set():
         if log.is_file() and SAVE_LOADED in log.read_text(encoding='utf-8', errors='replace'):
             break
-        press('space')
+        press('space', runtime)
         taps += 1
         stop.wait(every)
     return taps
@@ -132,7 +143,7 @@ def _owner(hwnd):
     buffer, size = ctypes.create_unicode_buffer(512), wintypes.DWORD(512)
     ctypes.windll.kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size))
     ctypes.windll.kernel32.CloseHandle(handle)
-    return Path(buffer.value).name.lower()
+    return str(Path(buffer.value)).lower() if buffer.value else ''
 
 
 def to_png(raw):
@@ -176,23 +187,34 @@ def run(name, args, output):
         command += ['--upscaler', UPSCALER[name]]
     for setting in [*VARIANTS[name], f'vsync={args.vsync}']:
         command += ['--setting', setting]
+    for item in args.env:
+        command += ['--env', item]
     shots = output / 'screens' / name
     shots.mkdir(parents=True)
     timers = [threading.Timer(delay, lambda d=delay: ImageGrab.grab().save(shots / f'screen_{d:g}s.png'))
               for delay in args.delays]
-    timers += [threading.Timer(at, press, (key, hold)) for at, key, hold in args.keys]
+    runtime = str((args.runtime or ROOT / 'out' / 'order1886-runtime.exe').resolve()).lower()
+    timers += [threading.Timer(at, press, (key, runtime, hold)) for at, key, hold in args.keys]
+    samples = output / 'effect-samples' / f'{name}.jsonl'
+    if args.sample_effects:
+        samples.parent.mkdir(exist_ok=True)
+        # Started first: it waits for the runtime and times its reads from the runtime's start.
+        reader = subprocess.Popen([sys.executable, str(EFFECT_PROBE), '--output', str(samples), '--runtime', runtime,
+                                   '--at', *map(str, args.delays)], cwd=ROOT)
     process = subprocess.Popen(command, cwd=ROOT)
     for timer in timers:
         timer.start()
     stop, taps = threading.Event(), []
     if args.continue_save is not None:
         driver = threading.Thread(target=lambda: taps.append(
-            continue_save(folder / 'native.log', stop, args.continue_save)))
+            continue_save(folder / 'native.log', stop, args.continue_save, runtime)))
         driver.start()
     process.wait()
     stop.set()
     for timer in timers:
         timer.cancel()
+    if args.sample_effects:
+        reader.wait()
     if args.continue_save is not None:
         driver.join()
     record = json.loads((folder / 'run.json').read_text(encoding='utf-8'))
@@ -221,7 +243,9 @@ def run(name, args, output):
             'settings_line': next((line.strip() for line in log.splitlines() if 'Settings: output' in line), None),
             'frames': {kind: [str(p.relative_to(output)) for p in paths] for kind, paths in frames.items()},
             'screens': sorted(str(p.relative_to(output)) for p in shots.glob('*.png')),
-            'timing': timing}
+            'timing': timing,
+            'effect_samples': ([json.loads(line) for line in samples.read_text(encoding='utf-8').splitlines()]
+                               if samples.is_file() else None)}
 
 
 def compare(results, output):
@@ -241,7 +265,8 @@ def main():
                         help='seconds after launch for each frame dump and screenshot')
     parser.add_argument('--timeout', type=float, required=True)
     parser.add_argument('--keys', nargs='*', default=[], metavar='SECONDS:KEY', type=key_tap,
-                        help='key presses after launch, e.g. 45:space or 160:right:2 (held 2 s)')
+                        help='key presses after launch, e.g. 45:space, held keys such as 84:right:4, '
+                             'or mouse look such as 150:mouse-right:6')
     parser.add_argument('--vsync', type=int, choices=[0, 1], default=1,
                         help='0 presents without waiting for the display, so a 60 Hz monitor does not cap the rate')
     parser.add_argument('--continue-save', type=float, metavar='SECONDS',
@@ -258,6 +283,10 @@ def main():
     parser.add_argument('--measure-after', type=float, default=0,
                         help='frame times count only from this many seconds into the trace')
     parser.add_argument('--savedata', type=Path, help='savedata tree copied into the isolated state')
+    parser.add_argument('--sample-effects', action='store_true',
+                        help='read the live post-effect strengths at each delay (Windows)')
+    parser.add_argument('--env', action='append', default=[], metavar='KEY=VALUE',
+                        help='extra runtime environment for every run, e.g. ORDER1886_FRAME_STATS=1')
     parser.add_argument('--only', nargs='+', choices=list(VARIANTS), help='run a subset (baseline is always run)')
     args = parser.parse_args()
     if args.continue_save is not None and not args.savedata:
