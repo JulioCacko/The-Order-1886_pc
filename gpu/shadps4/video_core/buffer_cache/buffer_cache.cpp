@@ -103,7 +103,9 @@ BufferCache::BufferCache(const Vulkan::Instance& instance_, Vulkan::Scheduler& s
     runtime.FillBuffer(bda_pagetable_buffer.get(), 0u, bda_pagetable_size, 0u);
     // Write faults beside GPU-written bytes are deferred instead of waiting for the whole GPU.
     // Relaxed readbacks only: the snapshot reads guest pages that the other modes keep
-    // read-protected.
+    // read-protected. Known gap: a CPU write of a pending byte's snapshot value (or one racing
+    // ApplyDeferredBatch) is not detected and the GPU data replaces it; the page has to stay
+    // writable for the faulting write, so closing it needs the GPU wait this removes.
     if (const char* env = std::getenv("ORDER1886_DEFER_BUFFER_READBACK"); env && env[0] == '0') {
         deferred_readbacks_enabled = false;
     }

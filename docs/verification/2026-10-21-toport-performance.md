@@ -85,6 +85,14 @@ keep read-protected. `gpu/shadps4/video_core/buffer_cache/deferred_readback_merg
 from TOport with its GPL header. `ORDER1886_DEFER_BUFFER_READBACK=0` or toggle bit 58 turns it off.
 Frame stats: time blocked on GPU ticks 26% → 0%.
 
+Known hazard (raised in review, not fixed): CPU writes are detected only by comparing guest bytes
+with the snapshot taken at the fault. If the guest writes a pending GPU byte with the same value it
+had at the fault, or writes it between that comparison and the copy, the GPU data written later
+replaces the CPU write. Protection works per page, and the page is unprotected so that the faulting
+write can go on, so later writes to it cannot be caught. Closing this needs the GPU wait that the
+change removes. No such case was seen in the runs above. `ORDER1886_DEFER_BUFFER_READBACK=0` is the
+fallback if one shows up.
+
 ### 3. Two-stage draw pipeline (TOport `888c546`, `5534ce9`)
 
 The draw pipeline (`vk_draw_pipe.h`) was already in this tree but switched off, because Vulkan
