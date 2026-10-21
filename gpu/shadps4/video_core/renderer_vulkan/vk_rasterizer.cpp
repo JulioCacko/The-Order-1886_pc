@@ -60,6 +60,8 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
     // Before the rasterizer is bound: Liverpool enqueues buffers only once it sees it.
     draw_prep = std::make_unique<DrawPreparation>(pipeline_cache);
     scene_targets = std::make_unique<SceneTargets>(instance, scheduler, runtime, texture_cache);
+    // Scheduler entry points on the GPU command thread wait for the draw recording thread.
+    scheduler.SetDrawPipeDrain([this] { DrainDrawPipe(); });
     // Object motion first: it fixes the buffer addresses the motion shader variants embed.
     object_motion = std::make_unique<ObjectMotion>(instance, scheduler);
     camera_motion = std::make_unique<CameraMotion>(instance, scheduler, texture_cache, runtime);
@@ -84,7 +86,10 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
     });
 }
 
-Rasterizer::~Rasterizer() = default;
+Rasterizer::~Rasterizer() {
+    draw_pipe.reset();
+    scheduler.SetDrawPipeDrain({}); // the drain captured this rasterizer
+}
 
 inline const AmdGpu::Regs& Rasterizer::Regs() const {
     return stage_regs ? *stage_regs : liverpool->regs;
@@ -357,8 +362,13 @@ u32 VerifyInterval() {
 } // namespace
 
 bool Rasterizer::DrawPipeWanted() {
-    // Validation found simultaneous writers to the shared Vulkan command pool.
-    return false;
+    const char* env = std::getenv("ORDER1886_DRAW_PIPE");
+    if (env && env[0]) {
+        return env[0] == '1';
+    }
+    // Stage B spins while draws flow (TOport: +18-19% with 8 and 16 threads). The scheduler
+    // drain hook keeps the GPU command thread off the command buffer while it records.
+    return Ps4Threads::Available() >= 8;
 }
 
 bool Rasterizer::UseDrawPipe() const {
@@ -1379,6 +1389,7 @@ void Rasterizer::OnSubmit() {
         buffer_cache.ProcessFaultBuffer();
     }
     texture_cache.ProcessDownloadImages();
+    buffer_cache.OnSubmitted();
     texture_cache.RunGarbageCollector();
     runtime.TickFrame();
 }
