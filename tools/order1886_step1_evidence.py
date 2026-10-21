@@ -51,13 +51,18 @@ VARIANTS = {
     'film-grain-off': ['film_grain=0'],
     'chromatic-aberration-off': ['chromatic_aberration=0'],
     'fps-cap-240': ['fps_cap=240'],  # with --frame-rate 0 the cap is the unlocked rate
+    'upscaler-fsr3': [],
 }
 SHOW_FPS = {'overlay-none', 'overlay-all'}
+# Variants that ask the runtime for a provider in place of the game's temporal resolve (#7).
+UPSCALER = {'upscaler-fsr3': 'fsr3'}
 
 
 # Arrows are the right stick (camera) in runtime_pad.c's keyboard map; R is L2 (aim).
 SCANCODES = {'space': 0x39, 'down': 0x50, 'up': 0x48, 'left': 0x4B, 'right': 0x4D, 'enter': 0x1C, 'r': 0x13}
 EXTENDED = {'down', 'up', 'left', 'right'}
+# Pseudo-keys: a slow relative mouse drag for HOLD seconds (mouse look), 2 px every 10 ms.
+MOUSE_MOVES = {'mouse-right': (2, 0), 'mouse-left': (-2, 0)}
 
 
 def key_tap(text):
@@ -68,9 +73,9 @@ def key_tap(text):
         seconds, held = float(at), float(hold or 0.15)
     except ValueError:
         seconds = held = -1.0
-    if not 0 <= seconds < float('inf') or not 0 < held < 60 or key not in SCANCODES:
+    if not 0 <= seconds < float('inf') or not 0 < held < 60 or key not in (*SCANCODES, *MOUSE_MOVES):
         raise argparse.ArgumentTypeError(
-            f'expected SECONDS:KEY[:HOLD] with KEY in {", ".join(SCANCODES)}: {text!r}')
+            f'expected SECONDS:KEY[:HOLD] with KEY in {", ".join((*SCANCODES, *MOUSE_MOVES))}: {text!r}')
     return seconds, key, held
 
 
@@ -92,6 +97,12 @@ def press(key, runtime, hold=0.15):
     user32.SetForegroundWindow(found[0])
     user32.keybd_event(0x12, 0, 2, 0)
     if user32.GetForegroundWindow() != found[0]:
+        return
+    if key in MOUSE_MOVES:
+        dx, dy = MOUSE_MOVES[key]
+        for _ in range(max(1, int(hold / 0.01))):
+            user32.mouse_event(1, dx, dy, 0, 0)  # MOUSEEVENTF_MOVE, relative
+            threading.Event().wait(0.01)
         return
     code = SCANCODES[key]
     extended = 1 if key in EXTENDED else 0
@@ -160,12 +171,20 @@ def run(name, args, output):
                '--state-dir', str(output / 'state'), '--output-dir', str(folder),
                '--timeout', str(args.timeout), '--dump-frame', '--frame-rate', str(args.frame_rate),
                '--frame-delay', *map(str, args.delays)]
+    if args.frame_capture is not None:
+        command += ['--frame-capture', *map(str, args.frame_capture)]
+    if args.temporal_probe:
+        command.append('--temporal-probe')
+    if args.dump_shaders:
+        command.append('--dump-shaders')
     if args.cache_seed:
         command += ['--cache-seed', str(args.cache_seed.resolve())]
     if args.runtime:
         command += ['--runtime', str(args.runtime)]
     if name in SHOW_FPS:
         command.append('--show-fps')
+    if name in UPSCALER:
+        command += ['--upscaler', UPSCALER[name]]
     for setting in [*VARIANTS[name], f'vsync={args.vsync}']:
         command += ['--setting', setting]
     for item in args.env:
@@ -246,7 +265,8 @@ def main():
                         help='seconds after launch for each frame dump and screenshot')
     parser.add_argument('--timeout', type=float, required=True)
     parser.add_argument('--keys', nargs='*', default=[], metavar='SECONDS:KEY', type=key_tap,
-                        help='key taps after launch, e.g. 45:space, or held keys such as 84:right:4')
+                        help='key presses after launch, e.g. 45:space, held keys such as 84:right:4, '
+                             'or mouse look such as 150:mouse-right:6')
     parser.add_argument('--vsync', type=int, choices=[0, 1], default=1,
                         help='0 presents without waiting for the display, so a 60 Hz monitor does not cap the rate')
     parser.add_argument('--continue-save', type=float, metavar='SECONDS',
@@ -255,6 +275,10 @@ def main():
     parser.add_argument('--runtime', type=Path, help='runtime to test (default: the built one)')
     parser.add_argument('--frame-rate', type=int, choices=[30, 60, 90, 0], default=60,
                         help='engine rate; 0 is unlocked (paced by fps_cap)')
+    parser.add_argument('--frame-capture', type=float, nargs='+', metavar='SECONDS',
+                        help='also record one frame census and its pass images (probe --frame-capture)')
+    parser.add_argument('--temporal-probe', action='store_true', help='also run the temporal input probe (#7)')
+    parser.add_argument('--dump-shaders', action='store_true', help='also dump guest and SPIR-V shaders')
     parser.add_argument('--cache-seed', type=Path, help='GPU cache copied into every run (warm start)')
     parser.add_argument('--measure-after', type=float, default=0,
                         help='frame times count only from this many seconds into the trace')

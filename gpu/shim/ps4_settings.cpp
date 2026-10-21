@@ -180,6 +180,7 @@ void Load() {
             Set(v, key, value);
         }
     }
+    v.requested_upscaler = v.upscaler.load();
     // No inherited engine reconstruction, cheats, HUD, or speculative readbacks. Sharpening
     // (rcas) and asynchronous shaders are launcher settings and keep the values read above.
     v.upscaler = UpscalerOff;

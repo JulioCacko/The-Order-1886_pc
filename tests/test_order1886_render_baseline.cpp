@@ -69,7 +69,7 @@ int main() {
     {
         const char* ini = "order1886_render_baseline_test.ini";
         FILE* file = std::fopen(ini, "w");
-        std::fputs("rcas=1\nrcas_strength=40\nasync_shaders=1\noutput_res=3840x2160\nfps_limit=45\n", file);
+        std::fputs("rcas=1\nrcas_strength=40\nasync_shaders=1\noutput_res=3840x2160\nfps_limit=45\nupscaler=fsr3\n", file);
         std::fclose(file);
 #ifdef _WIN32
         _putenv_s("ORDER1886_CONFIG", ini);
@@ -81,6 +81,8 @@ int main() {
         assert(loaded.rcas && loaded.rcas_strength == 40 && loaded.async_shaders);
         assert(loaded.startup_output_res == 3 && loaded.fps_limit == 45);
         assert(loaded.upscaler == Ps4Settings::UpscalerOff);
+        // The request survives for the fallback report even though no provider runs yet.
+        assert(loaded.requested_upscaler == Ps4Settings::UpscalerFsr3);
         std::remove(ini);
     }
     AmdGpu::no_msaa.store(true);

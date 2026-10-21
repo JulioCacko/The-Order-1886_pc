@@ -87,8 +87,15 @@ def main():
     parser.add_argument('--frame-trace', action=argparse.BooleanOptionalAction, default=True,
                         help='record guest flips and summarize distinct render-work intervals')
     parser.add_argument('--show-fps', action='store_true')
+    parser.add_argument('--temporal-probe', action='store_true',
+                        help='log whether the game velocity predicts the previous frame (#7)')
+    parser.add_argument('--upscaler', choices=['fsr3', 'dlss'],
+                        help='ask the runtime for this provider in place of the game temporal resolve (#7); '
+                             'the launcher does not offer it yet')
     parser.add_argument('--fatal-dump', action='store_true',
                         help='write fault.dmp (the stack of every thread) if the runtime faults')
+    parser.add_argument('--frame-capture', type=float, nargs='+', metavar='SECONDS',
+                        help='record a frame census plus its pass images at each of these times after launch')
     parser.add_argument('--cache-seed', type=Path, help='copy this GPU cache in instead of starting cold')
     parser.add_argument('--env', action='append', default=[], metavar='KEY=VALUE',
                         help='extra runtime environment (diagnostics such as ORDER1886_FRAME_STATS=1), repeatable')
@@ -132,6 +139,9 @@ def main():
         prepared = order.prepare_game(game, user / 'prepared', frame_rate=args.frame_rate,
                                       aspect_ratio=args.aspect_ratio, disabled_effects=disabled_effects)
         order.write_runtime_config(user, settings)
+        if args.upscaler:
+            with (user / 'runtime.ini').open('a', encoding='utf-8') as config:
+                config.write(f'upscaler={args.upscaler}\n')
         order.save_backup.backup(user)
         output.mkdir(parents=True)
         cache = output / 'gpu'
@@ -145,6 +155,8 @@ def main():
             key, _, value = item.partition('=')
             env[key] = value
         trace_path = output / 'frame-trace.csv'
+        if args.temporal_probe:
+            env['ORDER1886_TEMPORAL_PROBE'] = '1'
         if args.fatal_dump:
             env['ORDER1886_FATAL_DUMP'] = str(output / 'fault.dmp')
         if args.frame_trace:
@@ -165,6 +177,16 @@ def main():
                     trigger.touch()
             env['ORDER1886_DUMP_DIR'] = str(frames)
             env['ORDER1886_FRAME_DUMP_TRIGGER'] = str(trigger)
+        if args.frame_capture is not None:
+            # One frame's pass census (capture/) and every pass target and dispatch image (diag/).
+            capture_trigger = output / 'frame-capture.request'
+            for delay in args.frame_capture:
+                capture_timers.append(threading.Timer(delay, capture_trigger.touch))
+                capture_timers[-1].daemon = True
+            env['ORDER1886_CAPTURE_TRIGGER'] = str(capture_trigger)
+            env['ORDER1886_CAPTURE_DIR'] = str(output / 'capture')
+            env['ORDER1886_DIAG_DIR'] = str(output / 'diag')
+            env['ORDER1886_DIAG_IMAGES'] = '1'
         command = order.build_command(runtime, user / 'prepared/boot-linked.bin', game, user)
         log = output / 'native.log'
         record = output / 'run.json'

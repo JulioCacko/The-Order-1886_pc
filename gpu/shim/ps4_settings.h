@@ -32,6 +32,8 @@ inline constexpr int OutputDefault = OutputAutomatic;
 
 struct Values {
     std::atomic<int> upscaler{UpscalerOff};
+    /// The upscaler runtime.ini or ORDER1886_UPSCALER asked for, before Load forces it off.
+    std::atomic<int> requested_upscaler{UpscalerOff};
     std::atomic<int> preset{NativeAA};
     std::atomic<bool> sharpen{false};
     std::atomic<float> sharpness{0.3f};
