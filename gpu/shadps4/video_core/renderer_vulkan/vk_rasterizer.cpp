@@ -1381,10 +1381,12 @@ void Rasterizer::DispatchIndirectRecord(const ComputePipeline* pipeline, VAddr a
     scheduler.PopPendingOperations();
     const u32 offset = 0;
 
-    buffer_cache.WatchWrittenBuffers(
-        ReadbackWatchedShader(pipeline->GetStage(Shader::SwStage::Compute).pgm_hash));
+    const u64 cs_hash = pipeline->GetStage(Shader::SwStage::Compute).pgm_hash;
+    buffer_cache.WatchWrittenBuffers(ReadbackWatchedShader(cs_hash));
+    buffer_cache.SetCurrentDispatch(cs_hash);
     const bool bound = BindResources(pipeline);
     buffer_cache.WatchWrittenBuffers(false);
+    buffer_cache.SetCurrentDispatch(0);
     if (!bound) {
         return;
     }

@@ -137,7 +137,9 @@ void BufferCache::InvalidateMemory(VAddr device_addr, u64 size, bool assume_lock
     memory_tracker->InvalidateRegion(device_addr, size, [this, device_addr, size, assume_locks] {
         ReadMemory(device_addr, size, true, assume_locks);
     });
-    if (EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Selective) {
+    // A CPU overwrite or unmap ends any read watch: relaxed keeps them for allowlisted outputs.
+    if (EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Selective ||
+        EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Relaxed) {
         memory_tracker->WatchReads(device_addr, size, false);
     }
 }
