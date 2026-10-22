@@ -32,6 +32,8 @@ def field(key, label, page, kind, default, description, choices=None, reason="",
 
 field("game_dir", "Game folder", "game", "directory", "", "Select the extracted CUSA00076 game. Original files remain unchanged.")
 field("runtime", "Runtime executable", "system", "file", "", "Leave empty to use the installation's verified Order runtime.")
+field("trophy_key", "Trophy key", "achievements", "secret", "",
+      "Optional: your own console's trophy key, 32 hexadecimal digits, as shadPS4 uses it. With it the launcher decrypts trophy names and descriptions from your game's own files; hidden trophies stay hidden until earned. The key stays in this installation's settings and is never sent anywhere.")
 field("performance_capture", "Record performance data", "system", "boolean", False,
       "Save frame times and slow-frame diagnostics with each session's logs. Turn this off after recording the slow scene.")
 field("display_mode", "Display mode", "graphics", "select", "borderless", "Window mode is independent of framing and game timing.",

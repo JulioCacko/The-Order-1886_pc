@@ -125,7 +125,7 @@ jobs:
           ls -l build/bin/
       - name: Build the Python worker
         run: |
-          python -m pip install --disable-pip-version-check 'pyinstaller==6.20.0'
+          python -m pip install --disable-pip-version-check 'pyinstaller==6.20.0' 'cryptography==50.0.1'
           # PyInstaller resolves --add-data relative to --specpath, so the source side has to be
           # absolute; on Linux the source:destination separator is ':'.
           python -m PyInstaller --noconfirm --clean --console --onedir --log-level WARN \
