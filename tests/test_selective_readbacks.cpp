@@ -38,6 +38,8 @@ int main() {
     assert(mode<=GpuReadbacksMode::Selective);
     const bool precise=mode==GpuReadbacksMode::Precise;
     const bool selective=mode==GpuReadbacksMode::Selective;
+    // Relaxed protects only pages a watched dispatch wrote (BufferCache allowlist, aim focus).
+    const bool watched=selective || mode==GpuReadbacksMode::Relaxed;
     region.ChangeRegionState<Type::CPU,false>(base,3*TRACKER_BYTES_PER_PAGE);
     region.ChangeRegionState<Type::GPU,true>(base,3*TRACKER_BYTES_PER_PAGE);
     assert(reads[0]==int(precise) && reads[1]==int(precise));
@@ -46,11 +48,11 @@ int main() {
     region.WatchReads(base+TRACKER_BYTES_PER_PAGE,16,true);
     region.WatchReads(base+TRACKER_BYTES_PER_PAGE+8,8,true);
     assert(reads[0]==int(precise));
-    assert(reads[1]==int(precise||selective));
+    assert(reads[1]==int(precise||watched));
     region.ChangeRegionState<Type::GPU,false>(base+TRACKER_BYTES_PER_PAGE,16);
     assert(!reads[1]);
     region.ChangeRegionState<Type::GPU,true>(base+TRACKER_BYTES_PER_PAGE,16);
-    assert(reads[1]==int(precise||selective));
+    assert(reads[1]==int(precise||watched));
     // A CPU overwrite/unmap cancels the selective watch. It cannot cancel the
     // protection required by precise mode while the GPU still owns the bytes.
     region.WatchReads(base+TRACKER_BYTES_PER_PAGE,16,false);

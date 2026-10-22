@@ -115,6 +115,24 @@ BufferCache::BufferCache(const Vulkan::Instance& instance_, Vulkan::Scheduler& s
 
 BufferCache::~BufferCache() = default;
 
+bool BufferCache::ReadbackLog() {
+    static const bool enabled = [] {
+        const char* env = std::getenv("ORDER1886_READBACK_LOG");
+        return env && *env == '1';
+    }();
+    return enabled;
+}
+
+u64 BufferCache::WriterOf(VAddr address) {
+    std::scoped_lock lock{writers_mutex};
+    auto it = writers.upper_bound(address);
+    if (it == writers.begin()) {
+        return 0;
+    }
+    --it;
+    return address < it->first + it->second.first ? it->second.second : 0;
+}
+
 void BufferCache::InvalidateMemory(VAddr device_addr, u64 size, bool assume_locks) {
     memory_tracker->InvalidateRegion(device_addr, size, [this, device_addr, size, assume_locks] {
         ReadMemory(device_addr, size, true, assume_locks);
@@ -542,8 +560,14 @@ std::pair<const Buffer*, u64> BufferCache::ObtainBuffer(VAddr device_addr, u32 s
     EnsureResident(arena, first_block, last_block);
     const u64 uploaded_before = Ps4Stats::buffer_upload_bytes.load(std::memory_order_relaxed);
     SynchronizeMemory(arena, device_addr, size, is_written, is_texel_buffer);
+    if (is_written && size <= 64_KB && ReadbackLog()) {
+        std::scoped_lock lock{writers_mutex};
+        writers[device_addr] = {size, current_dispatch};
+    }
     if (is_written && size <= 64_KB &&
-        EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Selective) {
+        (EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Selective ||
+         (watch_written_buffers &&
+          EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Relaxed))) {
         memory_tracker->WatchReads(device_addr, size, true);
     }
     if (stats) {
