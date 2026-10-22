@@ -5,7 +5,7 @@ Reviewed against the acceptance lists in
 Evidence: [verified implementation](verification/2026-10-18-donor-060.md),
 [runtime record](verification/2026-10-18-gold-work.md), release source at `54242e0`.
 Preview 8 makes the Go launcher the only launcher, publishes a Windows package and a portable Linux `tar.gz` again, and states the blocker on every rendering option. See the [release receipt](verification/2026-10-18-preview4-release.md).
-The [current Go prerelease](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.8) adds seven searchable pages, a separate worker, local trophy history and performance recording. [Go verification](verification/2026-10-18-go-launcher.md) records its distinct package and CI evidence. The live open-issue list was refreshed on October 19: #1–18 and #20–23 remain open; no acceptance issue was closed.
+The [current Go prerelease](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.9) adds seven searchable pages, a separate worker, local trophy history and performance recording. [Go verification](verification/2026-10-18-go-launcher.md) records its distinct package and CI evidence. The live open-issue list was refreshed on October 19: #1–18 and #20–23 remain open; no acceptance issue was closed.
 
 ## The 19 October sweep, in one paragraph
 

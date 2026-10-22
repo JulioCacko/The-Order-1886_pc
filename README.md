@@ -1,102 +1,135 @@
-<p align="center"><img src="launcher/order1886/logo-horizontal.png" width="720" alt="The Order: 1886 official logo"></p>
+<p align="center"><img src="docs/images/preview9/hero.jpg" width="100%" alt="The Order: 1886 running on PC: the hotel lobby"></p>
+
 <h1 align="center">The Order: 1886 — PC</h1>
 
-<p align="center">Native x86-64 execution · PS4 compatibility runtime · Vulkan graphics</p>
+<p align="center">Native x86-64 execution · PS4 compatibility runtime · Vulkan graphics · Windows and Linux</p>
 
 <p align="center">
-  <a href="README.pt-BR.md"><b>Português (Brasil)</b></a> ·
-  <a href="README.es.md">Español</a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/order1886-go-windows.zip"><b>Download Windows ZIP</b></a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases">Releases</a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
-</p>
-
-<p align="center">
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases"><img src="https://img.shields.io/github/v/release/JulioCacko/The-Order-1886_pc?include_prereleases&label=preview&color=d4bd75" alt="Latest preview"></a>
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases"><img src="https://img.shields.io/github/downloads/JulioCacko/The-Order-1886_pc/total?color=2b2c24" alt="Downloads"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-2b2c24" alt="Windows and Linux">
+  <img src="https://img.shields.io/badge/graphics-Vulkan-a41e22" alt="Vulkan">
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/actions/workflows/order1886-go-preview.yml"><img src="https://github.com/JulioCacko/The-Order-1886_pc/actions/workflows/order1886-go-preview.yml/badge.svg" alt="Windows build"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--2.0--or--later-blue" alt="GPL-2.0-or-later"></a>
 </p>
 
-> **Development preview.** Cinematics render and a street route has been exercised, but performance remains slow and full gameplay, checkpoint progression and sustained 4K/60 are not accepted. The latest automated checks pass; see [Status](#status).
+<p align="center">
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-go-windows.zip"><b>⬇ Windows package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-linux-x86_64.tar.gz"><b>⬇ Linux package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.9">Release notes</a> ·
+  <a href="README.pt-BR.md">Português (Brasil)</a> ·
+  <a href="README.es.md">Español</a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
+</p>
+
+> **Development preview.** Gameplay runs from a player's save at about 53 FPS in the night courtyard on an RTX 3070 (60 FPS mode), and the hotel lobby fight averages 38 FPS with dips. Full progression, long-session stability, the Chapter 6/9 QTE timing and sustained 4K/60 are not accepted yet. See [Status](#status).
 
 **The Order: 1886** for PlayStation 4, running on a PC through a dedicated
 compatibility runtime. The original x86-64 executable runs on the host CPU,
 PS4 system interfaces are reimplemented, and a
 [shadPS4-derived video core](https://github.com/shadps4-emu/shadPS4) translates
-GPU commands and shaders to Vulkan. The current target is **CUSA00076 on Windows**, with an experimental Linux x86-64 package.
+GPU commands and shaders to Vulkan. The target is **CUSA00076**, on Windows and Linux x86-64.
 
 > **No game files are included.** You need your own extracted copy. This is an
 > unofficial community project, not an official PC release.
 
-## Video demonstration
+## Gameplay on PC
+
+Captured from the preview 9 Windows package on an RTX 3070 at 1920×1080 in 60 FPS mode. Each image is the game window only, cropped to the 1920×800 scene the game renders.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/preview9/gameplay-lobby.jpg" alt="Galahad in cover in the hotel lobby, aiming across the dining tables"></td>
+    <td width="50%"><img src="docs/images/preview9/gameplay-reception.jpg" alt="Running past the hotel reception towards the red-carpeted stairs"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/preview9/gameplay-weapon-wheel.jpg" alt="The weapon wheel open during the hotel lobby fight"></td>
+    <td><img src="docs/images/preview9/gameplay-grenade.jpg" alt="The smoke grenade tutorial in the hotel lobby"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/preview9/title-menu.jpg" alt="The Order: 1886 title menu"></td>
+    <td><img src="docs/images/preview9/gameplay-courtyard.jpg" alt="The night courtyard outside the hotel"></td>
+  </tr>
+</table>
+
+### Video demonstration
 
 [![Watch The Order: 1886 running on PC](https://i.ytimg.com/vi/wpNkwih0cxI/hqdefault.jpg)](https://youtu.be/wpNkwih0cxI)
 
-[**Watch the demonstration on YouTube**](https://youtu.be/wpNkwih0cxI) — video evidence of the project running on PC, published by **Julio Cacko**. Click the thumbnail to watch.
+[**Watch the demonstration on YouTube**](https://youtu.be/wpNkwih0cxI), published by **Julio Cacko**.
 
-![A rendered cinematic from the supplied October 17 recording](docs/images/order1886-cinematic-20261017.jpg)
+## Proof: preview 9 on Windows and Linux
 
-<sub>Actual capture at 15:00 in the supplied October 17 recording, reduced from 1920×1080. This is a cinematic, not proof of interactive gameplay or a performance benchmark.</sub>
+<table>
+  <tr>
+    <th width="50%">Windows 11 · RTX 3070 · packaged build</th>
+    <th width="50%">Ubuntu 26.04 (WSL) · packaged build</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/preview9/windows-proof-overlay.jpg" alt="Windows: night courtyard with the performance overlay showing 50.6 FPS on an RTX 3070"></td>
+    <td><img src="docs/images/preview9/linux-runtime.jpg" alt="Linux: the title menu reached through the Linux package on Ubuntu 26.04"></td>
+  </tr>
+  <tr>
+    <td>Gameplay from a copied save. Overlay: 50.6 FPS, GPU 36 %, VRAM 2.1 GB. Over the measured minute: <b>53.2 FPS, p99 23 ms</b>.</td>
+    <td>The Linux package's own runtime on a clean Ubuntu 26.04 that has none of the build machine's libraries: intro, start screen and title menu, driven by keyboard input. WSL offers only software Vulkan (lavapipe), so it runs at 1–2 FPS and the menu's 3D background stays dark; playing needs a GPU driver.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/preview9/launcher-home.jpg" alt="Windows launcher Home page"></td>
+    <td><img src="docs/images/preview9/linux-launcher.jpg" alt="Linux launcher Home page under WebKitGTK"></td>
+  </tr>
+</table>
+
+How these were taken, with hashes and logs: [preview 9 release verification](docs/verification/2026-10-21-preview9-release.md).
 
 ## What's new
 
-**Preview 8 — 20 October 2026.** The Windows and Linux x86-64 packages are built from revision `e877470`, the Go launcher is the only launcher, and every rendering option states why it is unavailable while the runtime cannot honour it. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.8) · [What this build does and does not establish](docs/verification/2026-10-20-runtime-hardening.md).
+**Preview 9 — 21 October 2026.** [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.9)
 
-**Preview 8 — 20 October 2026.** These are the changes accumulated since preview 4.
+- **Playable frame rate.** The slow courtyard went from 7.2 to about 53 FPS. Memory-table locking, buffer readbacks and the draw pipeline were ported from [IgorAugustoHH/The-Order-1886-PC-Port](https://github.com/IgorAugustoHH/The-Order-1886-PC-Port) (#93).
+- **Graphics options that work.** Output resolution, sharpening, anisotropic filtering, overlay items, frames queued, async shaders and warm-up now reach the runtime (#90). 90 FPS and Unlocked engine timing come with a 30–240 presentation cap (#91). Film grain, motion blur, depth of field and chromatic aberration really switch off (#92).
+- **Temporal upscaling groundwork.** The game's temporal resolve is mapped and its velocity validated in the runtime, and an FSR 3.1 provider can replace it at native resolution (#94). The launcher does not offer it yet.
+- **A Linux package that starts.** It now carries its FFmpeg, SDL3, fmt and Zydis libraries instead of expecting the build machine's; before, the runtime failed on any other system.
+- **Fixes.** Gameplay no longer renders flat blue after a depth clear (#88). A startup heap corruption with async shaders is gone. Launcher text is readable under a light desktop theme. The in-launcher updater accepts this release's receipt.
 
-- **Input and direct play:** configurable mouse-to-stick camera input, sensitivity and inverted Y; **Play The Order 1886.exe** uses saved settings and the shared session/log lifecycle. Game includes desktop-shortcut and Add to Steam actions.
-- **Saves and asset mods:** original-preserving `_data` overlays with explicit enable/order/conflict controls; save backup/restore now keeps the newest backup even when many are created in the same second. External executable patches remain unsupported.
-- **Launcher utilities:** 13 selectable UI languages with English fallback and safe shader-cache clearing. The selection also requests the same PS4 game language at next launch; matching assets are required. Arabic/CJK visual acceptance and independent text/voice selection remain open.
-- **Shader and runtime fixes:** unordered NaN comparisons, legacy reciprocal square root, exclusive float atomic fallbacks, byte-preserving pipeline keys, mapped-range probe caching and busy-mutex lifetime protection. Preparation also accepts validated unpacked x86-64 ELF dumps.
-- **Verification:** **340 Windows Python tests, zero skips; Linux suite: 340 run, 21 skips; Windows 41 native checks and Linux native subset pass; Windows 15 and Linux 10 relocated package checks.** [Release verification](docs/verification/2026-10-18-preview4-release.md).
-
-See [implementation and issue status](docs/order1886-issue-status.md). These checks do not certify gameplay or frame rate.
+See [implementation and issue status](docs/order1886-issue-status.md).
 
 ## Status
 
 | Area | Current evidence | Remaining acceptance |
 | --- | --- | --- |
-| Boot and rendering | Supplied cinematic recording; Chapter 2 run with copied saves | Representative interactive route, checkpoint save/load and progression |
-| Windows launcher/package | Five pages, saved settings, direct play, desktop/Steam shortcuts, backup and cache tools; 15 portable checks pass | Broader DPI/language coverage and end-to-end player validation |
-| Input and mods | Mouse-to-stick path and reversible asset-overlay fixtures pass | Remapping UI, direct camera hook, gameplay/QTE and real mod validation |
-| Graphics stability | Descriptor guards retained; copied-save run reached its 900.959-second timeout without the 8,029-layer/assertion marker | Residual SRT errors, exact original crash sequence and full stability run; [#5](https://github.com/JulioCacko/The-Order-1886_pc/issues/5) remains open |
-| Performance | User reported slow street performance; mapped-range and shader/cache fixes pass local regressions | Same-viewpoint frame-time comparison and sustained 4K/60 |
-| Temporal providers | FSR 1 and Linear presentation available | Gameplay-qualified DLSS, FSR 3.1/4, XeSS and temporal inputs |
-| Game versions | Current local preparation checks use CUSA00076 | Update 1.02/fullscreen/high-FPS report [#23](https://github.com/JulioCacko/The-Order-1886_pc/issues/23) remains unverified |
+| Boot and rendering | Title, menus, cinematics and gameplay in the courtyard and the hotel from copied saves | Full progression, checkpoint save/load across chapters |
+| Performance | About 53 FPS in the courtyard and 38 FPS in the hotel fight (RTX 3070, 60 FPS mode) | Sustained 60 in fights; 4K/60 ([#3](https://github.com/JulioCacko/The-Order-1886_pc/issues/3)) |
+| Launcher | Go launcher on Windows and Linux; graphics, timing and effect options reach the runtime | Broader DPI and language coverage |
+| Temporal providers | FSR 1 presentation; FSR 3.1 replaces the temporal resolve in tests | Launcher option, DLSS, XeSS and FSR 4 ([#10](https://github.com/JulioCacko/The-Order-1886_pc/issues/10)–[#13](https://github.com/JulioCacko/The-Order-1886_pc/issues/13)) |
+| Linux | The package starts on Ubuntu 26.04 and reaches the title menu on software Vulkan | Gameplay on a Linux GPU driver |
+| Game versions | CUSA00076 APP_VER 01.00 / VERSION 01.03 | Update 1.02 report [#23](https://github.com/JulioCacko/The-Order-1886_pc/issues/23) |
 
-The Chapter 2 duration includes menus/loading and ended by forced timeout; it is not 15 minutes of measured street gameplay. No FPS improvement is claimed.
-
-See [current status](docs/STATUS.md), [issue tracking](docs/order1886-issue-status.md), [integration evidence](docs/verification/2026-10-18-gold-work.md), and the [4K/60 acceptance plan](docs/order1886-4k60-verification.md).
+See [current status](docs/STATUS.md) and the [4K/60 acceptance plan](docs/order1886-4k60-verification.md).
 
 ## Download and start
 
-**Published download: preview 8 (October 20).** Windows and Linux x86-64 packages are available, both built from revision `e877470`. Preserve your `user` folder when upgrading.
+**Published download: preview 9 (October 21).** Windows and Linux x86-64 packages. Keep your `user` folder when upgrading.
 
-**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/order1886-go-windows.zip)** ·
-**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/order1886-linux-x86_64.tar.gz)** ·
-[Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.8) ·
-[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/QUICKSTART.txt) ·
-[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/order1886-go-windows.zip.sha256) ·
-[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.8/order1886-linux-x86_64.tar.gz.sha256)
+**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-go-windows.zip)** ·
+**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-linux-x86_64.tar.gz)** ·
+[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/QUICKSTART.txt) ·
+[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-go-windows.zip.sha256) ·
+[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-linux-x86_64.tar.gz.sha256)
 
-The preview includes the launcher, dedicated runtime, required libraries and
-**`QUICKSTART.txt`**. No Python, MSYS2 or compiler is required. Download
-`order1886-go-windows.zip`; GitHub's “Source code” archives are for developers.
-The release also provides a ZIP checksum. Game files are supplied separately
-by you; this preview retains the [known compatibility limitations](#status).
+The packages include the launcher, the dedicated runtime and the libraries they need. No Python, MSYS2 or compiler is required. GitHub's "Source code" archives are for developers.
 
-**Linux x86-64 is built again**, as a portable `tar.gz` from the Go launcher, the native runtime and the Python worker. It is **not qualified**: nothing in it has run The Order: 1886, and the smoke that guards it covers the package, not the game. Requirements are a Vulkan-capable driver and a desktop session with GTK 3 and WebKitGTK 4.1. The runtime needs clang rather than GCC 13, because the shader compiler uses C++23 explicit object parameters. See the [Windows build guide](docs/order1886-build.md), which also documents the Linux path.
+**Windows**
 
-For a portable Windows package:
-
-1. Extract the entire ZIP to a writable folder. Keep the executable, `bin` and `_internal` together.
+1. Extract the entire ZIP to a writable folder. Keep the executables and `bin` together.
 2. Read **QUICKSTART.txt**, then open **The Order 1886.exe**.
 3. Choose your extracted **CUSA00076** folder. It must contain `eboot.bin`, `sce_sys`, `sce_module`, `_data` and `archivemap.bin`.
-4. Start with **30 FPS**, choose a display mode and press **Play**.
-5. Use **Advanced → View session log** for progress, or **Stop session** to end the session.
+4. Start with **30 FPS** or **60 FPS**, choose a display mode and press **Play**.
 
-Packaged users do not need Python or MSYS2. Original game files stay unchanged;
-prepared images, settings, caches, logs, saves and backups live under the
-installation's `user/order1886` folder.
+**Linux x86-64**
+
+Extract the `tar.gz` and run `The Order 1886`. You need a Vulkan GPU driver, a desktop session with GTK 3 and WebKitGTK 4.1, and glibc 2.39 or newer. The package has started on Ubuntu 26.04; gameplay on a Linux GPU driver is not tested yet.
+
+Original game files stay unchanged. Prepared images, settings, caches, logs, saves and backups live under the installation's `user/order1886` folder.
 
 For a source checkout, open `Launch The Order 1886.cmd` or run the Go launcher you built:
 
@@ -106,46 +139,47 @@ For a source checkout, open `Launch The Order 1886.cmd` or run the Go launcher y
 
 ## The launcher
 
-The launcher is a Go/Wails application (`launcher-go`). The screenshots below show the **retired Tk window** and are kept as a record of the previous interface; the table describes the settings the Go launcher carries.
-
-![Retired Tk launcher Home page](docs/images/order1886-home-20261018.png)
-
-<sub>Retired launcher captured on October 18 at 1240 × 800 with isolated settings. It is UI only; the selected 30 FPS is configuration, not a benchmark.</sub>
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/preview9/launcher-graphics.jpg" alt="Graphics page: display mode, framing, upscaling, VSync and output resolution"></td>
+    <td width="50%"><img src="docs/images/preview9/launcher-performance.jpg" alt="Performance page: frame rate, in-game menu and presentation cap"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/preview9/launcher-controls.jpg" alt="Controls page: mouse camera, sensitivity and keyboard bindings"></td>
+    <td><img src="docs/images/preview9/launcher-game.jpg" alt="Game and Content page: game folder, language and patches"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/preview9/launcher-achievements.jpg" alt="Achievements page"></td>
+    <td><img src="docs/images/preview9/launcher-system.jpg" alt="System page: runtime, performance data, language and updates"></td>
+  </tr>
+</table>
 
 | Page | Available controls |
 | --- | --- |
-| **Home** | Game folder, display, presentation filter, frame rate and Play/Stop |
-| **Graphics** | Window mode, original/experimental 16:9 aspect, FSR 1/Linear and VSync |
-| **Performance** | Native 30 FPS, experimental 60/90 FPS and Unlocked, and F9 overlay |
-| **Game** | Verify files, direct-play desktop shortcut, Add to Steam, save backups, ordered asset mods and mouse controls |
-| **Advanced** | Launcher language, optional runtime, logs/folders, shader-cache clearing and manual release links |
-
-<details><summary>Retired launcher screenshots</summary>
-
-![Graphics settings with the persistent launch bar](docs/images/order1886-graphics-20261018.png)
-
-![Game utilities: desktop shortcut, Steam and saves](docs/images/order1886-game-20261018.png)
-
-![Advanced settings and launcher language selector](docs/images/order1886-advanced-20261018.png)
-
-</details>
+| **Home** | Play, the launch configuration and the game installation check |
+| **Graphics** | Display mode, framing, FSR 1/Linear, VSync, output resolution, sharpening, anisotropy and the four post effects |
+| **Performance** | 30/60/90 FPS and Unlocked, the presentation cap, the in-game menu and overlay items |
+| **Controls** | Mouse camera, sensitivity, inverted Y and keyboard bindings |
+| **Game & Content** | Game folder, game language, catalogued patches, saves, mods, desktop shortcut and Add to Steam |
+| **Achievements** | Earned trophies, read from the game's own trophy data |
+| **System** | Runtime override, performance recording, launcher language, updates, logs and cache tools |
 
 Use **Save settings** after editing; launching from a settings page saves its values. Navigation keeps unsaved edits, and **Escape** returns Home. The launch bar stays available on every page.
 
-**Saves:** on Game, select a backup and press Play to confirm restoration before launch, or use Restore selected backup. Current saves are backed up first; then choose Continue/Load in the game. Older snapshots may lack Profile or progress. Saves use the SFO’s `INSTALL_DIR_SAVEDATA=CUSA00035`; do not rename that folder to CUSA00076.
+**Saves:** on Game & Content, select a backup and press Play to confirm restoration before launch, or use Restore selected backup. Current saves are backed up first; then choose Continue/Load in the game. Older snapshots may lack Profile or progress. Saves use the SFO’s `INSTALL_DIR_SAVEDATA=CUSA00035`; do not rename that folder to CUSA00076.
 
-**Language:** save the choice on Advanced and restart the launcher. The next game launch requests that PS4 system language, including Brazilian Portuguese. Matching game language assets must be installed; independent text/voice controls remain open.
+**Language:** save the choice on System and restart the launcher. The next game launch requests that PS4 system language, including Brazilian Portuguese. Matching game language assets must be installed; independent text/voice controls remain open.
 
-For mouse look, open **Game → Controls**: sensitivity and inverted Y persist. In the game window **Esc** releases the cursor and **F6** toggles capture; focus loss releases it automatically. This supplies the PS4 right stick; a direct 1:1 camera hook and remapping UI remain open. See the [input/direct-play guide](docs/order1886-input.md).
+For mouse look, open **Controls**: sensitivity and inverted Y persist. In the game window **Esc** releases the cursor and **F6** toggles capture; focus loss releases it automatically. This supplies the PS4 right stick; a direct 1:1 camera hook and remapping UI remain open. See the [input/direct-play guide](docs/order1886-input.md).
 
-**Play The Order 1886.exe** starts with the same saved configuration, preparation and logs as Play. Keep it beside `_internal` and `bin`. Use **Game → Add to Steam** with Steam closed; the action preserves existing shortcuts and is idempotent. Reopen Steam afterwards.
+**Play The Order 1886.exe** starts with the same saved configuration, preparation and logs as Play. Keep it beside `_internal` and `bin`. Use **Game & Content → Add to Steam** with Steam closed; the action preserves existing shortcuts and is idempotent. Reopen Steam afterwards.
 
 [Asset mod formats and limits](docs/order1886-mods.md) describe reversible `_data` overlays. Updates are installed manually; automatic updating, external executable patches, a Cheats page, independent game text/voice and a live Achievements page are not complete. The Tk window that used to be the fallback launcher has been removed; the Go launcher is the only one.
 
 ## Graphics and performance
 
-**FSR 1** is spatial presentation scaling; temporal FSR and DLSS are not exposed
-by this build. The 4K/60 target is **3840×2160 output with upscaling acceptable**,
+**FSR 1** is spatial presentation scaling. FSR 3.1 can already replace the game's own temporal
+resolve in tests, but the launcher does not offer it yet; DLSS, XeSS and FSR 4 follow. The 4K/60 target is **3840×2160 output with upscaling acceptable**,
 preserved detail and sustained 60 FPS in gameplay. It has not passed.
 
 **60 FPS, 90 FPS and Unlocked are experimental.** The 60 FPS recipe warns of possible
@@ -159,7 +193,7 @@ that the game produces that many new frames. Use the 30 FPS baseline first.
 | --- | --- |
 | `Image exceeds device format limits`, `layers=8029/2048` | Preserve the boot log and matching `last-run.json`. Descriptor validation and targeted inactive-resource guards remain enabled. Keep the matching descriptor/shader evidence; the original crash is not closed by a timeout run. |
 | Low or varying frame rate | Include the scene, settings, GPU/driver and matching log. Shader compilation and compatibility work remain in progress. |
-| Runtime missing or identity rejected | Keep the complete package together, or build a matching runtime. Use Advanced for an explicit runtime override. |
+| Runtime missing or identity rejected | Keep the complete package together, or build a matching runtime. Use System for an explicit runtime override. |
 | Experimental 60/90 FPS or Unlocked timing problems | Return to 30 FPS and report the chapter and reproduction steps. |
 
 Open **Advanced → Open log folder**. When
