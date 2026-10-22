@@ -29,10 +29,11 @@ import time
 # Libraries every Linux desktop with a Vulkan driver provides, and that must come from the system:
 # the C/C++ runtime, the Vulkan loader and the graphics, display and audio stacks the drivers and
 # SDL load. Everything else the runtime links is bundled, so the package does not depend on the
-# build machine's FFmpeg, SDL3, fmt or Zydis versions.
+# build machine's FFmpeg, SDL3, fmt or Zydis versions. FFmpeg's VA-API and VDPAU loaders (libva,
+# libvdpau) are bundled too: not every desktop installs them, and they still find the system's drivers.
 SYSTEM_LIBRARY = re.compile(
     r'^(ld-linux.*|lib(c|m|dl|rt|pthread|util|resolv|anl|stdc\+\+|gcc_s|atomic)\.so.*'
-    r'|libvulkan\.so.*|lib(GL|GLX|EGL|GLdispatch|OpenGL|gbm|drm|va|va-drm|va-x11|vdpau)\b.*'
+    r'|libvulkan\.so.*|lib(GL|GLX|EGL|GLdispatch|OpenGL|gbm|drm)\b.*'
     r'|libX[A-Za-z0-9]*\.so.*|libxcb.*|libxkbcommon.*|libxshmfence.*|libwayland-.*|libdecor-.*|libasound\.so.*|libpulse.*|libjack.*'
     r'|libpipewire-.*|libdbus-1\.so.*|libsystemd\.so.*|libudev\.so.*|libz\.so.*|libexpat\.so.*'
     r'|libffi\.so.*|libbsd\.so.*|libmd\.so.*|libcap\.so.*)$')

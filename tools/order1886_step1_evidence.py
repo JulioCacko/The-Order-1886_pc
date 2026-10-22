@@ -106,9 +106,23 @@ def window_shot(runtime, path):
     rect, origin = wintypes.RECT(), wintypes.POINT(0, 0)
     user32.GetClientRect(ctypes.c_void_p(window), ctypes.byref(rect))
     user32.ClientToScreen(ctypes.c_void_p(window), ctypes.byref(origin))
-    if rect.right > 0 and rect.bottom > 0:
-        ImageGrab.grab((origin.x, origin.y, origin.x + rect.right, origin.y + rect.bottom),
-                       all_screens=True).save(path)
+    area = wintypes.RECT(origin.x, origin.y, origin.x + rect.right, origin.y + rect.bottom)
+    if area.right <= area.left or area.bottom <= area.top:
+        return
+    # A topmost window (a notification, an overlay) can cover the game while it stays in front:
+    # skip the shot when any visible, uncloaked window above it in z-order overlaps the area.
+    user32.GetWindow.restype = ctypes.c_void_p  # a handle; the default c_int truncates it
+    above, cloaked, other, overlap = window, wintypes.DWORD(), wintypes.RECT(), wintypes.RECT()
+    while above := user32.GetWindow(ctypes.c_void_p(above), 3):  # GW_HWNDPREV
+        if not user32.IsWindowVisible(ctypes.c_void_p(above)):
+            continue
+        ctypes.windll.dwmapi.DwmGetWindowAttribute(ctypes.c_void_p(above), 14, ctypes.byref(cloaked),
+                                                   ctypes.sizeof(cloaked))  # DWMWA_CLOAKED
+        user32.GetWindowRect(ctypes.c_void_p(above), ctypes.byref(other))
+        if not cloaked.value and user32.IntersectRect(ctypes.byref(overlap), ctypes.byref(area),
+                                                      ctypes.byref(other)):
+            return
+    ImageGrab.grab((area.left, area.top, area.right, area.bottom), all_screens=True).save(path)
 
 
 def press(key, runtime, hold=0.15):

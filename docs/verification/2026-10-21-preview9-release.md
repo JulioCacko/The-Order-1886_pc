@@ -81,8 +81,8 @@ Linux GPU driver.
 
 ## Fixed during the release
 
-- Packaging smoke tests on both platforms asked the worker to reject 90 FPS, which became a
-  valid choice in #91.
+- Packaging smoke tests on both platforms expected the worker to reject 90 FPS, which became a
+  valid choice in #91. They now check that an unoffered 120 FPS is rejected.
 - The Linux package now bundles its non-system shared libraries (FFmpeg 6, SDL3, fmt 9,
   Zydis and their dependencies, 108 libraries) into `bin/gpu` with `$ORIGIN` RUNPATHs.
   Before, the runtime stopped on any machine without the CI runner's exact libraries

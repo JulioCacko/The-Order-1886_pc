@@ -196,7 +196,7 @@ that the game produces that many new frames. Use the 30 FPS baseline first.
 | Runtime missing or identity rejected | Keep the complete package together, or build a matching runtime. Use System for an explicit runtime override. |
 | Experimental 60/90 FPS or Unlocked timing problems | Return to 30 FPS and report the chapter and reproduction steps. |
 
-Open **Advanced → Open log folder**. When
+Open **System → Open logs**. When
 [reporting a problem](https://github.com/JulioCacko/The-Order-1886_pc/issues), include
 `last-run.json`, the matching boot/session log, runtime SHA256, game metadata,
 GPU/driver and reproduction steps. Review logs for personal paths before sharing;

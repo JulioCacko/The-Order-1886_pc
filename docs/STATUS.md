@@ -40,39 +40,27 @@ and [mod limits](order1886-mods.md). Passing fixtures do not establish gameplay 
 
 ## Current verification
 
+Preview 9 (`b19c604`); the full record is [2026-10-21-preview9-release.md](verification/2026-10-21-preview9-release.md).
+
 | Check | Result | Scope |
 | --- | --- | --- |
-| Full Python suite | Windows 340 pass, zero skips; Linux 340 run, 21 skips | Integrated save/language and packaging changes |
-| Windows native gate | 41 checks passed | Runtime, shader/IR, cache, input, media, queue and memory fixtures |
-| Linux native gate | `build.sh --test` passed | Linux shader/cache/input/runtime/media/services/ISA subset |
-| SPIR-V | Three modules pass Vulkan 1.3 validation | Atomic structure and NaN math; no game image-quality claim |
-| RTX 3070 cache smoke | Graphics and compute pass | Four hits, two compiles/saves, no rejects/cache errors |
-| Portable packages | Windows 15 / Linux 10 relocated checks pass | Hashes, identity, dependency closure, GUI/direct play and CPU preparation |
-| Launcher images | Four fresh 1240 × 800 captures | Actual source UI, isolated state; no game launched |
-| Gameplay/performance | Pending | No sustained 4K/60 or campaign acceptance |
+| Full Python suite | 531 run, 19 skipped, no failures | Launcher, worker, packaging, timing, effects and tools |
+| Windows native gate | 56 checks pass | Runtime, shader/IR, cache, input, media, queue, memory and IRQ fixtures |
+| Portable packages | Windows and Linux smoke pass | Manifest hashes, entry points, worker protocol, update preflight; Linux bundled-library resolution |
+| Updater | `updates.StageArchive` and the live check stage the published Windows zip | 218 files, clean source receipt |
+| Linux on a clean system | Ubuntu 26.04.1 (WSL): every library resolves; the game reaches its title menu on lavapipe | No Linux GPU driver tested |
+| Gameplay/performance | 53.2 FPS courtyard (p99 23 ms), 38 FPS hotel fight; RTX 3070, 60 FPS mode | No sustained 4K/60 or campaign acceptance |
 
-The [release receipt](verification/2026-10-18-preview4-release.md) records commands,
-artifacts and boundaries. Older reports retain their original dates and test scope.
+Older reports keep their original dates and test scope.
 
 ## Runtime and package identity
 
 | Field | Value |
 | --- | --- |
-| Verified source | `54242e0e5ab05644bff2df56813d39f654659b30`, clean package snapshots |
-| Windows runtime SHA256 | `ca77edaf93ccec956b20263cb3b9a0c36b1b4496e5437e080d5f6d95b850f1e9` |
-| Linux runtime SHA256 | `cea8cac77b276bcec8b61365c420124ccd9340fdd44d1dde514240c54c24ac64` |
-| ABI / prepared format | `order1886-native-1` / `PS4BOOT5` |
-| Renderer / cache ABI | `native-ps4` / `native-ps4-v1` |
-| Shader binary / metadata / pipeline key | 16 / 10 / 8 |
-| Windows package | `20261018T225850Z-ca77edaf93cc` |
-| ZIP bytes | 108539768 |
-| ZIP SHA256 | `ec613979ab159b7042554597deff9d9cb91b7670125152fa837a8adc2ebb74d6` |
-| Local hardware | Ryzen 5 5600X, RTX 3070; not minimum requirements |
-
-**[Preview 9 downloads](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.9)**
-include Windows and experimental Linux packages, checksums and setup guides.
-Preview.3 remains available for rollback. Shader version 16 rebuilds old
-translations on the next game launch.
+| Verified source | `b19c6045b79adce1d1d87ed949c61dd03abda8c4`, clean package manifests |
+| Windows runtime SHA256 | `881069e5e37a2c4adee22aaeb4c2d38ae42d7900c7a46508f40cfe92cef40a67` |
+| Windows package | `order1886-go-windows.zip`, 107,332,965 bytes, SHA256 `61df772b5177fe52b065fd1cbc870b0d2a501cdb2dc7998c61a9edb79410ce67` |
+| Linux package | `order1886-linux-x86_64.tar.gz`, 120,550,075 bytes, SHA256 `887dea5d34ce94435da423fbb1cfae53c4526594da7c201a918867e5e75b3776` |
 
 ## Current launcher
 
