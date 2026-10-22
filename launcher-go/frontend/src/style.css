@@ -1,4 +1,4 @@
-:root{font-family:"Segoe UI",Arial,sans-serif;color:#ece8dd;background:#0c0e0f;font-synthesis:none;--ground:#101315;--panel:#171b1d;--field:#202527;--border:#41484a;--muted:#b9b9af;--ink:#ece8dd;--brass:#d4bd75;--focus:#f2d894}
+:root{font-family:"Segoe UI",Arial,sans-serif;color:var(--ink);background:var(--ground);font-synthesis:none;--ground:#101315;--panel:#171b1d;--field:#202527;--border:#41484a;--muted:#b9b9af;--ink:#ece8dd;--brass:#d4bd75;--focus:#f2d894}
 html,body,#app{height:100%;overflow:hidden}
 .shell{height:100vh;height:100dvh;grid-template-rows:minmax(0,1fr)}
 .shell>main,.sidebar{min-height:0}
