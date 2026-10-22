@@ -99,7 +99,9 @@ def window_shot(runtime, path):
     user32 = ctypes.windll.user32
     user32.SetProcessDPIAware()  # window coordinates in the same physical pixels ImageGrab uses
     window = runtime_window(runtime)
-    if not window:
+    # Screen pixels, not the window's own: anything drawn over it (Alt+Tab, another app) would be
+    # recorded, so capture only while the game window is in front.
+    if not window or user32.GetForegroundWindow() != window:
         return
     rect, origin = wintypes.RECT(), wintypes.POINT(0, 0)
     user32.GetClientRect(ctypes.c_void_p(window), ctypes.byref(rect))
