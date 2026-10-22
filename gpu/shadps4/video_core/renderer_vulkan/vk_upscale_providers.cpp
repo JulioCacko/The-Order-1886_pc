@@ -100,10 +100,14 @@ void Check(UpscaleProvider& provider, const Instance& instance) {
     u32 count = 0;
     const char* const* names = nullptr;
     char error[256]{};
+    // A provider that cannot say which extensions it needs cannot be trusted to start.
     if (provider.api.required_instance_extensions &&
-        provider.api.required_instance_extensions(&count, &names, error, sizeof(error)) ==
-            ORDER_UPSCALE_OK &&
-        count != 0 && !provider.instance_extensions_enabled) {
+        provider.api.required_instance_extensions(&count, &names, error, sizeof(error)) !=
+            ORDER_UPSCALE_OK) {
+        provider.reason = std::string("cannot list its instance extensions: ") + error;
+        return;
+    }
+    if (count != 0 && !provider.instance_extensions_enabled) {
         provider.reason = provider.instance_extensions.empty()
                               ? "needs Vulkan instance extensions, which are enabled only when it is "
                                 "the selected upscaler"
@@ -113,9 +117,12 @@ void Check(UpscaleProvider& provider, const Instance& instance) {
     count = 0;
     if (provider.api.required_device_extensions &&
         provider.api.required_device_extensions(instance.GetInstance(), instance.GetPhysicalDevice(),
-                                                &count, &names, error, sizeof(error)) ==
-            ORDER_UPSCALE_OK &&
-        count != 0 && !provider.device_extensions_enabled) {
+                                                &count, &names, error, sizeof(error)) !=
+            ORDER_UPSCALE_OK) {
+        provider.reason = std::string("cannot list its device extensions: ") + error;
+        return;
+    }
+    if (count != 0 && !provider.device_extensions_enabled) {
         std::string missing;
         const auto available = instance.GetAvailableExtensions();
         for (u32 i = 0; i < count; ++i) {

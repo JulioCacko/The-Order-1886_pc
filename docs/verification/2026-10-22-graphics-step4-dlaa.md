@@ -47,7 +47,8 @@ provider error was logged in any run.
 
 The DLAA row comes from the first run. In the rerun, DLAA's session stopped presenting at 57 s
 before the measured window began. One earlier session with no upscaler stopped the same way at
-81 s, so this intermittent freeze is not caused by the provider; it is tracked separately.
+81 s, so the freeze also happens without DLAA. Its cause is undetermined: that does not rule out DLAA
+contributing. It is tracked separately.
 
 ## Not covered
 
