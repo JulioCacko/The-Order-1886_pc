@@ -54,7 +54,7 @@ def main():
         worker = root / "bin/order1886-worker.exe"
         requests = [
             dict(version=1,id=1,method="settings.set",params={"values":{"vsync":False,"ui_language":"pt"}}),
-            dict(version=1,id=2,method="settings.set",params={"values":{"frame_rate":90}}),
+            dict(version=1,id=2,method="settings.set",params={"values":{"frame_rate":120}}),  # 30, 60, 90 and 0 are offered
             dict(version=1,id=3,method="state.get",params={}),
             dict(version=1,id=4,method="updates.preflight",params={}),
             dict(version=1,id=5,method="patches.list",params={}),

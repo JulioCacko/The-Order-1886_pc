@@ -59,7 +59,8 @@ UPSCALER = {'upscaler-fsr3': 'fsr3'}
 
 
 # Arrows are the right stick (camera) in runtime_pad.c's keyboard map; R is L2 (aim).
-SCANCODES = {'space': 0x39, 'down': 0x50, 'up': 0x48, 'left': 0x4B, 'right': 0x4D, 'enter': 0x1C, 'r': 0x13}
+SCANCODES = {'space': 0x39, 'down': 0x50, 'up': 0x48, 'left': 0x4B, 'right': 0x4D, 'enter': 0x1C, 'r': 0x13,
+             'w': 0x11, 'a': 0x1E, 's': 0x1F, 'd': 0x20}  # WASD is the left stick (walk)
 EXTENDED = {'down', 'up', 'left', 'right'}
 # Pseudo-keys: a slow relative mouse drag for HOLD seconds (mouse look), 2 px every 10 ms.
 MOUSE_MOVES = {'mouse-right': (2, 0), 'mouse-left': (-2, 0)}
@@ -79,11 +80,8 @@ def key_tap(text):
     return seconds, key, held
 
 
-def press(key, runtime, hold=0.15):
-    """Tap a key in the game window (Space is Cross in runtime_pad.c's default map).
-
-    Only a window of the runtime under test counts: another session's runtime may be open.
-    """
+def runtime_window(runtime):
+    """The visible window of the runtime under test, or None."""
     import ctypes
     user32 = ctypes.windll.user32
     found = []
@@ -91,12 +89,56 @@ def press(key, runtime, hold=0.15):
         lambda hwnd, _: (found.append(hwnd) if user32.IsWindowVisible(hwnd) and _owner(hwnd) == runtime
                          else None) or True)
     user32.EnumWindows(callback, 0)
-    if not found:
+    return found[0] if found else None
+
+
+def window_shot(runtime, path):
+    """Save only the game window's client area: the rest of the desktop is never captured."""
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    user32.SetProcessDPIAware()  # window coordinates in the same physical pixels ImageGrab uses
+    window = runtime_window(runtime)
+    # Screen pixels, not the window's own: anything drawn over it (Alt+Tab, another app) would be
+    # recorded, so capture only while the game window is in front.
+    if not window or user32.GetForegroundWindow() != window:
+        return
+    rect, origin = wintypes.RECT(), wintypes.POINT(0, 0)
+    user32.GetClientRect(ctypes.c_void_p(window), ctypes.byref(rect))
+    user32.ClientToScreen(ctypes.c_void_p(window), ctypes.byref(origin))
+    area = wintypes.RECT(origin.x, origin.y, origin.x + rect.right, origin.y + rect.bottom)
+    if area.right <= area.left or area.bottom <= area.top:
+        return
+    # A topmost window (a notification, an overlay) can cover the game while it stays in front:
+    # skip the shot when any visible, uncloaked window above it in z-order overlaps the area.
+    user32.GetWindow.restype = ctypes.c_void_p  # a handle; the default c_int truncates it
+    above, cloaked, other, overlap = window, wintypes.DWORD(), wintypes.RECT(), wintypes.RECT()
+    while above := user32.GetWindow(ctypes.c_void_p(above), 3):  # GW_HWNDPREV
+        if not user32.IsWindowVisible(ctypes.c_void_p(above)):
+            continue
+        ctypes.windll.dwmapi.DwmGetWindowAttribute(ctypes.c_void_p(above), 14, ctypes.byref(cloaked),
+                                                   ctypes.sizeof(cloaked))  # DWMWA_CLOAKED
+        user32.GetWindowRect(ctypes.c_void_p(above), ctypes.byref(other))
+        if not cloaked.value and user32.IntersectRect(ctypes.byref(overlap), ctypes.byref(area),
+                                                      ctypes.byref(other)):
+            return
+    ImageGrab.grab((area.left, area.top, area.right, area.bottom), all_screens=True).save(path)
+
+
+def press(key, runtime, hold=0.15):
+    """Tap a key in the game window (Space is Cross in runtime_pad.c's default map).
+
+    Only a window of the runtime under test counts: another session's runtime may be open.
+    """
+    import ctypes
+    user32 = ctypes.windll.user32
+    window = runtime_window(runtime)
+    if not window:
         return  # never type into whatever else has focus
     user32.keybd_event(0x12, 0, 0, 0)  # Alt lets SetForegroundWindow take focus from this process
-    user32.SetForegroundWindow(found[0])
+    user32.SetForegroundWindow(window)
     user32.keybd_event(0x12, 0, 2, 0)
-    if user32.GetForegroundWindow() != found[0]:
+    if user32.GetForegroundWindow() != window:
         return
     if key in MOUSE_MOVES:
         dx, dy = MOUSE_MOVES[key]
@@ -191,9 +233,9 @@ def run(name, args, output):
         command += ['--env', item]
     shots = output / 'screens' / name
     shots.mkdir(parents=True)
-    timers = [threading.Timer(delay, lambda d=delay: ImageGrab.grab().save(shots / f'screen_{d:g}s.png'))
-              for delay in args.delays]
     runtime = str((args.runtime or ROOT / 'out' / 'order1886-runtime.exe').resolve()).lower()
+    timers = [threading.Timer(delay, window_shot, (runtime, shots / f'screen_{delay:g}s.png'))
+              for delay in args.delays]
     timers += [threading.Timer(at, press, (key, runtime, hold)) for at, key, hold in args.keys]
     samples = output / 'effect-samples' / f'{name}.jsonl'
     if args.sample_effects:

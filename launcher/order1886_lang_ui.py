@@ -21,7 +21,7 @@ UI_KEYS = [
     "2 (unqualified)",
     "2560 × 1440 output",
     "2×",
-    "30 FPS is native. 60, 90 and Unlocked are experimental: the game clock follows measured time, but Chapter 6/9 QTE checks remain required, and gameplay timing above 60 FPS is unmeasured because the tested scene renders at about 5 FPS on an RTX 3070. Unlocked runs as fast as the presentation frame cap allows; on a 60 Hz display, VSync holds every rate at 60.",
+    "30 FPS is native. 60, 90 and Unlocked are experimental: the game clock follows measured time, but Chapter 6/9 QTE checks remain required, and gameplay timing above 60 FPS is still unmeasured: at 60 FPS the tested courtyard runs at about 53 FPS on an RTX 3070. Unlocked runs as fast as the presentation frame cap allows; on a 60 Hz display, VSync holds every rate at 60.",
     "30 FPS — native",
     "3840 × 2160 output (upscaled, not native 4K)",
     "4×",
