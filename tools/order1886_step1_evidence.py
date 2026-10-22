@@ -52,10 +52,11 @@ VARIANTS = {
     'chromatic-aberration-off': ['chromatic_aberration=0'],
     'fps-cap-240': ['fps_cap=240'],  # with --frame-rate 0 the cap is the unlocked rate
     'upscaler-fsr3': [],
+    'upscaler-dlss': [],
 }
 SHOW_FPS = {'overlay-none', 'overlay-all'}
 # Variants that ask the runtime for a provider in place of the game's temporal resolve (#7).
-UPSCALER = {'upscaler-fsr3': 'fsr3'}
+UPSCALER = {'upscaler-fsr3': 'fsr3', 'upscaler-dlss': 'dlss'}
 
 
 # Arrows are the right stick (camera) in runtime_pad.c's keyboard map; R is L2 (aim).

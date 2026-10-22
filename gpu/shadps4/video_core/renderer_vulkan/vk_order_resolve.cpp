@@ -100,7 +100,8 @@ struct Resolve {
         for (auto& target : targets) {
             target.usage = sampled;
         }
-        targets[3].usage |= vk::ImageUsageFlagBits::eTransferSrc;
+        // DLSS clears its output with a transfer, so the output is also a transfer destination.
+        targets[3].usage |= vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst;
     }
 
     /// Images and provider context for a w x h scene. The caller has waited for the GPU.
@@ -430,7 +431,7 @@ void ReplaceTemporalResolve(Rasterizer& rasterizer, std::span<const VideoCore::I
             .pre_exposure = 1.0f,
             // ponytail: placeholders until the game's camera constants are located.
             .camera_near = 0.1f,
-            .camera_far = 0.0f,
+            .camera_far = 1000.0f, // finite: DLSS checks far > near even with infinite depth
             .vertical_fov = 0.7f,
             .reset_history = reset ? 1u : 0u,
         };

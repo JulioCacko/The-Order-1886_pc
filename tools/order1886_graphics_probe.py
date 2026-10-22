@@ -91,7 +91,7 @@ def main():
                         help='log whether the game velocity predicts the previous frame (#7)')
     parser.add_argument('--upscaler', choices=['fsr3', 'dlss'],
                         help='ask the runtime for this provider in place of the game temporal resolve (#7); '
-                             'fsr3 goes through the launcher Upscaling setting, dlss is not offered yet')
+                             'set through the launcher Upscaling setting, as Play does')
     parser.add_argument('--fatal-dump', action='store_true',
                         help='write fault.dmp (the stack of every thread) if the runtime faults')
     parser.add_argument('--frame-capture', type=float, nargs='+', metavar='SECONDS',
@@ -123,8 +123,8 @@ def main():
     settings = {'display_mode': args.display_mode, 'vsync': True,
                 'show_fps': args.show_fps, 'presentation_filter': args.presentation_filter,
                 'frame_rate': args.frame_rate, 'aspect_ratio': args.aspect_ratio}
-    if args.upscaler == 'fsr3':
-        settings['presentation_filter'] = 'fsr3'  # exactly what the launcher writes for Play
+    if args.upscaler:
+        settings['presentation_filter'] = args.upscaler  # exactly what the launcher writes for Play
     for item in args.setting:
         key, separator, value = item.partition('=')
         if not separator or key not in (*order.GRAPHICS_DEFAULTS, 'fps_cap', 'in_game_menu', 'vsync',
@@ -141,9 +141,6 @@ def main():
         prepared = order.prepare_game(game, user / 'prepared', frame_rate=args.frame_rate,
                                       aspect_ratio=args.aspect_ratio, disabled_effects=disabled_effects)
         order.write_runtime_config(user, settings)
-        if args.upscaler and args.upscaler != 'fsr3':
-            with (user / 'runtime.ini').open('a', encoding='utf-8') as config:
-                config.write(f'upscaler={args.upscaler}\n')
         order.save_backup.backup(user)
         output.mkdir(parents=True)
         cache = output / 'gpu'

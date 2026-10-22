@@ -92,6 +92,19 @@ try {
         throw 'order1886_fsr3.dll is missing next to the runtime; build it with build.sh first.'
     }
     Copy-Item -LiteralPath $provider -Destination (Join-Path $runtimeBin 'order1886_fsr3.dll')
+    # NVIDIA DLAA (#11): the MSVC-built bridge and NVIDIA's runtime, when gpu/dlss_bridge/build.ps1
+    # staged them beside the runtime. Both or neither: the bridge cannot work without the runtime.
+    $runtimeDir = Split-Path -Parent $runtimePath
+    $dlss = @('order1886_dlss.dll', 'nvngx_dlss.dll') | ForEach-Object { Join-Path $runtimeDir $_ }
+    $present = @($dlss | Where-Object { Test-Path -LiteralPath $_ })
+    if ($present.Count -eq 1) { throw 'Only one of order1886_dlss.dll and nvngx_dlss.dll is next to the runtime.' }
+    if ($present.Count -eq 2) {
+        $nvidiaLicense = Join-Path $runtimeDir 'NVIDIA-DLSS-LICENSE.txt'
+        if (-not (Test-Path -LiteralPath $nvidiaLicense)) { throw 'NVIDIA-DLSS-LICENSE.txt must accompany nvngx_dlss.dll.' }
+        $dlss | ForEach-Object { Copy-Item -LiteralPath $_ -Destination $runtimeBin }
+        New-Item -ItemType Directory -Force -Path (Join-Path $destination 'notices') | Out-Null
+        Copy-Item -LiteralPath $nvidiaLicense -Destination (Join-Path $destination 'notices/NVIDIA-DLSS-LICENSE.txt')
+    }
 
     $modules = @(& go list -deps -tags desktop,production -f '{{with .Module}}{{if not .Main}}{{.Path}}|{{.Version}}|{{.Dir}}{{end}}{{end}}' .)
     if ($LASTEXITCODE) { throw 'Go dependency listing failed.' }

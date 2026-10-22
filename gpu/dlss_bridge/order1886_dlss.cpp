@@ -204,7 +204,8 @@ OrderUpscaleStatus Dispatch(void* pointer, const OrderUpscaleFrame* frame,
             const float ratio = float(context.config.max_render_width) / context.config.output_width;
             const auto quality = ratio <= 0.34f ? NVSDK_NGX_PerfQuality_Value_UltraPerformance :
                 ratio <= 0.50f ? NVSDK_NGX_PerfQuality_Value_MaxPerf :
-                ratio <= 0.59f ? NVSDK_NGX_PerfQuality_Value_Balanced : NVSDK_NGX_PerfQuality_Value_MaxQuality;
+                ratio <= 0.59f ? NVSDK_NGX_PerfQuality_Value_Balanced :
+                ratio < 0.99f ? NVSDK_NGX_PerfQuality_Value_MaxQuality : NVSDK_NGX_PerfQuality_Value_DLAA;
             create.Feature = {context.config.max_render_width, context.config.max_render_height,
                 context.config.output_width, context.config.output_height, quality};
             create.InFeatureCreateFlags = NVSDK_NGX_DLSS_Feature_Flags_MVLowRes | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
