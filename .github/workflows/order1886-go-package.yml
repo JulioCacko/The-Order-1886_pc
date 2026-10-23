@@ -39,7 +39,8 @@ jobs:
         run: |
           git submodule update --init --recursive -- `
             gpu/third_party/imgui gpu/third_party/magic_enum `
-            gpu/third_party/miniz gpu/third_party/xbyak third_party/LibAtrac9
+            gpu/third_party/miniz gpu/third_party/xbyak third_party/LibAtrac9 `
+            gpu/third_party/fsr-vulkan
           if ($LASTEXITCODE) { throw 'Required native submodule checkout failed.' }
       - uses: msys2/setup-msys2@v2
         with:

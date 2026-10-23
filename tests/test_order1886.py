@@ -277,8 +277,24 @@ class OrderBackendTests(unittest.TestCase):
                 self.assertIn(f'presentation_filter={expected}\n', config)
                 self.assertIn('render_resolution=native\n', config)
                 self.assertIn('fps_limit=30\n', config)
+        # FSR 3.1 replaces the temporal resolve and FSR 1 still presents (#10).
+        order1886.write_runtime_config(self.user, {'presentation_filter': 'fsr3'})
+        config = (self.user / 'runtime.ini').read_text()
+        self.assertIn('presentation_filter=fsr1\n', config)
+        self.assertIn('upscaler=fsr3\n', config)
         with self.assertRaisesRegex(ValueError, 'presentation filter'):
-            order1886.write_runtime_config(self.user, {'presentation_filter': 'fsr3'})
+            order1886.write_runtime_config(self.user, {'presentation_filter': 'taa'})
+
+    def test_in_game_menu_save_keeps_fsr3(self):
+        # The runtime writes FSR 3.1 back as two keys; the launcher must read its own choice.
+        (self.user / 'settings.json').write_text('{}')
+        ini = self.user / 'runtime.ini'
+        ini.write_text('presentation_filter=fsr1\nupscaler=fsr3\n')
+        later = (self.user / 'settings.json').stat().st_mtime + 5
+        os.utime(ini, (later, later))
+        self.assertEqual(order1886.menu_settings_import(self.user, {'presentation_filter': 'fsr1'}),
+                         {'presentation_filter': 'fsr3'})
+        self.assertEqual(order1886.menu_settings_import(self.user, {'presentation_filter': 'fsr3'}), {})
 
     def test_presentation_filter_cli_reaches_config_and_diagnostics(self):
         runtime = self.base / 'runtime.exe'

@@ -281,6 +281,11 @@ void Save() {
         v.overlay_scale.load(), v.overlay_corner.load(), v.overlay_opacity.load(), v.overlay_layout.load());
     std::fprintf(file, "mouse_look=%d\nmouse_sensitivity=%d\nmouse_invert_y=%d\n",
         int(v.mouse_look.load()), v.mouse_sensitivity.load(), int(v.mouse_invert_y.load()));
+    // The launcher's FSR 3.1 choice arrives as this key; dropping it on an in-game save would
+    // switch the player back to the game's own resolve at the next launch.
+    if (v.requested_upscaler != UpscalerOff) {
+        std::fprintf(file, "upscaler=%s\n", UpscalerName(v.requested_upscaler));
+    }
     std::fclose(file);
 }
 
