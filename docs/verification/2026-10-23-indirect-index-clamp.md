@@ -72,7 +72,13 @@ into each 200 s run. Same build, interleaved:
 | on | 10 consecutive | 0 | 15.0 s (CPU stress; frames resume) |
 | off (bit 56) | 4 | 1 (at 91 s) | 30.1 s in another run |
 
-All runs show 2-15 s present gaps once the spinners start, with or without the clamp. Unstressed
+All runs show 2-15 s present gaps once the spinners start, with or without the clamp.
+
+Selective readbacks were considered as the default and rejected. With this clamp in the build,
+`ORDER1886_READBACKS=3` still stopped presenting in 2 of 10 stressed runs (at 113 s and 142 s).
+An unstressed run stalled 72 s, with the GPU command thread in a read fault:
+`ReadMemory` → `DownloadMemory` → `Scheduler::Finish`. Unstressed chapter 2 ran at 45.8 and
+31.8 FPS with Selective, against 58.7 and 57.0 with Relaxed. Unstressed
 chapter 2 with the clamp: 58 FPS. `bash build.sh --test`: 56 native checks pass.
 `tests/test_order1886_indirect_index_clamp.py` compiles the shader with glslang and checks that
 indexed indirect draws read the clamped arguments.
