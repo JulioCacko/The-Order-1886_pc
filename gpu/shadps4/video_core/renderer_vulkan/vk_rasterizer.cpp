@@ -1243,16 +1243,20 @@ std::pair<vk::Buffer, u64> Rasterizer::ClampIndexedIndirect(const VideoCore::Buf
     const u64 out_size = u64(count) * sizeof(VkDrawIndexedIndirectCommand);
     // ponytail: a ring without fences; it wraps after ~50k draws, far beyond the frames in
     // flight. Track ticks per slot if a scene ever issues that many in one submission.
-    constexpr u64 RingSize = 1_MB;
-    if (!clamped_args) {
-        clamped_args = std::make_unique<VideoCore::Buffer>(
-            instance, 0, RingSize, VideoCore::MemoryType::DeviceLocal, "Clamped indirect args");
-    }
-    if (out_size > RingSize) {
-        return {args->Handle(), offset};
+    if (!clamped_args || out_size > clamped_args_size) {
+        if (clamped_args) {
+            // Draws already recorded may still read it: freed once the GPU passes them.
+            std::shared_ptr<VideoCore::Buffer> retired = std::move(clamped_args);
+            scheduler.DeferOperation([retired] {});
+        }
+        clamped_args_size = std::max<u64>(1_MB, std::bit_ceil(out_size));
+        clamped_args = std::make_unique<VideoCore::Buffer>(instance, 0, clamped_args_size,
+                                                           VideoCore::MemoryType::DeviceLocal,
+                                                           "Clamped indirect args");
+        clamped_args_head = 0;
     }
     u64 out = Common::AlignUp(clamped_args_head, align);
-    if (out + out_size > RingSize) {
+    if (out + out_size > clamped_args_size) {
         out = 0;
     }
     clamped_args_head = out + out_size;

@@ -538,6 +538,7 @@ private:
     std::unique_ptr<ConstantRing> constant_ring;
     /// Indexed indirect arguments with clamped index counts (ClampIndexedIndirect), a ring.
     std::unique_ptr<VideoCore::Buffer> clamped_args;
+    u64 clamped_args_size = 0;
     u64 clamped_args_head = 0;
     struct ClampPipeline {
         vk::UniqueDescriptorSetLayout set_layout;

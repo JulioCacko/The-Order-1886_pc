@@ -74,6 +74,9 @@ class IndirectIndexClampTests(unittest.TestCase):
         self.assertIn("index_bind.count", clamp_fn)
         self.assertIn("vk::AccessFlagBits2::eIndirectCommandRead", clamp_fn)
         self.assertIn("Ps4Toggle::IndirectIndexClamp", clamp_fn)
+        # Only the opt-outs (unknown bound, toggle) skip the clamp: a large batch grows the ring.
+        self.assertEqual(clamp_fn.count("return {args->Handle(), offset};"), 1)
+        self.assertIn("out_size > clamped_args_size", clamp_fn)
 
 
 if __name__ == "__main__":
