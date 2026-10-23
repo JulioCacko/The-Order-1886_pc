@@ -2,8 +2,8 @@
 // See vk_upscale_providers.h.
 
 #include <algorithm>
-#include <array>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 #include "ps4_settings.h"
@@ -29,87 +29,178 @@ std::filesystem::path RuntimeDirectory() {
 #endif
 }
 
-/// Device extensions this runtime does not enable today are named in the reason, with whether
-/// the GPU offers them, so the gap between "loadable" and "usable" stays visible.
-std::string MissingDeviceExtensions(const UpscaleProvider& provider, const Instance& instance) {
-    if (!provider.api.required_device_extensions) {
-        return {};
-    }
-    u32 count = 0;
-    const char* const* names = nullptr;
-    char error[256]{};
-    if (provider.api.required_device_extensions(instance.GetInstance(), instance.GetPhysicalDevice(),
-                                                &count, &names, error, sizeof(error)) !=
-        ORDER_UPSCALE_OK) {
-        return std::string("cannot list its device extensions: ") + error;
-    }
-    std::string missing;
-    const auto available = instance.GetAvailableExtensions();
-    for (u32 i = 0; i < count; ++i) {
-        const bool offered = std::ranges::find(available, std::string(names[i])) != available.end();
-        missing += (missing.empty() ? "" : ", ") + std::string(names[i]) +
-                   (offered ? " (offered by the GPU, not enabled by the runtime)" : " (not offered by the GPU)");
-    }
-    return missing.empty() ? std::string{} : "needs device extensions " + missing;
+std::vector<UpscaleProvider>& Providers() {
+    static std::vector<UpscaleProvider> list{
+        {.key = "fsr3", .library = "order1886_fsr3.dll", .symbol = "order1886_fsr_get_api"},
+        {.key = "dlss", .library = "order1886_dlss.dll", .symbol = "order1886_dlss_get_api"},
+    };
+    return list;
 }
 
-void Check(UpscaleProvider& provider, const Instance& instance) {
+/// The DLL and its ABI, once. The module stays loaded for the whole process: the runtime keeps
+/// pointers to the provider's extension names and functions.
+bool Load(UpscaleProvider& provider) {
+    if (provider.loaded || !provider.reason.empty()) {
+        return provider.loaded;
+    }
 #ifdef _WIN32
     const auto path = RuntimeDirectory() / provider.library;
     if (!std::filesystem::exists(path)) {
         provider.reason = std::string(provider.library) + " is not next to the runtime";
-        return;
+        return false;
     }
     HMODULE module = LoadLibraryExW(path.c_str(), nullptr,
                                     LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
     if (!module) {
         provider.reason = std::string(provider.library) + " failed to load (error " +
                           std::to_string(GetLastError()) + ")";
-        return;
+        return false;
     }
     const auto get_api = reinterpret_cast<OrderUpscaleGetApi>(
         reinterpret_cast<void*>(GetProcAddress(module, provider.symbol)));
     if (!get_api) {
         provider.reason = std::string(provider.library) + " does not export " + provider.symbol;
-        return;
+        return false;
     }
     if (get_api(ORDER1886_UPSCALE_ABI, &provider.api) != ORDER_UPSCALE_OK ||
         provider.api.abi_version != ORDER1886_UPSCALE_ABI) {
         provider.reason = "provider does not implement ABI " + std::to_string(ORDER1886_UPSCALE_ABI);
-        return;
+        return false;
     }
     provider.name = provider.api.name ? provider.api.name : provider.key;
     provider.version = provider.api.version ? provider.api.version : "";
-    if (provider.api.required_instance_extensions) {
-        u32 count = 0;
-        const char* const* names = nullptr;
-        char error[256]{};
-        if (provider.api.required_instance_extensions(&count, &names, error, sizeof(error)) !=
-                ORDER_UPSCALE_OK ||
-            count != 0) {
-            provider.reason = "needs instance extensions the runtime does not enable";
-            return;
-        }
-    }
-    provider.reason = MissingDeviceExtensions(provider, instance);
-    if (provider.reason.empty() && !instance.IsStorageImageWriteWithoutFormatEnabled()) {
-        provider.reason = "shaderStorageImageWriteWithoutFormat is not enabled on this device";
-    }
-    provider.available = provider.reason.empty();
+    provider.loaded = true;
+    return true;
 #else
     provider.reason = "providers are Windows DLLs";
+    return false;
 #endif
+}
+
+UpscaleProvider* Selected() {
+    const int requested = Ps4Settings::Get().requested_upscaler;
+    if (requested == Ps4Settings::UpscalerOff) {
+        return nullptr;
+    }
+    const std::string_view key = Ps4Settings::UpscalerName(requested);
+    for (auto& provider : Providers()) {
+        if (key == provider.key) {
+            return Load(provider) ? &provider : nullptr;
+        }
+    }
+    return nullptr;
+}
+
+void Check(UpscaleProvider& provider, const Instance& instance) {
+    if (!Load(provider)) {
+        return;
+    }
+    // A provider that was not selected never had its extensions enabled; one that needs none is
+    // usable either way.
+    u32 count = 0;
+    const char* const* names = nullptr;
+    char error[256]{};
+    // A provider that cannot say which extensions it needs cannot be trusted to start.
+    if (provider.api.required_instance_extensions &&
+        provider.api.required_instance_extensions(&count, &names, error, sizeof(error)) !=
+            ORDER_UPSCALE_OK) {
+        provider.reason = std::string("cannot list its instance extensions: ") + error;
+        return;
+    }
+    if (count != 0 && !provider.instance_extensions_enabled) {
+        provider.reason = provider.instance_extensions.empty()
+                              ? "needs Vulkan instance extensions, which are enabled only when it is "
+                                "the selected upscaler"
+                              : "the Vulkan instance does not offer every extension it needs";
+        return;
+    }
+    count = 0;
+    if (provider.api.required_device_extensions &&
+        provider.api.required_device_extensions(instance.GetInstance(), instance.GetPhysicalDevice(),
+                                                &count, &names, error, sizeof(error)) !=
+            ORDER_UPSCALE_OK) {
+        provider.reason = std::string("cannot list its device extensions: ") + error;
+        return;
+    }
+    if (count != 0 && !provider.device_extensions_enabled) {
+        std::string missing;
+        const auto available = instance.GetAvailableExtensions();
+        for (u32 i = 0; i < count; ++i) {
+            const bool offered = std::ranges::find(available, std::string(names[i])) != available.end();
+            missing += (missing.empty() ? "" : ", ") + std::string(names[i]) +
+                       (offered ? " (offered, enabled only when it is the selected upscaler)"
+                                : " (not offered by the GPU)");
+        }
+        provider.reason = "needs device extensions " + missing;
+        return;
+    }
+    if (!instance.IsStorageImageWriteWithoutFormatEnabled()) {
+        provider.reason = "shaderStorageImageWriteWithoutFormat is not enabled on this device";
+        return;
+    }
+    provider.available = true;
 }
 
 } // namespace
 
+std::vector<const char*> SelectedProviderInstanceExtensions(
+    std::span<const VkExtensionProperties> available) {
+    UpscaleProvider* provider = Selected();
+    if (!provider || !provider->api.required_instance_extensions) {
+        return {};
+    }
+    u32 count = 0;
+    const char* const* names = nullptr;
+    char error[256]{};
+    if (provider->api.required_instance_extensions(&count, &names, error, sizeof(error)) !=
+        ORDER_UPSCALE_OK) {
+        std::printf("Upscaler provider %s: cannot list its instance extensions (%s)\n",
+                    provider->key, error);
+        return {};
+    }
+    std::vector<const char*> enabled;
+    for (u32 i = 0; i < count; ++i) {
+        provider->instance_extensions.emplace_back(names[i]);
+        const bool offered = std::ranges::any_of(available, [&](const VkExtensionProperties& p) {
+            return std::strcmp(p.extensionName, names[i]) == 0;
+        });
+        if (offered) {
+            enabled.push_back(names[i]); // owned by the provider DLL, which stays loaded
+        } else {
+            std::printf("Upscaler provider %s: instance extension %s is not offered\n",
+                        provider->key, names[i]);
+        }
+    }
+    provider->instance_extensions_enabled = enabled.size() == count;
+    return enabled;
+}
+
+void EnableSelectedProviderDeviceExtensions(VkInstance instance, VkPhysicalDevice physical,
+                                            const std::function<bool(std::string_view)>& enable) {
+    UpscaleProvider* provider = Selected();
+    if (!provider || !provider->api.required_device_extensions) {
+        return;
+    }
+    u32 count = 0;
+    const char* const* names = nullptr;
+    char error[256]{};
+    if (provider->api.required_device_extensions(instance, physical, &count, &names, error,
+                                                 sizeof(error)) != ORDER_UPSCALE_OK) {
+        std::printf("Upscaler provider %s: cannot list its device extensions (%s)\n",
+                    provider->key, error);
+        return;
+    }
+    bool all = true;
+    for (u32 i = 0; i < count; ++i) {
+        provider->device_extensions.emplace_back(names[i]);
+        all = enable(names[i]) && all; // names stay valid: the provider DLL stays loaded
+    }
+    provider->device_extensions_enabled = all;
+}
+
 std::span<const UpscaleProvider> DetectUpscaleProviders(const Instance& instance) {
-    static std::vector<UpscaleProvider> providers = [&] {
-        std::vector<UpscaleProvider> list{
-            {.key = "fsr3", .library = "order1886_fsr3.dll", .symbol = "order1886_fsr_get_api"},
-            {.key = "dlss", .library = "order1886_dlss.dll", .symbol = "order1886_dlss_get_api"},
-        };
-        for (auto& provider : list) {
+    static const bool checked = [&] {
+        for (auto& provider : Providers()) {
             Check(provider, instance);
             if (provider.available) {
                 std::printf("Upscaler provider %s: %s %s available\n", provider.key,
@@ -120,9 +211,10 @@ std::span<const UpscaleProvider> DetectUpscaleProviders(const Instance& instance
             }
         }
         std::fflush(stdout);
-        return list;
+        return true;
     }();
-    return providers;
+    (void)checked;
+    return Providers();
 }
 
 void ReportUpscalerFallback(int requested, std::span<const UpscaleProvider> providers) {

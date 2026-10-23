@@ -11,8 +11,8 @@ RELATIVE_PATH = Path("trophies/CUSA00076/NPWR06616_00/user-1/unlocks.txt")
 HEADER = b"ORDER1886-TROPHIES 1 CUSA00076 NPWR06616_00 1\n"
 
 
-def catalog(game, unlocked=()):
-    """Read installed TRP v3 icons in memory; encrypted trophy text stays unavailable.
+def _archive(game):
+    """The installed trophy00.trp, validated: (bytes, {name: (offset, length, flag)}).
 
     Layout: shadPS4 src/core/file_format/trp.h at 0ebea15c24253b60f514fc37a348dabc8d0bcb90.
     """
@@ -30,16 +30,26 @@ def catalog(game, unlocked=()):
     data[28:48] = bytes(20)
     if hashlib.sha1(data).digest() != digest:
         raise ValueError('Installed trophy archive checksum does not match.')
-    names, rows, ranges = set(), [], []
-    encoded_size = 0
+    entries, ranges = {}, []
     for index in range(count):
         raw_name, offset, length, flag = struct.unpack_from('>32sQQI', data, 96 + index * 64)
         name = raw_name.split(b'\0', 1)[0]
-        if (not re.fullmatch(rb'[A-Z0-9_.]{1,31}', name) or name in names
+        if (not re.fullmatch(rb'[A-Z0-9_.]{1,31}', name) or name in entries
                 or offset < end_table or not length or offset > size or length > size - offset):
             raise ValueError('Installed trophy archive has an invalid entry.')
-        names.add(name)
+        entries[name] = (offset, length, flag)
         ranges.append((offset, offset + length))
+    ranges.sort()
+    if any(a[1] > b[0] for a, b in zip(ranges, ranges[1:])):
+        raise ValueError('Installed trophy archive has overlapping entries.')
+    return data, entries
+
+
+def catalog(game, unlocked=()):
+    """Read installed TRP v3 icons in memory; the trophy text is encrypted (see catalog_text)."""
+    data, entries = _archive(game)
+    rows, encoded_size = [], 0
+    for name, (offset, length, flag) in entries.items():
         match = re.fullmatch(rb'TROP([0-9]{3})\.PNG', name)
         if not match:
             continue
@@ -57,10 +67,27 @@ def catalog(game, unlocked=()):
             if encoded_size > 1024 * 1024:
                 raise ValueError('Installed trophy artwork exceeds the launcher response limit.')
         rows.append({'id': identity, 'icon': image})
-    ranges.sort()
-    if any(a[1] > b[0] for a, b in zip(ranges, ranges[1:])) or not rows:
-        raise ValueError('Installed trophy archive has overlapping entries or no achievement artwork.')
+    if not rows:
+        raise ValueError('Installed trophy archive has no achievement artwork.')
     return sorted(rows, key=lambda row: row['id'])
+
+
+def catalog_text(game, trophy_key, language=None):
+    """{id: {name, detail, grade, hidden}} decrypted from the player's own game with the
+    player's trophy key, in the game's text for `language` (a PS4 system language id) when it
+    has one; {} without a key. ValueError when the key or the archive is wrong."""
+    from scripts import order1886_trophy_text as text
+    key = text.parse_key(trophy_key)
+    if key is None:
+        return {}
+    data, entries = _archive(game)
+    name = text.text_entry(entries, language)
+    if name is None:
+        raise ValueError('Installed trophy archive has no trophy text.')
+    offset, length, _ = entries[name]
+    if length > 1024 * 1024:
+        raise ValueError('Installed trophy text is too large.')
+    return text.trophies(text.decrypt_entry(bytes(data[offset:offset + length]), text.entry_key(key)))
 
 
 def read(state):

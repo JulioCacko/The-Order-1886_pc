@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Explicit player settings; availability describes the actual Order launch path."""
+import sys
+
 from launcher.order1886_lang import LANGUAGES
 from scripts.order1886_input import BUTTONS, UNBOUND
 
@@ -9,9 +11,15 @@ PAGES = [
     {"id": "game", "title": "Game & Content"}, {"id": "achievements", "title": "Achievements"},
     {"id": "system", "title": "System"},
 ]
-TEMPORAL = ("Two things are missing: verified Order depth, motion, jitter, history and HUD inputs "
-            "(#7), and a temporal renderer in this build. The runtime also forces the upscaler off, so "
-            "selecting one of these cannot take effect yet (#10-#13).")
+# The game's temporal inputs are mapped and a provider replaces its temporal resolve (#7, #10);
+# these choices wait for their own providers to be built and qualified.
+DLSS_LINUX = ("The Linux runtime does not load upscaler providers yet, so the game's own temporal "
+              "anti-aliasing stays (#11).")
+FSR4 = "The FSR 4 provider is not built into this package yet (#12)."
+FSR3_LINUX = ("The Linux runtime does not load upscaler providers yet, so the game's own temporal "
+              "anti-aliasing stays (#10).")
+NATIVE_ONLY = ("Every provider renders at the game's own size for now; lower render sizes need "
+               "render-target scaling (#3).")
 RENDERER = "This setting is not exposed by the validated Order launch profile yet; backend wiring and qualification are pending."
 PATCH = "No hash-verified recipe for this executable is available yet."
 FG = "Frame-generation presentation, synchronization and latency qualification are pending."
@@ -32,16 +40,19 @@ def field(key, label, page, kind, default, description, choices=None, reason="",
 
 field("game_dir", "Game folder", "game", "directory", "", "Select the extracted CUSA00076 game. Original files remain unchanged.")
 field("runtime", "Runtime executable", "system", "file", "", "Leave empty to use the installation's verified Order runtime.")
+field("trophy_key", "Trophy key", "achievements", "secret", "",
+      "Optional: your own console's trophy key, 32 hexadecimal digits, as shadPS4 uses it. With it the launcher decrypts trophy names and descriptions from your game's own files; hidden trophies stay hidden until earned. The key stays in this installation's settings and is never sent anywhere.")
 field("performance_capture", "Record performance data", "system", "boolean", False,
       "Save frame times and slow-frame diagnostics with each session's logs. Turn this off after recording the slow scene.")
 field("display_mode", "Display mode", "graphics", "select", "borderless", "Window mode is independent of framing and game timing.",
       [("windowed", "Windowed", ""), ("borderless", "Borderless", ""), ("fullscreen", "Fullscreen", "")])
 field("aspect_ratio", "Framing", "graphics", "select", "original", "Original preserves cinematic framing. The 16:9 patch is executable-specific and experimental.",
       [("original", "Original cinematic aspect", ""), ("16:9", "16:9 — experimental", "")])
-field("presentation_filter", "Upscaling", "graphics", "select", "fsr1", "Choose Linear / no FSR for the original-resolution path. Presentation scaling does not establish native internal resolution: the scene renders at the size the game chooses, and larger output is not native 4K (docs/order1886-resolution.md).",
+field("presentation_filter", "Upscaling", "graphics", "select", "fsr1", "Choose Linear / no FSR for the original-resolution path. AMD FSR 3.1 or NVIDIA DLAA replaces the game's own temporal anti-aliasing at the game's render size, then FSR 1 scales the result to the output. DLAA needs an NVIDIA GeForce RTX GPU; on any other GPU the game's own anti-aliasing stays and the session log says why. Presentation scaling does not establish native internal resolution: the scene renders at the size the game chooses, and larger output is not native 4K (docs/order1886-resolution.md).",
       [("linear", "Linear / no FSR", ""), ("fsr1", "FSR 1", ""),
-       ("taa", "Native temporal AA", TEMPORAL), ("dlss", "NVIDIA DLSS Super Resolution", TEMPORAL),
-       ("fsr3", "AMD FSR 3.1", TEMPORAL), ("fsr4", "AMD FSR 4", TEMPORAL),
+       ("fsr3", "AMD FSR 3.1 (native AA) + FSR 1", "" if sys.platform == "win32" else FSR3_LINUX),
+       ("dlss", "NVIDIA DLAA (DLSS at native size) + FSR 1", "" if sys.platform == "win32" else DLSS_LINUX),
+       ("fsr4", "AMD FSR 4", FSR4),
        # XeSS has no identifier in the runtime's upscaler names yet; the runtime's "fsr411" has no
        # launcher label either, so both sides are honest about the mismatch.
        ("xess", "Intel XeSS", "The runtime has no XeSS identifier yet, so even a qualified temporal "
@@ -52,8 +63,8 @@ field("output_resolution", "Output resolution", "graphics", "select", "automatic
       [("automatic", "Match the window", ""), ("1280x720", "1280 × 720 output", ""),
        ("1920x1080", "1920 × 1080 output", ""), ("2560x1440", "2560 × 1440 output", ""),
        ("3840x2160", "3840 × 2160 output (upscaled, not native 4K)", "")])
-field("upscale_preset", "Upscaler quality", "graphics", "select", "quality", "Quality presets require a qualified temporal provider.",
-      [(x, x.title(), TEMPORAL) for x in ("native", "quality", "balanced", "performance")], reason=TEMPORAL)
+field("upscale_preset", "Upscaler quality", "graphics", "select", "native", "Quality presets render the scene below the output size and let the temporal provider reconstruct it.",
+      [(x, x.title(), NATIVE_ONLY) for x in ("native", "quality", "balanced", "performance")], reason=NATIVE_ONLY)
 field("sharpness", "Sharpening", "graphics", "number", 0,
       "RCAS sharpening strength in percent; 0 turns it off. It runs with FSR 1 upscaling, or when the output matches the game's size; with Linear upscaling to a larger output it has no pass to run in.",
       minimum=0, maximum=100)

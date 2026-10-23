@@ -197,6 +197,7 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         **saved,
         "game_dir": str(saved.get("game_dir", order1886.default_game_dir())),
         "runtime": str(saved.get("runtime", "")),
+        "trophy_key": str(saved.get("trophy_key", "")),
         "display_mode": saved.get("display_mode", "borderless"),
         "vsync": bool(saved.get("vsync", True)),
         "show_fps": bool(saved.get("show_fps", True)),
@@ -225,7 +226,7 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
     }
     for key, allowed, default in (
         ("display_mode", ("windowed", "borderless", "fullscreen"), "borderless"),
-        ("presentation_filter", ("linear", "fsr1"), "fsr1"),
+        ("presentation_filter", order1886.PRESENTATION_FILTERS, "fsr1"),
         ("aspect_ratio", ("original", "16:9"), "original"),
     ):
         if values[key] not in allowed:

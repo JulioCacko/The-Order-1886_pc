@@ -85,6 +85,26 @@ try {
         throw 'Runtime changed during packaging. Re-run after the source build has finished.'
     }
     Copy-Item -LiteralPath $runtimeIdentityPath -Destination (Join-Path $runtimeBin 'runtime-build.json')
+    # The FSR 3.1 provider the runtime loads from its own folder for the Upscaling choice (#10).
+    # It imports only libc++ and the Vulkan loader, which the runtime already brought along.
+    $provider = Join-Path (Split-Path -Parent $runtimePath) 'order1886_fsr3.dll'
+    if (-not (Test-Path -LiteralPath $provider)) {
+        throw 'order1886_fsr3.dll is missing next to the runtime; build it with build.sh first.'
+    }
+    Copy-Item -LiteralPath $provider -Destination (Join-Path $runtimeBin 'order1886_fsr3.dll')
+    # NVIDIA DLAA (#11): the MSVC-built bridge and NVIDIA's runtime, when gpu/dlss_bridge/build.ps1
+    # staged them beside the runtime. Both or neither: the bridge cannot work without the runtime.
+    $runtimeDir = Split-Path -Parent $runtimePath
+    $dlss = @('order1886_dlss.dll', 'nvngx_dlss.dll') | ForEach-Object { Join-Path $runtimeDir $_ }
+    $present = @($dlss | Where-Object { Test-Path -LiteralPath $_ })
+    if ($present.Count -eq 1) { throw 'Only one of order1886_dlss.dll and nvngx_dlss.dll is next to the runtime.' }
+    if ($present.Count -eq 2) {
+        $nvidiaLicense = Join-Path $runtimeDir 'NVIDIA-DLSS-LICENSE.txt'
+        if (-not (Test-Path -LiteralPath $nvidiaLicense)) { throw 'NVIDIA-DLSS-LICENSE.txt must accompany nvngx_dlss.dll.' }
+        $dlss | ForEach-Object { Copy-Item -LiteralPath $_ -Destination $runtimeBin }
+        New-Item -ItemType Directory -Force -Path (Join-Path $destination 'notices') | Out-Null
+        Copy-Item -LiteralPath $nvidiaLicense -Destination (Join-Path $destination 'notices/NVIDIA-DLSS-LICENSE.txt')
+    }
 
     $modules = @(& go list -deps -tags desktop,production -f '{{with .Module}}{{if not .Main}}{{.Path}}|{{.Version}}|{{.Dir}}{{end}}{{end}}' .)
     if ($LASTEXITCODE) { throw 'Go dependency listing failed.' }
@@ -112,7 +132,7 @@ if (-not (Test-Path "$venv/Scripts/python.exe")) {
 }
 $buildPython = Join-Path $venv 'Scripts/python.exe'
 if (-not $SkipDependencyInstall) {
-    & $buildPython -m pip install --disable-pip-version-check 'pyinstaller==6.20.0' 'pillow==12.3.0'
+    & $buildPython -m pip install --disable-pip-version-check 'pyinstaller==6.20.0' 'pillow==12.3.0' 'cryptography==50.0.1'
     if ($LASTEXITCODE) { throw 'Build dependencies installation failed.' }
 }
 
@@ -138,7 +158,7 @@ $scriptData = Join-Path $stage 'scripts'
 New-Item -ItemType Directory -Force -Path $scriptData | Out-Null
 foreach ($name in @('prepare.py','link_modules.py','link_libc.py','save_backup.py',
         'order1886_frame_rate.py','order1886_display.py','order1886_post_effects.py','order1886_cache.py',
-        'order1886_steam.py','order1886_mods.py','order1886_trophy_history.py','order1886_input.py',
+        'order1886_steam.py','order1886_mods.py','order1886_trophy_history.py','order1886_trophy_text.py','order1886_input.py',
         # performance.report reads the recorded CSV through the shared frame-trace parser.
         'order1886_frame_trace.py','order1886_perf_report.py',
         # order1886.py imports this by name from the shipped scripts/ directory; without it

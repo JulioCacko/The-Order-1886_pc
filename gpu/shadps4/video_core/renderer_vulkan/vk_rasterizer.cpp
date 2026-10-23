@@ -1,7 +1,13 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
+#include <cstdio>
 #include <cstdlib>
+#include <mutex>
+#include <set>
+#include <string>
+#include <vector>
 #include <xxhash.h>
 #include "video_core/renderer_vulkan/ui_composition.h"
 #include "ps4_toggles.h"
@@ -1241,6 +1247,28 @@ void Rasterizer::DispatchDirect() {
     DispatchRecord(pipeline);
 }
 
+/// Compute shaders whose small output buffers the game reads back on the CPU every frame. Under
+/// the relaxed readback policy only these are fetched on a CPU read: 0xb3d87c7f samples the
+/// half-size depth into three rotating 8-byte buffers for the aim autofocus; a stale value blurs
+/// the whole view while aiming (found with ORDER1886_READBACK_LOG=1 under the selective policy).
+/// ORDER1886_READBACK_SHADERS (comma-separated hex) replaces the list.
+static bool ReadbackWatchedShader(u64 hash) {
+    static const std::vector<u64> hashes = [] {
+        std::vector<u64> list;
+        const char* env = std::getenv("ORDER1886_READBACK_SHADERS");
+        std::string text = env ? env : "b3d87c7f";
+        for (size_t start = 0; start < text.size();) {
+            const size_t end = std::min(text.find(',', start), text.size());
+            if (end > start) {
+                list.push_back(std::strtoull(text.substr(start, end - start).c_str(), nullptr, 16));
+            }
+            start = end + 1;
+        }
+        return list;
+    }();
+    return std::ranges::find(hashes, hash) != hashes.end();
+}
+
 void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
     FrameCapture::Poll();
     gbuffer_draw = false;
@@ -1267,7 +1295,12 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
         return;
     }
 
-    if (!BindResources(pipeline)) {
+    buffer_cache.WatchWrittenBuffers(ReadbackWatchedShader(cs.pgm_hash));
+    buffer_cache.SetCurrentDispatch(cs.pgm_hash);
+    const bool bound = BindResources(pipeline);
+    buffer_cache.WatchWrittenBuffers(false);
+    buffer_cache.SetCurrentDispatch(0);
+    if (!bound) {
         return;
     }
 
@@ -1348,7 +1381,13 @@ void Rasterizer::DispatchIndirectRecord(const ComputePipeline* pipeline, VAddr a
     scheduler.PopPendingOperations();
     const u32 offset = 0;
 
-    if (!BindResources(pipeline)) {
+    const u64 cs_hash = pipeline->GetStage(Shader::SwStage::Compute).pgm_hash;
+    buffer_cache.WatchWrittenBuffers(ReadbackWatchedShader(cs_hash));
+    buffer_cache.SetCurrentDispatch(cs_hash);
+    const bool bound = BindResources(pipeline);
+    buffer_cache.WatchWrittenBuffers(false);
+    buffer_cache.SetCurrentDispatch(0);
+    if (!bound) {
         return;
     }
 
@@ -3330,6 +3369,20 @@ bool Rasterizer::ReadMemory(VAddr addr, u64 size, bool assume_locks) {
     }
     const bool image_readback =
         texture_cache.ResolveReadbacks(addr, size, assume_locks, VideoCore::ReadbackSource::CpuRead);
+    if (VideoCore::BufferCache::ReadbackLog()) {
+        // Diagnostics: which GPU outputs the game reads back on the CPU, once per writer/page.
+        static std::mutex logged_mutex;
+        static std::set<std::pair<u64, VAddr>> logged;
+        const u64 writer = buffer_cache.WriterOf(addr);
+        std::scoped_lock lock{logged_mutex};
+        if (logged.size() < 256 && logged.insert({writer, addr >> 12}).second) {
+            std::printf("Readback: CPU read %#llx +%llu image=%d buffer=%d writer cs %016llx\n",
+                        static_cast<unsigned long long>(addr), static_cast<unsigned long long>(size),
+                        image_readback ? 1 : 0, buffer_cache.IsRegionGpuModified(addr, size) ? 1 : 0,
+                        static_cast<unsigned long long>(writer));
+            std::fflush(stdout);
+        }
+    }
     if (!image_readback || buffer_cache.IsRegionGpuModified(addr, size)) {
         buffer_cache.ReadMemory(addr, size, false, assume_locks);
     }

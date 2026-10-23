@@ -368,7 +368,7 @@ int32_t runtime_trophy_unlock(int32_t context, int32_t handle, int32_t id, int32
     if (id < 0 || id >= RUNTIME_TROPHY_LIMIT) return RUNTIME_TROPHY_INVALID;
     pthread_mutex_lock(&trophy_lock);
     int32_t result = valid_pair(context, handle, 1);
-    int durability_unknown = 0;
+    int durability_unknown = 0, fresh = 0;
     if (!result && !unlocked[id]) {
         int64_t updated[RUNTIME_TROPHY_LIMIT];
         memcpy(updated, unlocked, sizeof(updated));
@@ -378,12 +378,14 @@ int32_t runtime_trophy_unlock(int32_t context, int32_t handle, int32_t id, int32
             updated[id] = (int64_t)now;
             int committed = persist(updated);
             if (committed) memcpy(unlocked, updated, sizeof(unlocked));
+            fresh = committed == 1;
             if (committed != 1) result = RUNTIME_TROPHY_IO_ERROR;
             if (committed < 0) { ready = 0; durability_unknown = 1; }
         }
     }
     if (!result && platinum) *platinum = -1;
     pthread_mutex_unlock(&trophy_lock);
+    if (fresh) fprintf(stderr, "Runtime: trophy %d unlocked\n", id);
     if (durability_unknown)
         fprintf(stderr, "Runtime: trophy %d file was replaced but directory durability is unknown; writes disabled until reload\n", id);
     else if (result == RUNTIME_TROPHY_IO_ERROR)
