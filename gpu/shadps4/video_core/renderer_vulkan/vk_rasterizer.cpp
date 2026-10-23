@@ -3621,13 +3621,32 @@ void Rasterizer::UpdateDepthStencilState() const {
     }
 
     const auto depth_bias_enabled = regs.polygon_control.NeedsBias();
-    dynamic_state.SetDepthBiasEnabled(depth_bias_enabled);
+    // A pass that redraws the scene against an earlier depth pass (test on, writes off,
+    // LESS_OR_EQUAL or GREATER_OR_EQUAL) relies on both passes producing the same depth. GCN does,
+    // even when the two vertex shaders reach the position by different instructions; the Vulkan
+    // driver's compiles can differ by a few ulps, those fragments fail and are never shaded (The
+    // Order: black flecks on faces in the lighting pass). A small bias toward the camera
+    // (ORDER1886_REDRAW_DEPTH_BIAS units, 0 = off) lets them pass; these draws write no depth.
+    static const float redraw_bias = [] {
+        const char* env = std::getenv("ORDER1886_REDRAW_DEPTH_BIAS");
+        return env ? float(std::atof(env)) : 16.f;
+    }();
+    const auto func = regs.depth_control.depth_func;
+    const bool redraw = depth_test_enabled && !depth_stencil.depth_write_enable &&
+                        !depth_bias_enabled && redraw_bias != 0.f &&
+                        (func == AmdGpu::CompareFunc::LessEqual ||
+                         func == AmdGpu::CompareFunc::GreaterEqual);
+    dynamic_state.SetDepthBiasEnabled(depth_bias_enabled || redraw);
     if (depth_bias_enabled) {
         const bool front = regs.polygon_control.enable_polygon_offset_front;
         const float slope = front ? regs.poly_offset.front_scale : regs.poly_offset.back_scale;
         dynamic_state.SetDepthBias(
             front ? regs.poly_offset.front_offset : regs.poly_offset.back_offset,
             regs.poly_offset.depth_bias, slope / 16.f);
+    } else if (redraw) {
+        dynamic_state.SetDepthBias(func == AmdGpu::CompareFunc::LessEqual ? -redraw_bias
+                                                                           : redraw_bias,
+                                   0.f, 0.f);
     }
 
     const bool stencil_test_enabled = depth_stencil.stencil_test_enable;
