@@ -408,9 +408,10 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
     return env
 
 
-# Launcher "Upscaling" choices the backend honours: Linear or FSR 1 presentation, or FSR 3.1 in
-# place of the game's temporal resolve followed by FSR 1 presentation.
-PRESENTATION_FILTERS = ('linear', 'fsr1', 'fsr3')
+# Launcher "Upscaling" choices the backend honours: Linear or FSR 1 presentation, or a temporal
+# provider (FSR 3.1, DLSS) in place of the game's temporal resolve followed by FSR 1 presentation.
+TEMPORAL_PROVIDERS = ('fsr3', 'dlss')
+PRESENTATION_FILTERS = ('linear', 'fsr1', 'fsr3', 'dlss')
 
 
 # Keys the in-game menu can change that also exist as launcher settings. The runtime writes
@@ -420,7 +421,7 @@ MENU_SETTING_MAP = {
     'display_mode': ('display_mode', ('windowed', 'borderless', 'fullscreen')),
     'vsync': ('vsync', None),
     'show_fps': ('show_fps', None),
-    'presentation_filter': ('presentation_filter', ('linear', 'fsr1', 'fsr3')),
+    'presentation_filter': ('presentation_filter', PRESENTATION_FILTERS),
     'mouse_look': ('mouse_look', None),
     'mouse_invert_y': ('mouse_invert_y', None),
     'mouse_sensitivity': ('mouse_sensitivity', None),
@@ -452,10 +453,10 @@ def menu_settings_import(state, values):
             continue
         key, _, value = line.partition('=')
         raw[key.strip()] = value.strip()
-    # The runtime writes FSR 3.1 as upscaler=fsr3 beside presentation_filter=fsr1; the launcher
+    # The runtime writes a provider as upscaler=<key> beside presentation_filter=fsr1; the launcher
     # holds both in one choice, so read them back as that choice.
-    if raw.get('upscaler') == 'fsr3' and raw.get('presentation_filter') == 'fsr1':
-        raw['presentation_filter'] = 'fsr3'
+    if raw.get('upscaler') in TEMPORAL_PROVIDERS and raw.get('presentation_filter') == 'fsr1':
+        raw['presentation_filter'] = raw['upscaler']
     changed = {}
     for key, (setting, allowed) in MENU_SETTING_MAP.items():
         if key not in raw:
@@ -523,9 +524,9 @@ def write_runtime_config(user, settings):
     presentation_filter = settings.get('presentation_filter', 'fsr1')
     if presentation_filter not in PRESENTATION_FILTERS:
         raise ValueError('Invalid presentation filter')
-    # FSR 3.1 replaces the game's temporal resolve at native size (#10); FSR 1 still scales the
-    # result to the output, so the runtime gets both keys.
-    upscaler = 'fsr3' if presentation_filter == 'fsr3' else None
+    # A temporal provider replaces the game's temporal resolve at native size (#10, #11); FSR 1
+    # still scales the result to the output, so the runtime gets both keys.
+    upscaler = presentation_filter if presentation_filter in TEMPORAL_PROVIDERS else None
     if upscaler:
         presentation_filter = 'fsr1'
     frame_rate = timing.validate_frame_rate(settings.get('frame_rate', 30))

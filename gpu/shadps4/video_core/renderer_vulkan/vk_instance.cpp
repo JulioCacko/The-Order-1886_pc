@@ -17,6 +17,7 @@
 #include "video_core/renderer_vulkan/vk_amd_paths.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_platform.h"
+#include "video_core/renderer_vulkan/vk_upscale_providers.h"
 #include "video_core/renderer_vulkan/vk_vertex_input_policy.h"
 
 #include <vk_mem_alloc.h>
@@ -294,7 +295,7 @@ bool Instance::CreateDevice() {
         return false;
     }
 
-    boost::container::static_vector<const char*, 64> enabled_extensions;
+    boost::container::static_vector<const char*, 96> enabled_extensions;
     const auto add_extension = [&](std::string_view extension) -> bool {
         const auto result =
             std::find_if(available_extensions.begin(), available_extensions.end(),
@@ -511,8 +512,16 @@ bool Instance::CreateDevice() {
     const auto vk11_features = feature_chain.get<vk::PhysicalDeviceVulkan11Features>();
     vk12_features = feature_chain.get<vk::PhysicalDeviceVulkan12Features>();
     vk13_features = feature_chain.get<vk::PhysicalDeviceVulkan13Features>();
-    // DLSS (optional bridge DLL) needs its own device extensions on NVIDIA GPUs.
-
+    // The upscaler the launcher selected may need its own device extensions (DLSS does).
+    EnableSelectedProviderDeviceExtensions(
+        static_cast<VkInstance>(*instance), static_cast<VkPhysicalDevice>(physical_device),
+        [&](std::string_view extension) {
+            if (std::ranges::any_of(enabled_extensions,
+                                    [&](const char* name) { return extension == name; })) {
+                return true;
+            }
+            return add_extension(extension);
+        });
 
     vk::StructureChain device_chain = {
         vk::DeviceCreateInfo{

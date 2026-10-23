@@ -13,8 +13,8 @@ PAGES = [
 ]
 # The game's temporal inputs are mapped and a provider replaces its temporal resolve (#7, #10);
 # these choices wait for their own providers to be built and qualified.
-DLSS = ("Needs order1886_dlss.dll and NVIDIA's nvngx_dlss.dll beside the runtime; neither is built into "
-        "this package yet (#11).")
+DLSS_LINUX = ("The Linux runtime does not load upscaler providers yet, so the game's own temporal "
+              "anti-aliasing stays (#11).")
 FSR4 = "The FSR 4 provider is not built into this package yet (#12)."
 FSR3_LINUX = ("The Linux runtime does not load upscaler providers yet, so the game's own temporal "
               "anti-aliasing stays (#10).")
@@ -46,10 +46,11 @@ field("display_mode", "Display mode", "graphics", "select", "borderless", "Windo
       [("windowed", "Windowed", ""), ("borderless", "Borderless", ""), ("fullscreen", "Fullscreen", "")])
 field("aspect_ratio", "Framing", "graphics", "select", "original", "Original preserves cinematic framing. The 16:9 patch is executable-specific and experimental.",
       [("original", "Original cinematic aspect", ""), ("16:9", "16:9 — experimental", "")])
-field("presentation_filter", "Upscaling", "graphics", "select", "fsr1", "Choose Linear / no FSR for the original-resolution path. AMD FSR 3.1 replaces the game's own temporal anti-aliasing at the game's render size, then FSR 1 scales the result to the output. Presentation scaling does not establish native internal resolution: the scene renders at the size the game chooses, and larger output is not native 4K (docs/order1886-resolution.md).",
+field("presentation_filter", "Upscaling", "graphics", "select", "fsr1", "Choose Linear / no FSR for the original-resolution path. AMD FSR 3.1 or NVIDIA DLAA replaces the game's own temporal anti-aliasing at the game's render size, then FSR 1 scales the result to the output. DLAA needs an NVIDIA GeForce RTX GPU; on any other GPU the game's own anti-aliasing stays and the session log says why. Presentation scaling does not establish native internal resolution: the scene renders at the size the game chooses, and larger output is not native 4K (docs/order1886-resolution.md).",
       [("linear", "Linear / no FSR", ""), ("fsr1", "FSR 1", ""),
        ("fsr3", "AMD FSR 3.1 (native AA) + FSR 1", "" if sys.platform == "win32" else FSR3_LINUX),
-       ("dlss", "NVIDIA DLSS Super Resolution", DLSS), ("fsr4", "AMD FSR 4", FSR4),
+       ("dlss", "NVIDIA DLAA (DLSS at native size) + FSR 1", "" if sys.platform == "win32" else DLSS_LINUX),
+       ("fsr4", "AMD FSR 4", FSR4),
        # XeSS has no identifier in the runtime's upscaler names yet; the runtime's "fsr411" has no
        # launcher label either, so both sides are honest about the mismatch.
        ("xess", "Intel XeSS", "The runtime has no XeSS identifier yet, so even a qualified temporal "

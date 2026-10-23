@@ -100,7 +100,7 @@ See [implementation and issue status](docs/order1886-issue-status.md).
 | Boot and rendering | Title, menus, cinematics and gameplay in the courtyard and the hotel from copied saves | Full progression, checkpoint save/load across chapters |
 | Performance | About 53 FPS in the courtyard and 38 FPS in the hotel fight (RTX 3070, 60 FPS mode) | Sustained 60 in fights; 4K/60 ([#3](https://github.com/JulioCacko/The-Order-1886_pc/issues/3)) |
 | Launcher | Go launcher on Windows and Linux; graphics, timing and effect options reach the runtime | Broader DPI and language coverage |
-| Temporal providers | FSR 1 presentation; FSR 3.1 in place of the game's temporal resolve, selectable in the launcher on Windows (next preview) | Lower render sizes, DLSS, XeSS and FSR 4 ([#10](https://github.com/JulioCacko/The-Order-1886_pc/issues/10)–[#13](https://github.com/JulioCacko/The-Order-1886_pc/issues/13)) |
+| Temporal providers | FSR 1 presentation; FSR 3.1 or NVIDIA DLAA (DLSS at native size) in place of the game's temporal resolve, selectable in the launcher on Windows (next preview) | Lower render sizes and DLSS quality modes, XeSS and FSR 4 ([#10](https://github.com/JulioCacko/The-Order-1886_pc/issues/10)–[#13](https://github.com/JulioCacko/The-Order-1886_pc/issues/13)) |
 | Linux | The package starts on Ubuntu 26.04 and reaches the title menu on software Vulkan | Gameplay on a Linux GPU driver |
 | Game versions | CUSA00076 APP_VER 01.00 / VERSION 01.03 | Update 1.02 report [#23](https://github.com/JulioCacko/The-Order-1886_pc/issues/23) |
 
@@ -179,7 +179,7 @@ For mouse look, open **Controls**: sensitivity and inverted Y persist. In the ga
 ## Graphics and performance
 
 **FSR 1** is spatial presentation scaling. **AMD FSR 3.1 (native AA) + FSR 1** replaces the game's own
-temporal resolve at its render size, then FSR 1 scales to the output (Windows, from the next preview); DLSS, XeSS and FSR 4 follow. The 4K/60 target is **3840×2160 output with upscaling acceptable**,
+temporal resolve at its render size, then FSR 1 scales to the output (Windows, from the next preview). **NVIDIA DLAA (DLSS at native size) + FSR 1** does the same on GeForce RTX GPUs; DLSS quality modes, which render below the output size, wait for render-target scaling. XeSS and FSR 4 follow. The 4K/60 target is **3840×2160 output with upscaling acceptable**,
 preserved detail and sustained 60 FPS in gameplay. It has not passed.
 
 **60 FPS, 90 FPS and Unlocked are experimental.** The 60 FPS recipe warns of possible

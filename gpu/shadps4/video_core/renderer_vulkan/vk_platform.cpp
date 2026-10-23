@@ -13,6 +13,8 @@
 #define VK_USE_PLATFORM_XLIB_KHR
 #endif
 
+#include <algorithm>
+#include <cstring>
 #include <vector>
 #include <fmt/ranges.h>
 
@@ -22,6 +24,7 @@
 #include "core/emulator_settings.h"
 #include "sdl_window.h"
 #include "video_core/renderer_vulkan/vk_platform.h"
+#include "video_core/renderer_vulkan/vk_upscale_providers.h"
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
@@ -287,9 +290,16 @@ vk::UniqueInstance CreateInstance(Frontend::WindowSystemType window_type, bool e
 
     const auto layers = GetInstanceLayers(enable_validation, enable_crash_diagnostic);
     auto extensions = GetLayerExtensions(GetInstanceExtensions(window_type, true), layers);
-    // DLSS (optional bridge DLL) needs its own instance extensions.
-
-
+    // The upscaler the launcher selected may need its own instance extensions (DLSS does).
+    if (const auto [result, offered] = vk::enumerateInstanceExtensionProperties();
+        result == vk::Result::eSuccess) {
+        std::vector<VkExtensionProperties> available(offered.begin(), offered.end());
+        for (const char* name : SelectedProviderInstanceExtensions(available)) {
+            if (std::ranges::none_of(extensions, [&](const char* e) { return std::strcmp(e, name) == 0; })) {
+                extensions.push_back(name);
+            }
+        }
+    }
 
     const vk::ApplicationInfo application_info = {
         .pApplicationName = "shadPS4",

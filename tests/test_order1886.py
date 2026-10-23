@@ -282,6 +282,10 @@ class OrderBackendTests(unittest.TestCase):
         config = (self.user / 'runtime.ini').read_text()
         self.assertIn('presentation_filter=fsr1\n', config)
         self.assertIn('upscaler=fsr3\n', config)
+        order1886.write_runtime_config(self.user, {'presentation_filter': 'dlss'})
+        config = (self.user / 'runtime.ini').read_text()
+        self.assertIn('presentation_filter=fsr1\n', config)
+        self.assertIn('upscaler=dlss\n', config)
         with self.assertRaisesRegex(ValueError, 'presentation filter'):
             order1886.write_runtime_config(self.user, {'presentation_filter': 'taa'})
 
