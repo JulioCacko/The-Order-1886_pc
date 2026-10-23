@@ -68,6 +68,8 @@ enum : std::uint64_t {
     // On by default (bit set: off): history of a thin feature this jitter phase missed is kept
     // when nothing moves. Static-camera flicker of railings/window bars p99.9 -45% (2026-10-03).
     TaaKeepNearerHistory = 1ull << 55,
+    /// index counts of indexed indirect draws bounded by the bound index buffer (A/B only)
+    IndirectIndexClamp = 1ull << 56,
     SceneMipBias = 1ull << 57, ///< negative LOD bias of G-buffer samplers at reduced scene sizes
     DeferredReadbacks = 1ull << 58, ///< CPU writes beside GPU-written bytes skip the GPU wait
     // Bits 20-29 are used as raw debug toggles by the camera/object motion and the upscaler.
