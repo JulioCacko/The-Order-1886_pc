@@ -121,8 +121,10 @@ public:
         }
         if constexpr (type == Type::CPU) {
             UpdateProtection<!enable, false>();
-        } else if (EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Precise ||
-                   EmulatorSettings.GetReadbacksMode() == GpuReadbacksMode::Selective) {
+        } else if (EmulatorSettings.GetReadbacksMode() != GpuReadbacksMode::Disabled &&
+                   (EmulatorSettings.GetReadbacksMode() != GpuReadbacksMode::Relaxed ||
+                    read_watch.Any())) {
+            // Relaxed hides only the pages a watched dispatch wrote (BufferCache).
             UpdateProtection<enable, true>();
         }
     }
@@ -226,7 +228,9 @@ private:
         RENDERER_TRACE;
         const auto mode = EmulatorSettings.GetReadbacksMode();
         const RegionBits hidden = mode == GpuReadbacksMode::Precise ? gpu
-                                  : mode == GpuReadbacksMode::Selective ? (gpu & read_watch)
+                                  : mode == GpuReadbacksMode::Selective ||
+                                            mode == GpuReadbacksMode::Relaxed
+                                        ? (gpu & read_watch)
                                   : RegionBits{};
         RegionBits mask = is_read ? (~hidden ^ readable) : (cpu ^ writeable);
         if (mask.None()) {
