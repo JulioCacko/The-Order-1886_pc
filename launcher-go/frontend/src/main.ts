@@ -108,6 +108,7 @@ function control(field:Field) {
   }
   if(field.kind==='order') return `<textarea ${label}${disabled} rows="3" spellcheck="false">${escape((value as string[]).join('\n'))}</textarea>`;
   if(field.kind==='number') return `<input type="number" ${label}${disabled} value="${escape(value)}" min="${field.minimum}" max="${field.maximum}" step="1">`;
+  if(field.kind==='secret') return `<input type="password" ${label}${disabled} value="${escape(value)}" autocomplete="off" spellcheck="false">`;
   return `<div class="path-input"><input type="text" ${label}${disabled} value="${escape(value)}" autocomplete="off" spellcheck="false">${['directory','file'].includes(field.kind)?`<button data-browse="${field.key}"${disabled} aria-label="${escape(t('Browse')+' '+t(field.label))}">${escape(t('Browse'))}</button>`:''}</div>`;
 }
 function fieldRow(field:Field) {
@@ -173,16 +174,17 @@ function achievementsPage() {
  const earned=new Set(snapshot.trophies.map(item=>item.id));
  const count=catalog.filter(item=>earned.has(item.id)).length;
  return `<section class="settings-page"><h1 id="achievements-heading" tabindex="-1">${escape(t('Achievements'))}</h1>
- <p class="quiet-copy">${escape(t('Local unlock history and artwork from your installed game. Names and descriptions are encrypted and unavailable. Locked artwork stays hidden.'))}</p>
+ <p class="quiet-copy">${escape(t('Local unlock history and artwork from your installed game. Names and descriptions are decrypted from your game with your own trophy key. Locked artwork stays hidden.'))}</p>
  ${snapshot.trophy_error?`<p role="alert" class="error">${escape(snapshot.trophy_error)}</p>`:catalog.length?`<p id="achievement-progress">${count} / ${catalog.length} ${escape(t('installed achievements earned'))}</p><progress value="${count}" max="${catalog.length}" aria-labelledby="achievement-progress"></progress>`:''}
  ${snapshot.trophy_catalog_error?`<p class="quiet-copy">${escape(t(snapshot.trophy_catalog_error))}</p>`:''}
  ${rows.length?`<ol class="trophy-list">${rows.map(item=>{
   const date=item.unlocked_at===undefined?null:unlockDate(item.unlocked_at,snapshot.settings.ui_language);
   const status=snapshot.trophy_error?'Unlock status unavailable':item.unlocked_at===undefined?'Locked':'Unlocked';
   return `<li>${item.icon?`<img src="${escape(item.icon)}" alt="" width="64" height="64" loading="lazy" decoding="async">`:`<span class="trophy-placeholder" aria-hidden="true">${icon('achievements')}</span>`}
-  <div class="trophy-copy"><strong>${escape(t('Trophy'))} ${item.id}</strong><span>${escape(t(status))}</span></div>
+  <div class="trophy-copy"><strong>${item.name?escape(item.name):item.hidden&&item.unlocked_at===undefined?escape(t('Hidden trophy')):`${escape(t('Trophy'))} ${item.id}`}</strong>${item.detail?`<span>${escape(item.detail)}</span>`:''}<span>${item.grade?escape(t(item.grade[0].toUpperCase()+item.grade.slice(1)))+' · ':''}${escape(t(status))}</span></div>
   ${date?`<time datetime="${date.iso}">${escape(date.text)}</time>`:item.unlocked_at!==undefined?`<span class="quiet-copy">${escape(t('Unlock time unavailable'))}</span>`:''}</li>`;
- }).join('')}</ol>`:`<p class="empty-state">${escape(t('No earned trophies recorded yet. Unlocks appear here when the game writes them.'))}</p>`}</section>`;
+ }).join('')}</ol>`:`<p class="empty-state">${escape(t('No earned trophies recorded yet. Unlocks appear here when the game writes them.'))}</p>`}
+ ${snapshot.fields.filter(field=>field.page==='achievements').map(fieldRow).join('')}</section>`;
 }
 function settingsPage() {
  const matching=snapshot.fields.filter(field=>query?

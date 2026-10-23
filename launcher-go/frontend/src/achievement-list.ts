@@ -1,9 +1,9 @@
 export type EarnedTrophy={id:number;unlocked_at:number};
-export type TrophyArtwork={id:number;icon:string};
+export type TrophyArtwork={id:number;icon:string;name?:string;detail?:string;grade?:string;hidden?:boolean};
 
 export function achievementRows(earned:EarnedTrophy[],catalog:TrophyArtwork[]=[]){
  const rows=new Map(catalog.map(item=>[item.id,{...item,unlocked_at:undefined as number|undefined}]));
- for(const item of earned) rows.set(item.id,{id:item.id,icon:rows.get(item.id)?.icon??'',unlocked_at:item.unlocked_at});
+ for(const item of earned) rows.set(item.id,{...rows.get(item.id),id:item.id,icon:rows.get(item.id)?.icon??'',unlocked_at:item.unlocked_at});
  return [...rows.values()].sort((a,b)=>a.id-b.id);
 }
 

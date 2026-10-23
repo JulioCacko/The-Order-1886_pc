@@ -88,3 +88,39 @@ class TrophyHistoryTests(unittest.TestCase):
             root = Path(directory) / "new"
             self.assertEqual(history.read(root), [])
             self.assertFalse(root.exists())
+
+
+class TrophyTextTests(unittest.TestCase):
+    """shadPS4's ESFM decryption, against an archive encrypted here with a made-up key."""
+
+    def archive_with_text(self, key, documents):
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        from scripts import order1886_trophy_text as text
+        entries = [('TROP000.PNG', PNG, 0)]
+        for name, document in documents.items():
+            iv = bytes(range(16, 32))
+            padded = document + bytes(-len(document) % 16)
+            encryptor = Cipher(algorithms.AES(text.entry_key(key)), modes.CBC(iv)).encryptor()
+            entries.append((name, iv + encryptor.update(padded) + encryptor.finalize(), 3))
+        return trophy_archive(entries)
+
+    def test_names_come_from_the_players_language_and_a_wrong_key_is_refused(self):
+        key = bytes(range(1, 17))
+        english = (b'<?xml version="1.0" encoding="UTF-8"?><trophyconf><trophy id="000" hidden="no" '
+                   b'ttype="B"><name>English</name><detail>Detail.</detail></trophy></trophyconf>')
+        brazil = english.replace(b'English', 'Português'.encode())
+        with tempfile.TemporaryDirectory() as directory:
+            game = Path(directory)
+            path = game / 'sce_sys/trophy/trophy00.trp'
+            path.parent.mkdir(parents=True)
+            path.write_bytes(self.archive_with_text(key, {'TROP.ESFM': english, 'TROP_17.ESFM': brazil}))
+            self.assertEqual(history.catalog_text(game, '', 1), {})
+            self.assertEqual(history.catalog_text(game, key.hex(), 1)[0]['name'], 'English')
+            self.assertEqual(history.catalog_text(game, key.hex(), 17)[0]['name'], 'Português')
+            self.assertEqual(history.catalog_text(game, key.hex(), 1)[0]['grade'], 'bronze')
+            with self.assertRaisesRegex(ValueError, 'does not decrypt'):
+                history.catalog_text(game, '00' * 16, 1)
+            with self.assertRaisesRegex(ValueError, '32 hexadecimal'):
+                history.catalog_text(game, 'not-a-key', 1)
+            # The icon reader still accepts the archive with encrypted entries in it.
+            self.assertEqual(len(history.catalog(game)), 1)

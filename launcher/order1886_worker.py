@@ -53,6 +53,11 @@ def validate_patch(values):
         elif kind in ("directory", "file", "text"):
             if not isinstance(value, str) or len(value) > 4096 or any(c in value for c in ("\0", "\r", "\n")):
                 raise ValueError(item["label"] + " must be a valid path or text.")
+        elif kind == "secret":
+            from scripts.order1886_trophy_text import parse_key
+            if not isinstance(value, str):
+                raise ValueError(item["label"] + " must be text.")
+            parse_key(value)
         elif kind == "order":
             order1886.mods.validate_config(Path("."), False, value)
         elif kind == "patches":
@@ -206,10 +211,24 @@ class Worker:
             trophies, trophy_error = [], str(exc)
         trophy_catalog, trophy_catalog_error = [], ""
         if readiness["ready"]:
+            earned = {row["id"] for row in trophies}
             try:
-                trophy_catalog = order1886_trophy_history.catalog(game, {row["id"] for row in trophies})
+                trophy_catalog = order1886_trophy_history.catalog(game, earned)
             except (OSError, ValueError) as exc:
                 trophy_catalog_error = "Installed achievement artwork is unavailable: " + str(exc)
+            # Names and descriptions come from the player's own game, decrypted with the trophy
+            # key they entered (shadPS4's method). Hidden trophies stay secret until earned.
+            try:
+                language = order1886.SYSTEM_LANGUAGES.get(values.get("ui_language", "en"), 1)
+                text = order1886_trophy_history.catalog_text(game, values.get("trophy_key", ""), language)
+            except (OSError, ValueError, ImportError) as exc:
+                text, trophy_catalog_error = {}, "Trophy names are unavailable: " + str(exc)
+            for row in trophy_catalog:
+                info = text.get(row["id"])
+                if info:
+                    secret = info["hidden"] and row["id"] not in earned
+                    row.update(grade=info["grade"], hidden=info["hidden"],
+                               name="" if secret else info["name"], detail="" if secret else info["detail"])
         else:
             trophy_catalog_error = "Select a valid game folder to show installed achievement artwork."
         return {"version": 1, "settings": values, "fields": fields, "pages": PAGES,
