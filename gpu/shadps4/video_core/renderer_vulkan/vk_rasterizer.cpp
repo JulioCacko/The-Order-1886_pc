@@ -1257,14 +1257,9 @@ std::pair<vk::Buffer, u64> Rasterizer::ClampIndexedIndirect(const VideoCore::Buf
     }
     clamped_args_head = out + out_size;
 
-    struct Pipeline {
-        vk::UniqueDescriptorSetLayout set_layout;
-        vk::UniquePipelineLayout layout;
-        vk::UniquePipeline pipeline;
-    };
-    static Pipeline pipe = [&] {
+    if (!clamp_pipe.pipeline) {
         const auto device = instance.GetDevice();
-        Pipeline p;
+        auto& p = clamp_pipe;
         std::array<vk::DescriptorSetLayoutBinding, 2> bindings{};
         for (u32 i = 0; i < 2; ++i) {
             bindings[i] = {.binding = i,
@@ -1295,8 +1290,7 @@ std::pair<vk::Buffer, u64> Rasterizer::ClampIndexedIndirect(const VideoCore::Buf
                     .layout = *p.layout,
                 }));
         device.destroyShaderModule(module);
-        return p;
-    }();
+    }
 
     const u64 src_begin = Common::AlignDown(offset, align);
     const u64 src_size = offset + u64(count - 1) * stride + sizeof(VkDrawIndexedIndirectCommand) -
@@ -1308,7 +1302,8 @@ std::pair<vk::Buffer, u64> Rasterizer::ClampIndexedIndirect(const VideoCore::Buf
         runtime.FlushBarriers();
     }
     scheduler.Record([src = args->Handle(), dst = clamped_args->Handle(), src_begin, src_size,
-                      out, out_size, push](vk::CommandBuffer cmdbuf) {
+                      out, out_size, push, pipeline = *clamp_pipe.pipeline,
+                      layout = *clamp_pipe.layout](vk::CommandBuffer cmdbuf) {
         // The previous draws reading this part of the ring come first.
         const vk::MemoryBarrier2 reuse{.srcStageMask = vk::PipelineStageFlagBits2::eDrawIndirect,
                                        .dstStageMask = vk::PipelineStageFlagBits2::eComputeShader};
@@ -1324,10 +1319,10 @@ std::pair<vk::Buffer, u64> Rasterizer::ClampIndexedIndirect(const VideoCore::Buf
                          .descriptorType = vk::DescriptorType::eStorageBuffer,
                          .pBufferInfo = &infos[i]};
         }
-        cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute, *pipe.pipeline);
-        cmdbuf.pushDescriptorSetKHR(vk::PipelineBindPoint::eCompute, *pipe.layout, 0, writes);
-        cmdbuf.pushConstants(*pipe.layout, vk::ShaderStageFlagBits::eCompute, 0,
-                             sizeof(push), push.data());
+        cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
+        cmdbuf.pushDescriptorSetKHR(vk::PipelineBindPoint::eCompute, layout, 0, writes);
+        cmdbuf.pushConstants(layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(push),
+                             push.data());
         cmdbuf.dispatch((push[0] + 63) / 64, 1, 1);
         const vk::MemoryBarrier2 written{
             .srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,

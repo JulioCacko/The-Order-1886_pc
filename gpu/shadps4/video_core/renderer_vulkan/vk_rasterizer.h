@@ -539,6 +539,12 @@ private:
     /// Indexed indirect arguments with clamped index counts (ClampIndexedIndirect), a ring.
     std::unique_ptr<VideoCore::Buffer> clamped_args;
     u64 clamped_args_head = 0;
+    struct ClampPipeline {
+        vk::UniqueDescriptorSetLayout set_layout;
+        vk::UniquePipelineLayout layout;
+        vk::UniquePipeline pipeline;
+    } clamp_pipe; ///< created on first use
+
     /// Submissions (prepared draws) kept alive until stage B reaches the position.
     std::deque<std::pair<u64, std::shared_ptr<const void>>> pipe_keepalive;
     std::unique_ptr<DrawPipe> draw_pipe;
