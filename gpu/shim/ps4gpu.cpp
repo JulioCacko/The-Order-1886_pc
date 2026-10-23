@@ -221,8 +221,9 @@ extern "C" int ps4gpu_init(const Ps4GpuConfig* config) {
         "disabled in this build and the device must expose the required FSR 4 support (#12).");
     Ps4Settings::ConfigureDlssSupport(
         false,
-        "The DLSS bridge ships in this tree, but it needs order1886_dlss.dll and nvngx_dlss.dll next "
-        "to the runtime - neither is in Git - and the temporal integration is disabled (#11).");
+        "DLSS is not an inherited engine upscaler here: NVIDIA DLAA runs through order1886_dlss.dll in "
+        "place of the game's temporal resolve when the launcher selects it (#11); the Upscaler log "
+        "lines say whether it loaded.");
 #ifdef PS4_PGO_GENERATE
     StartProfileWriter();
 #endif

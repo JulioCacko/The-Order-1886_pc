@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <vector>
 #include <boost/container/small_vector.hpp>
@@ -94,6 +95,19 @@ public:
     void ReadMemory(VAddr device_addr, u64 size, bool is_write = false, bool assume_locks = false);
 
     /// Finds a buffer for the specified region.
+    /// See watch_written_buffers.
+    void WatchWrittenBuffers(bool watch) {
+        watch_written_buffers = watch;
+    }
+
+    /// ORDER1886_READBACK_LOG=1: which dispatch wrote the small buffers the CPU reads back.
+    static bool ReadbackLog();
+    void SetCurrentDispatch(u64 hash) {
+        current_dispatch = hash;
+    }
+    /// The compute shader that last wrote a small buffer at `address`, or 0.
+    u64 WriterOf(VAddr address);
+
     [[nodiscard]] std::pair<const Buffer*, u64> ObtainBuffer(VAddr device_addr, u32 size,
                                                              bool is_written,
                                                              bool is_texel_buffer = false);
@@ -205,6 +219,12 @@ private:
     RangeSet pending_readbacks; ///< GPU bytes of deferred_readbacks (guarded by deferred_mutex)
     std::atomic<bool> has_pending_readbacks{false};
     bool deferred_readbacks_enabled = true; ///< ORDER1886_DEFER_BUFFER_READBACK=0 turns it off
+    /// Set while binding a dispatch whose small output buffers the CPU reads back: under the
+    /// relaxed policy those buffers alone are fetched on a CPU read (aim autofocus).
+    bool watch_written_buffers = false;
+    u64 current_dispatch = 0;
+    std::mutex writers_mutex;
+    std::map<VAddr, std::pair<u64, u64>> writers; ///< address -> (size, compute shader hash)
 
     std::unique_ptr<FaultManager> fault_manager;
     std::unique_ptr<Buffer> bda_pagetable_buffer;

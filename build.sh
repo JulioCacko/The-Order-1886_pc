@@ -21,7 +21,8 @@ MINGW*|MSYS*)
         command -v "$tool" >/dev/null || { echo "Need $tool from MSYS2 CLANG64 (docs/order1886-build.md)." >&2; exit 1; }
     done
     if [[ ! -f gpu/third_party/imgui/imgui.h ||
-          ! -f gpu/third_party/xbyak/xbyak/xbyak.h ]]; then
+          ! -f gpu/third_party/xbyak/xbyak/xbyak.h ||
+          ! -f gpu/third_party/fsr-vulkan/CMakeLists.txt ]]; then
         git submodule update --init --recursive
     fi
     cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DORDER1886_PGO=off \
@@ -32,6 +33,14 @@ MINGW*|MSYS*)
         echo 'Build failed (full log: out/gpu-build.log)' >&2; exit 1
     fi
     cp out/gpu/order1886-runtime.exe out/gpu/ps4-gpu-capabilities.exe out/
+    # FSR 3.1 provider, loaded by the runtime from its own folder (vk_upscale_providers.cpp).
+    cmake -S gpu/upscalers/fsr3 -B out/fsr3-provider -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
+    if ! ninja -C out/fsr3-provider order1886_fsr3 >> out/gpu-build.log 2>&1; then
+        grep -v '^\[' out/gpu-build.log | tail -40 >&2
+        echo 'FSR 3.1 provider build failed (full log: out/gpu-build.log)' >&2; exit 1
+    fi
+    cp out/fsr3-provider/order1886_fsr3.dll out/
     if [[ ${1:-} == --test ]]; then
         tests=(runtime sema runtime-keys event-flag memory-hooks memory-read-backing memory-ownership memory-output-publication services content
                order-render-baseline srt-descriptor-validation pad pad-map frame-trace
