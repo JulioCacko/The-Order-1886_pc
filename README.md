@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-go-windows.zip"><b>⬇ Windows package</b></a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-linux-x86_64.tar.gz"><b>⬇ Linux package</b></a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.9">Release notes</a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.0/order1886-go-windows.zip"><b>⬇ Windows package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.0/order1886-linux-x86_64.tar.gz"><b>⬇ Linux package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.0">Release notes</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
@@ -83,6 +83,19 @@ How these were taken, with hashes and logs: [preview 9 release verification](doc
 
 ## What's new
 
+**v0.2.0 — 24 October 2026.** [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.0)
+
+- **Aiming no longer explodes the scene** (#106), **the smoke grenade draws its cloud** (#107), **no black flecks on faces** (#101) and **no mid-fight freeze** on a runaway indirect draw (#103).
+
+<table>
+  <tr><td><img src="docs/images/fixes/aim-watch-explosion-before-after.jpg" alt="Before and after: stretched geometry while aiming, then the Council chamber rendered correctly"></td></tr>
+  <tr><td><img src="docs/images/fixes/smoke-grenade-cloud-before-after.jpg" alt="Before and after: the smoke grenade with no cloud, then with its cloud"></td></tr>
+</table>
+
+- **AMD FSR 3.1 and NVIDIA DLAA** replace the game's temporal anti-aliasing (#97, #98). **Shaders compile in the background** by default (#105). **Trophy names** come from your own game with your console key (#99).
+- **Go launcher only** (#108): the old Tkinter launcher and the inherited God of War leftovers are gone.
+- **Known issue:** short black flashes still appear during gameplay; the cause is being investigated.
+
 **Preview 9 — 21 October 2026.** [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.9)
 
 - **Playable frame rate.** The slow courtyard went from 7.2 to about 53 FPS. Memory-table locking, buffer readbacks and the draw pipeline were ported from [IgorAugustoHH/The-Order-1886-PC-Port](https://github.com/IgorAugustoHH/The-Order-1886-PC-Port) (#93).
@@ -108,13 +121,13 @@ See [current status](docs/STATUS.md) and the [4K/60 acceptance plan](docs/order1
 
 ## Download and start
 
-**Published download: preview 9 (October 21).** Windows and Linux x86-64 packages. Keep your `user` folder when upgrading.
+**Published download: v0.2.0 (October 24).** Windows and Linux x86-64 packages. Keep your `user` folder when upgrading.
 
-**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-go-windows.zip)** ·
-**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-linux-x86_64.tar.gz)** ·
-[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/QUICKSTART.txt) ·
-[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-go-windows.zip.sha256) ·
-[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-linux-x86_64.tar.gz.sha256)
+**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.0/order1886-go-windows.zip)** ·
+**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.0/order1886-linux-x86_64.tar.gz)** ·
+[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.0/QUICKSTART.txt) ·
+[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.0/order1886-go-windows.zip.sha256) ·
+[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.0/order1886-linux-x86_64.tar.gz.sha256)
 
 The packages include the launcher, the dedicated runtime and the libraries they need. No Python, MSYS2 or compiler is required. GitHub's "Source code" archives are for developers.
 
