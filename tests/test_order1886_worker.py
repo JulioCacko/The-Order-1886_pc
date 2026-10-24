@@ -129,7 +129,7 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text())['future'], 7)
 
     def test_mutating_actions_require_confirmation(self):
-        for method in ("saves.restore", "cache.clear"):
+        for method in ("saves.restore", "saves.import", "cache.clear"):
             with self.subTest(method=method), self.assertRaises(ValueError):
                 self.app.dispatch(method, {})
         self.assertFalse(self.state.exists())

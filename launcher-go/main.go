@@ -225,10 +225,17 @@ func (app *App) OpenLink(name string) error {
 }
 
 func (app *App) OpenLocation(kind string) error {
-	paths := map[string]string{"installation": app.root, "state": app.state, "logs": filepath.Join(app.state, "logs")}
+	paths := map[string]string{"installation": app.root, "state": app.state, "logs": filepath.Join(app.state, "logs"),
+		"saves": filepath.Join(app.state, "savedata")}
 	path, ok := paths[kind]
 	if !ok {
 		return errors.New("unknown installation location")
+	}
+	if kind == "saves" {
+		// Players copy saves in here before the game has made any.
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			return err
+		}
 	}
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("location is not available yet: %w", err)
