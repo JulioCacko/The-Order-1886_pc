@@ -1,9 +1,12 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-if exist "dist\order1886\The Order 1886\The Order 1886.exe" (
-    start "" "dist\order1886\The Order 1886\The Order 1886.exe" --state-dir "%~dp0user\order1886"
-    exit /b 0
+rem Source checkout: start the Go launcher built in launcher-go (see docs/order1886-build.md).
+set "LAUNCHER=launcher-go\build\bin\The Order 1886.exe"
+if not exist "%LAUNCHER%" (
+    echo Go launcher not built yet: "%LAUNCHER%" is missing.
+    echo Build it as described in docs\order1886-build.md, or use the release package.
+    pause
+    exit /b 1
 )
-python launcher-go\build\bin\The Order 1886.exe
-if errorlevel 1 pause
+start "" "%LAUNCHER%" --project-root "%~dp0."

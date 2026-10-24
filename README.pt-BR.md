@@ -8,7 +8,7 @@ Projeto comunitário para executar o binário original de **The Order: 1886**, e
 
 **Em desenvolvimento — 18 de outubro de 2026.** Cinemáticas são renderizadas e uma rota de rua foi exercitada, mas o desempenho continua baixo. Progressão, saves por checkpoint, estabilidade e 4K/60 ainda não foram aceitos. O run de Capítulo 2 com cópias dos saves chegou ao timeout sem a asserção de 8.029 camadas; erros SRT permanecem e a issue #5 continua aberta.
 
-![Launcher Windows de The Order: 1886 com navegação lateral e barra de início permanente](docs/images/order1886-home-20261018.png)
+![Launcher Windows de The Order: 1886 com navegação lateral e barra de início permanente](docs/images/preview9/launcher-home.jpg)
 
 *Captura real do launcher atual em 18 de outubro, 1240 × 800, com configurações isoladas. Não é gameplay; 30 FPS é a configuração selecionada.*
 
@@ -33,7 +33,7 @@ Extraia o ZIP inteiro e leia **QUICKSTART.txt**, incluído no pacote. Não preci
 - Correções de shaders NaN/atomics, cópia de chaves de pipeline, memória e mutex; suporte a dumps ELF x86-64 validados.
 - **340 testes Python no Windows sem skips; Linux: 340 executados, 21 skips; Windows: 41 checks nativos, Linux: subconjunto nativo aprovado; Windows 15 e Linux 10 checks portáteis.** [Evidência](docs/verification/2026-10-18-preview4-release.md) · [Estado das issues](docs/order1886-issue-status.md).
 
-![Utilitários atuais: atalho, Steam e saves](docs/images/order1886-game-20261018.png)
+![Utilitários atuais: atalho, Steam e saves](docs/images/preview9/launcher-game.jpg)
 
 No jogo, **Esc** libera o cursor e **F6** alterna a captura. Ajuste o mouse em **Game → Controls** e salve. Remapeamento, câmera direta 1:1, idiomas de texto/voz independentes, conquistas ao vivo e atualizador automático continuam pendentes. [Guia de entrada e início direto](docs/order1886-input.md).
 

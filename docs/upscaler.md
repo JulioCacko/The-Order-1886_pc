@@ -10,7 +10,7 @@
 
 ## Native TAA and missing FSR 4 assets (2026-10-01)
 
-`upscaler=taa` / `GOW3_UPSCALER=taa` is a separate native-resolution temporal AA
+`upscaler=taa` / `ORDER1886_UPSCALER=taa` is a separate native-resolution temporal AA
 mode, available live in the launcher and overlay. It uses the existing jitter and
 camera/object motion vectors, reprojection, depth rejection and 3×3 neighborhood
 clipping in one compute pass with two ping-pong RGBA16F histories. History stores
@@ -19,7 +19,7 @@ composed afterwards and never enters history. Output changes and AA/provider
 changes reset history. TAA uses Native AA dimensions while preserving the saved
 FSR preset, and does not allocate an FSR context or execute an FSR model/RCAS.
 It still adds GPU work compared with disabling temporal AA; native 4K raster cost
-also remains. The explicit `GOW3_RENDER_RES` compatibility path must be unset.
+also remains. The explicit `ORDER1886_RENDER_RES` compatibility path must be unset.
 
 FSR Native AA is not a fast pass-through: it renders at the output resolution and
 also executes the temporal reconstruction (including the model for FSR 4) and
@@ -66,7 +66,7 @@ The in-game output selector now resizes 720p/1080p/1440p/2160p host targets at a
 display-pass boundary. Presets use `output / scale`, including raster sizes above
 1080p (4K Quality: 2560×1440; Native AA: 3840×2160). Guest allocations stay at
 1920×1080; `run.sh` no longer inserts a resolution patch for normal output choices.
-The explicit `GOW3_RENDER_RES` compatibility override is retained.
+The explicit `ORDER1886_RENDER_RES` compatibility override is retained.
 
 `SceneTargets` resolves and retires old proxies before changing size. FSR resources
 and history are rebuilt for the new input/output, with completion waits for both
@@ -82,12 +82,12 @@ and intermediate detail can differ from the old startup-patched render sizes.
 
 Verification: `out/dev/live-resolution-summary.log` switches output, preset and FSR
 off/on in one PID. `GOW3_PRESENT_DUMP_TRIGGER` captures the completed host display
-buffer (including HUD) into `GOW3_DUMP_DIR`. Captures confirm actual 720p/1440p/2160p
+buffer (including HUD) into `ORDER1886_DUMP_DIR`. Captures confirm actual 720p/1440p/2160p
 buffers. `scene-resolution-test` covers color/depth/stencil round trips through
 proxies both smaller and larger than the guest allocation. `GOW3_PRESET_FILE` accepts
 `preset [output-index [upscaler-index]]` for scripted menu-equivalent changes.
 
-Frame analyzer: `GOW3_CAPTURE_TRIGGER=<file> GOW3_CAPTURE_DIR=<dir>`; creating the file records
+Frame analyzer: `ORDER1886_CAPTURE_TRIGGER=<file> ORDER1886_CAPTURE_DIR=<dir>`; creating the file records
 the next frame (boundary: the pass writing a display buffer) — passes, targets, shaders,
 sampled textures, and the first 1 KiB of bound constants for small passes and first draws.
 
@@ -135,7 +135,7 @@ The previous frame's matrices are not in the frame; the port has to keep them.
 
 - Camera motion vectors: verified by reprojecting the previous frame (`GOW3_DEBUG_MOTION=1`,
   toggles 1<<22 reprojected frame, 1<<23 error map): static geometry matches.
-- FSR 3.1 (`GOW3_UPSCALER=fsr3`, FireBurn/FSR-Vulkan submodule): scene color before the
+- FSR 3.1 (`ORDER1886_UPSCALER=fsr3`, FireBurn/FSR-Vulkan submodule): scene color before the
   post-processing combine (compute shader 9a9cf8a9), 1:1, RGB written back (the game keeps data
   in the alpha). Toggle 1<<24 switches it off at run time.
 - Jitter: viewport offset of scene geometry (drawn with the scene depth, not full-screen
@@ -151,7 +151,7 @@ The previous frame's matrices are not in the frame; the port has to keep them.
 всех объектов. Причина — апскейлер в этом режиме вообще не выполнялся, а jitter оставался
 включённым: на экран шёл растянутый кадр сцены, каждый кадр сдвинутый на свою фазу Halton.
 
-1. Проход UI опознавался по точному размеру цели `GOW3_RENDER_RES` (1916x1078), а игра выделяет
+1. Проход UI опознавался по точному размеру цели `ORDER1886_RENDER_RES` (1916x1078), а игра выделяет
    цели с выровненной высотой (1916x1080; в константах сцены тоже 1916x1080). `RunScaled` не
    вызывался ни разу (в логе не было `UI: native composition`). Теперь допускается выравнивание
    до 8 пикселей (`RenderTarget`), а размер сцены для FSR берётся из констант сцены
@@ -160,7 +160,7 @@ The previous frame's matrices are not in the frame; the port has to keep them.
    создавал новые image view каждый кадр, а реестр FSR 4 вмещает восемь. Теперь те же
    `CachedView`, что и в пути Native AA.
 
-Проверка дампом (`GOW3_DUMP_TRIGGER=<файл> GOW3_DUMP_DIR=<каталог>`, `GOW3_DUMP_FRAMES`, по умолчанию 8:
+Проверка дампом (`GOW3_DUMP_TRIGGER=<файл> ORDER1886_DUMP_DIR=<каталог>`, `GOW3_DUMP_FRAMES`, по умолчанию 8:
 вход FSR, векторы движения и выход, raw): при неподвижной камере PSNR соседних кадров выхода
 ~45 дБ против ~28 дБ у входа с jitter; при повороте камеры и ходьбе шлейфов нет. FPS в этом
 режиме ~107 вместо ~220 — раньше FSR 4 просто не выполнялся.
@@ -170,8 +170,8 @@ The previous frame's matrices are not in the frame; the port has to keep them.
 
 ## 2026-10-01: FSR 4 быстрее — проход post (2.9 → 0.8 мс в 4K)
 
-Замеры: `GOW3_FSR4_PROFILE=1` (время каждого прохода FSR 4, патч провайдера в субмодуле,
-см. `gpu/patches/fsr-vulkan`), бенчмарк вне игры `out/gpu/fsr4-bench` (`ninja -C out/gpu
+Замеры: `GOW3_FSR4_PROFILE=1` (время каждого прохода FSR 4; патч провайдера удалён,
+переменная больше не действует), бенчмарк вне игры `out/gpu/fsr4-bench` (`ninja -C out/gpu
 fsr4-bench`; `--stats` — регистры и инструкции от RADV). 4K Balanced (2260x1272 → 3840x2160),
 RX 7800 XT: весь FSR 4 — 5.8 мс, из них **post 2.5–2.9 мс** (не нейросеть: последние слои,
 pixel shuffle 2x2 и смешивание с историей), 12 проходов модели — 2.4 мс, pre 0.55.
