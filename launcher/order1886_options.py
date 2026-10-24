@@ -111,10 +111,10 @@ for key, label, default in (("overlay_frametime", "Overlay: frame time", True), 
 field("frames_queued", "Queued frames", "performance", "select", 1,
       "How many frames the GPU command thread may run ahead of the GPU. 1 is the paced baseline; 2 can raise throughput at the cost of latency; Unbounded removes the wait and can make frame delivery bursty.",
       [(1, "1 — baseline", ""), (2, "2 (unqualified)", ""), (0, "Unbounded (unqualified)", "")])
+field("async_shaders", "Asynchronous shaders", "performance", "boolean", True,
+      "Compile new shaders and pipelines off the GPU thread. A draw whose pipeline is still compiling is skipped for that frame, so a first-time effect can be missing for a moment instead of the game stopping. Compute dispatches and tessellated draws still compile in place. Turn it off to wait for every compile.")
 UNQUALIFIED = "Off by default: the correctness baseline. Turning it on is unqualified for stability and visuals; use it to help measure the path."
 for key, label, detail in (
-        ("async_shaders", "Asynchronous shaders (unqualified)",
-         "Compile new pipelines off the GPU thread; draws that need one are skipped until it is ready, so stutter becomes brief missing geometry."),
         ("background_warmup", "Background pipeline warmup (unqualified)",
          "Load cached pipelines while the game runs instead of on a loading screen before the first frame."),
         ("parallel_warmup", "Parallel pipeline warmup (unqualified)",

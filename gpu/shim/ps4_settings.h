@@ -56,7 +56,9 @@ struct Values {
     std::atomic<int> display_mode{0};
     std::atomic<bool> vsync{true};
     std::atomic<int> fps_limit{30};
-    std::atomic<bool> async_shaders{false};
+    /// Pipelines compile off the GPU thread; a draw waiting for one is skipped meanwhile
+    /// (docs/verification/2026-10-24-async-pipeline-compile.md).
+    std::atomic<bool> async_shaders{true};
     std::atomic<bool> fsr1{false};
     std::atomic<bool> rcas{false};
     std::atomic<int> rcas_strength{75};

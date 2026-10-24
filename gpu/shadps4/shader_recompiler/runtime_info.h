@@ -131,8 +131,12 @@ struct SwTessControlRuntimeInfo {
     // It might be possible for a non-passthrough TCS to have these conditions, in some dumb
     // situation. In that case, it should be fine to assume passthrough and declare some extra
     // output control points and attributes that shouldnt be read by the TES anyways
+    // A passthrough HS may also run one thread per input control point: The Order's smoke puffs
+    // (HS 85810f7d) run 3 threads for 3 control points and only write tess factors. Requiring
+    // one thread left the control points unforwarded, so the DS read zeros.
     bool IsPassthrough() const {
-        return hs_output_base == 0 && ls_stride == hs_output_cp_stride && num_threads == 1;
+        return hs_output_base == 0 && ls_stride == hs_output_cp_stride &&
+               (num_threads == 1 || num_threads == num_input_control_points);
     };
 
     // regs.ls_hs_config.hs_output_control_points contains the number of threads, which

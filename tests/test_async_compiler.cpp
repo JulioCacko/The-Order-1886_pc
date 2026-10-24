@@ -75,6 +75,18 @@ int main() {
         assert(compiler.QueueWaitNs() > 0);
     }
     {
+        AsyncCompiler compiler(1, 4);
+        assert(compiler.HasIdleWorker());
+        std::promise<void> entered, release;
+        auto gate = release.get_future().share();
+        assert(compiler.Submit([&] { entered.set_value(); gate.wait(); }));
+        entered.get_future().wait();
+        assert(!compiler.HasIdleWorker()); // running, nothing queued
+        release.set_value();
+        compiler.Stop();
+        assert(!compiler.HasIdleWorker());
+    }
+    {
         std::atomic<unsigned> initialized{};
         AsyncCompiler compiler(2, 4, [&](unsigned) { ++initialized; });
         std::promise<void> entered[2], release;

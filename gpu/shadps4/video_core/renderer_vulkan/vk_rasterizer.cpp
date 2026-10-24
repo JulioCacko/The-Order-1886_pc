@@ -34,6 +34,8 @@
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_hle.h"
+#include "video_core/renderer_vulkan/vk_shader_util.h"
+#include "video_core/host_shaders/indirect_index_clamp_comp.h"
 #include "video_core/renderer_vulkan/vk_order_resolve.h"
 #include "video_core/renderer_vulkan/vk_temporal_probe.h"
 #include "video_core/texture_cache/image_rejection.h"
@@ -1176,6 +1178,12 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
         needs_barrier |= runtime.IsBufferAccessed(count_buffer, count_offset, 4);
     }
 
+    vk::Buffer args = buffer->Handle();
+    u64 args_offset = base;
+    if (is_indexed) {
+        std::tie(args, args_offset) = ClampIndexedIndirect(buffer, base, max_count, stride);
+    }
+
     if (needs_barrier) {
         runtime.FlushBarriers();
     }
@@ -1198,8 +1206,6 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
                                  : sizeof(VkDrawIndirectCommand)));
     const vk::Pipeline handle = pipeline->Handle();
     const vk::Pipeline square = SquarePass(*pipeline);
-    const vk::Buffer args = buffer->Handle();
-    const u64 args_offset = base;
     const vk::Buffer counts = count_address != 0 ? count_buffer->Handle() : vk::Buffer{};
     const u64 counts_offset = count_address != 0 ? count_offset : 0;
     scheduler.Record([=](vk::CommandBuffer cmdbuf) {
@@ -1226,6 +1232,119 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
 
     ResetBindings(false);
     scheduler.KickRecording();
+}
+
+// The Order builds indexed indirect arguments on the GPU (count * 3 - 6 from a per-object
+// record); a record with count 0 gives 0xFFFFFFFA indices. GCN reads indices past
+// INDEX_BUFFER_SIZE as 0 (degenerate primitives), Vulkan has no such bound: the GPU spent
+// minutes on that one draw and presentation stopped. A compute pass copies the records with
+// the count clamped, so the draw ends where the hardware's visible output ends.
+std::pair<vk::Buffer, u64> Rasterizer::ClampIndexedIndirect(const VideoCore::Buffer* args,
+                                                            u64 offset, u32 count, u32 stride) {
+    const u32 limit = index_bind.count;
+    if (limit == ~0u || count == 0 || (offset | stride) % 4 != 0 ||
+        Ps4Toggle::Disabled(Ps4Toggle::IndirectIndexClamp)) {
+        return {args->Handle(), offset};
+    }
+    const u64 align = instance.StorageMinAlignment();
+    const u64 out_size = u64(count) * sizeof(VkDrawIndexedIndirectCommand);
+    // ponytail: a ring without fences; it wraps after ~50k draws, far beyond the frames in
+    // flight. Track ticks per slot if a scene ever issues that many in one submission.
+    if (!clamped_args || out_size > clamped_args_size) {
+        if (clamped_args) {
+            // Draws already recorded may still read it: freed once the GPU passes them.
+            std::shared_ptr<VideoCore::Buffer> retired = std::move(clamped_args);
+            scheduler.DeferOperation([retired] {});
+        }
+        clamped_args_size = std::max<u64>(1_MB, std::bit_ceil(out_size));
+        clamped_args = std::make_unique<VideoCore::Buffer>(instance, 0, clamped_args_size,
+                                                           VideoCore::MemoryType::DeviceLocal,
+                                                           "Clamped indirect args");
+        clamped_args_head = 0;
+    }
+    u64 out = Common::AlignUp(clamped_args_head, align);
+    if (out + out_size > clamped_args_size) {
+        out = 0;
+    }
+    clamped_args_head = out + out_size;
+
+    if (!clamp_pipe.pipeline) {
+        const auto device = instance.GetDevice();
+        auto& p = clamp_pipe;
+        std::array<vk::DescriptorSetLayoutBinding, 2> bindings{};
+        for (u32 i = 0; i < 2; ++i) {
+            bindings[i] = {.binding = i,
+                           .descriptorType = vk::DescriptorType::eStorageBuffer,
+                           .descriptorCount = 1,
+                           .stageFlags = vk::ShaderStageFlagBits::eCompute};
+        }
+        p.set_layout = Check(device.createDescriptorSetLayoutUnique({
+            .flags = vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR,
+            .bindingCount = static_cast<u32>(bindings.size()),
+            .pBindings = bindings.data(),
+        }));
+        const vk::PushConstantRange range{.stageFlags = vk::ShaderStageFlagBits::eCompute,
+                                          .offset = 0,
+                                          .size = 4 * sizeof(u32)};
+        p.layout = Check(device.createPipelineLayoutUnique({
+            .setLayoutCount = 1,
+            .pSetLayouts = &*p.set_layout,
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges = &range,
+        }));
+        const auto module = CompileSPV(INDIRECT_INDEX_CLAMP_COMP, device);
+        p.pipeline = Check(device.createComputePipelineUnique(
+            {}, vk::ComputePipelineCreateInfo{
+                    .stage = {.stage = vk::ShaderStageFlagBits::eCompute,
+                              .module = module,
+                              .pName = "main"},
+                    .layout = *p.layout,
+                }));
+        device.destroyShaderModule(module);
+    }
+
+    const u64 src_begin = Common::AlignDown(offset, align);
+    const u64 src_size = offset + u64(count - 1) * stride + sizeof(VkDrawIndexedIndirectCommand) -
+                         src_begin;
+    const std::array<u32, 4> push{count, u32((offset - src_begin) / 4), stride / 4, limit};
+
+    scheduler.EndRendering();
+    if (runtime.IsBufferAccessed(args, src_begin, src_size)) {
+        runtime.FlushBarriers();
+    }
+    scheduler.Record([src = args->Handle(), dst = clamped_args->Handle(), src_begin, src_size,
+                      out, out_size, push, pipeline = *clamp_pipe.pipeline,
+                      layout = *clamp_pipe.layout](vk::CommandBuffer cmdbuf) {
+        // The previous draws reading this part of the ring come first.
+        const vk::MemoryBarrier2 reuse{.srcStageMask = vk::PipelineStageFlagBits2::eDrawIndirect,
+                                       .dstStageMask = vk::PipelineStageFlagBits2::eComputeShader};
+        cmdbuf.pipelineBarrier2({.memoryBarrierCount = 1, .pMemoryBarriers = &reuse});
+        const std::array<vk::DescriptorBufferInfo, 2> infos{{
+            {src, src_begin, src_size},
+            {dst, out, out_size},
+        }};
+        std::array<vk::WriteDescriptorSet, 2> writes{};
+        for (u32 i = 0; i < 2; ++i) {
+            writes[i] = {.dstBinding = i,
+                         .descriptorCount = 1,
+                         .descriptorType = vk::DescriptorType::eStorageBuffer,
+                         .pBufferInfo = &infos[i]};
+        }
+        cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
+        cmdbuf.pushDescriptorSetKHR(vk::PipelineBindPoint::eCompute, layout, 0, writes);
+        cmdbuf.pushConstants(layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(push),
+                             push.data());
+        cmdbuf.dispatch((push[0] + 63) / 64, 1, 1);
+        const vk::MemoryBarrier2 written{
+            .srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+            .srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
+            .dstStageMask = vk::PipelineStageFlagBits2::eDrawIndirect,
+            .dstAccessMask = vk::AccessFlagBits2::eIndirectCommandRead};
+        cmdbuf.pipelineBarrier2({.memoryBarrierCount = 1, .pMemoryBarriers = &written});
+    });
+    runtime.AccessBuffer(args, src_begin, src_size, vk::PipelineStageFlagBits2::eComputeShader,
+                         vk::AccessFlagBits2::eShaderRead);
+    return {clamped_args->Handle(), out};
 }
 
 void Rasterizer::DispatchDirect() {
@@ -1937,17 +2056,20 @@ void Rasterizer::ResolveIndexBuffer(u32 index_offset, bool is_indirect) {
                                 : 0;
     const auto request = VideoCore::ResolveIndexRequest(regs.num_indices, regs.max_index_size,
                                                         is_indirect, index_size, mapped_size);
+    // An indirect draw's count comes from GPU memory: it is clamped to the bound indices
+    // (ClampIndexedIndirect), unless no INDEX_BUFFER_SIZE was set.
+    const u32 count = regs.max_index_size != 0 ? request.indices : ~0u;
     if (request.size == 0) {
         // Nothing mapped to bind. One index keeps the binding valid and the draw degenerates
         // instead of reading an unbound range; the count is already bounded by the caller.
         const auto [buffer, offset] = buffer_cache.ObtainBuffer(index_address, index_size, false);
         needs_barrier |= runtime.IsBufferAccessed(buffer, offset, index_size);
-        index_bind = {buffer->Handle(), offset, index_type};
+        index_bind = {buffer->Handle(), offset, index_type, count};
         return;
     }
     const auto [buffer, offset] = buffer_cache.ObtainBuffer(index_address, request.size, false);
     needs_barrier |= runtime.IsBufferAccessed(buffer, offset, request.size);
-    index_bind = {buffer->Handle(), offset, index_type};
+    index_bind = {buffer->Handle(), offset, index_type, count};
 }
 
 void Rasterizer::ResetBindings(bool is_compute) {

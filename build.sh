@@ -44,7 +44,7 @@ MINGW*|MSYS*)
     if [[ ${1:-} == --test ]]; then
         tests=(runtime sema runtime-keys event-flag memory-hooks memory-read-backing memory-ownership memory-output-publication services content
                order-render-baseline srt-descriptor-validation pad pad-map frame-trace
-               perf-overlay order-shader-math order-spirv pipeline-binary-cache
+               perf-overlay order-shader-math order-spirv addr64-readconst pipeline-binary-cache
                pipeline-binary-initialization amd-paths mouse-look mp3 videodec
                trophy-history audio-downmix cpu-check isa-emulate isa-stub tsc-clock
                png-decode aliasing depth-stencil-state async-compiler warmup-inbox

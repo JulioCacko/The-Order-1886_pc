@@ -428,6 +428,13 @@ U32 IREmitter::ReadConst(const Value& base, const U32& offset) {
     return Inst<U32>(Opcode::ReadConst, base, offset);
 }
 
+U32 IREmitter::ReadConstAddr64(const Value& base, const U32& offset) {
+    // Inst() only forwards 32 flag bits; the tag lives above the flat-buffer offset.
+    const U32 value = ReadConst(base, offset);
+    value.Inst()->SetFlags(ReadConstAddr64Flag);
+    return value;
+}
+
 U32 IREmitter::ReadConstBuffer(const Value& handle, const U32& index, BufferInstInfo info) {
     return Inst<U32>(Opcode::ReadConstBuffer, Flags{info}, handle, index);
 }

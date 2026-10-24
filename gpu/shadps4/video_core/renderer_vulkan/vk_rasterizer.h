@@ -312,6 +312,10 @@ private:
     void EmitVertexBuffers();
     void ResolveIndexBuffer(u32 index_offset, bool is_indirect = false);
     void EmitIndexBuffer();
+    /// Copies `count` indexed indirect records into clamped_args with each index count
+    /// bounded by index_bind.count; returns where the draw reads them (the source if not).
+    std::pair<vk::Buffer, u64> ClampIndexedIndirect(const VideoCore::Buffer* args, u64 offset,
+                                                    u32 count, u32 stride);
 
     void ResetBindings(bool is_compute);
 
@@ -450,6 +454,7 @@ private:
         vk::Buffer handle;
         u64 offset;
         vk::IndexType type;
+        u32 count; ///< indices an indirect draw may read (~0: unknown, max_index_size unset)
     } index_bind{};
     /// The direct draw whose vertex/index buffers BindResources may resolve early.
     struct DrawInputs {
@@ -531,6 +536,16 @@ private:
         return nullptr;
     }
     std::unique_ptr<ConstantRing> constant_ring;
+    /// Indexed indirect arguments with clamped index counts (ClampIndexedIndirect), a ring.
+    std::unique_ptr<VideoCore::Buffer> clamped_args;
+    u64 clamped_args_size = 0;
+    u64 clamped_args_head = 0;
+    struct ClampPipeline {
+        vk::UniqueDescriptorSetLayout set_layout;
+        vk::UniquePipelineLayout layout;
+        vk::UniquePipeline pipeline;
+    } clamp_pipe; ///< created on first use
+
     /// Submissions (prepared draws) kept alive until stage B reaches the position.
     std::deque<std::pair<u64, std::shared_ptr<const void>>> pipe_keepalive;
     std::unique_ptr<DrawPipe> draw_pipe;

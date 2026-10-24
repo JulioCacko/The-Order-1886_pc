@@ -64,9 +64,9 @@ Older reports keep their original dates and test scope.
 
 ## Current launcher
 
-![Home, captured October 18](images/order1886-home-20261018.png)
+![Home page of the Go launcher (preview 9)](images/preview9/launcher-home.jpg)
 
-![Game utilities with desktop and Steam actions](images/order1886-game-20261018.png)
+![Game & Content page of the Go launcher (preview 9)](images/preview9/launcher-game.jpg)
 
 These are captures of the real source launcher with isolated settings. They show
 configuration, not measured FPS or gameplay. No game binaries, saves or fabricated
