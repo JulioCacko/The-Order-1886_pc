@@ -35,7 +35,7 @@ the GPU thread and turns it on by default.
   workers as the pipeline pool (half the available threads, at most 6).
 - `async_shaders` defaults to on in the runtime (`Ps4Settings`), the launcher
   (`GRAPHICS_DEFAULTS`) and its option, which is no longer labelled unqualified. It still turns
-  off live from the launcher, the in-game menu, `runtime.ini` or `ORDER1886_ASYNC_SHADERS=0`.
+  off from the launcher, `runtime.ini` or `ORDER1886_ASYNC_SHADERS=0`, from the next launch.
 - `tools/order1886_step1_evidence.py` gains a `sync-shaders` variant now that the default is on.
 
 ## Which draws are skipped

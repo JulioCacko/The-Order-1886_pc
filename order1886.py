@@ -704,7 +704,7 @@ def argument_parser():
     parser.add_argument('--frames-queued', type=int, choices=[0, 1, 2], default=1,
                         help='Frames the GPU command thread may run ahead; 0 is unbounded')
     for name, default in (('overlay-frametime', 1), ('overlay-gpu', 0), ('overlay-cpu', 0),
-                          ('overlay-memory', 0), ('async-shaders', 0), ('background-warmup', 0),
+                          ('overlay-memory', 0), ('async-shaders', 1), ('background-warmup', 0),
                           ('parallel-warmup', 0), ('speculative-readbacks', 0)):
         parser.add_argument('--' + name, type=int, choices=[0, 1], default=default)
     parser.add_argument('--mouse-look', type=int, choices=[0, 1], default=1)

@@ -393,8 +393,8 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
     ASSERT_MSG(cache_result == vk::Result::eSuccess, "Failed to create pipeline cache: {}",
                vk::to_string(cache_result));
     pipeline_cache = std::move(cache);
-    // the compiler threads always exist; the in-game menu switches async compilation live
-    // (Ps4Settings::async_shaders, ORDER1886_ASYNC_SHADERS at start).
+    // the compiler threads always exist; Ps4Settings::async_shaders (runtime.ini,
+    // ORDER1886_ASYNC_SHADERS) chooses the path at start.
     {
         const auto count = std::clamp(Ps4Threads::Available() / 2, 1u, 6u);
         // shader translation workers: one per idle worker is all QueueShader ever submits.
