@@ -181,7 +181,7 @@ def main() -> None:
         'product': 'The Order: 1886',
         'launcher': 'Go / Wails v2.17.0',
         'platform': 'linux-x86_64',
-        'status': 'development preview',
+        'status': 'release',
         'built_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'runtime_sha256': digest,
         'runtime_build': identity,
