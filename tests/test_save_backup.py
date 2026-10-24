@@ -1,4 +1,5 @@
 import datetime
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -148,6 +149,48 @@ class SaveImportTest(unittest.TestCase):
         self.assertIsNone(safety)
         self.assertEqual((self.title / 'Playthrough00' / 'SYSTEM.DAT').read_text(), 'theirs')
         self.assertFalse((self.title / 'Profile').exists())
+
+    def sfo(self, path, entries):
+        """A param.sfo with text (str) and integer (int) entries, as a PS4 export holds it."""
+        keys, values, index = b'', b'', b''
+        for key, value in entries.items():
+            data = value.to_bytes(4, 'little') if isinstance(value, int) else value.encode() + b'\0'
+            index += struct.pack('<HHIII', len(keys), 0x0404 if isinstance(value, int) else 0x0204,
+                                 len(data), len(data), len(values))
+            keys += key.encode() + b'\0'
+            values += data
+        header = struct.pack('<4sIIII', b'\0PSF', 0x101, 20 + len(index), 20 + len(index) + len(keys),
+                             len(entries))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(header + index + keys + values)
+
+    def test_converts_a_decrypted_ps4_export(self):
+        export = self.other / 'CUSA00035' / '10000001_CUSA00035_Playthrough00'
+        write(export / 'SYSTEM.DAT', 'chapter 11')
+        write(export / 'sce_sys' / 'icon0.png', 'icon')
+        write(export / 'sce_sys' / 'keystone', 'key')
+        self.sfo(export / 'sce_sys' / 'param.sfo', {
+            'MAINTITLE': 'CHAPTER XI - The United India House', 'SUBTITLE': 'The Order: 1886',
+            'DETAIL': 'Save Data', 'SAVEDATA_DIRECTORY': 'Playthrough00', 'SAVEDATA_LIST_PARAM': 7,
+            'TITLE_ID': 'CUSA00035'})
+        names, _ = save_backup.import_saves(self.user, self.other / 'CUSA00035', now=self.clock)
+        self.assertEqual(names, ['Playthrough00'])
+        self.assertEqual((self.title / 'Playthrough00' / 'SYSTEM.DAT').read_text(), 'chapter 11')
+        self.assertFalse((self.title / 'Playthrough00' / 'sce_sys').exists())
+        meta = self.title / 'Playthrough00.sce_sys'
+        self.assertEqual((meta / 'icon0.png').read_text(), 'icon')
+        title, subtitle, detail, user_param, _, _, _ = save_backup.PARAM_BIN.unpack(
+            (meta / 'param.bin').read_bytes())
+        self.assertEqual(title.rstrip(b'\0'), b'CHAPTER XI - The United India House')
+        self.assertEqual((subtitle.rstrip(b'\0'), detail.rstrip(b'\0'), user_param),
+                         (b'The Order: 1886', b'Save Data', 7))
+
+    def test_rejects_an_export_of_another_game(self):
+        export = self.other / 'CUSA01623_SAVE'
+        write(export / 'data.bin', 'x')
+        self.sfo(export / 'sce_sys' / 'param.sfo', {'TITLE_ID': 'CUSA01623', 'SAVEDATA_DIRECTORY': 'SAVE'})
+        with self.assertRaisesRegex(ValueError, 'not The Order'):
+            save_backup.import_saves(self.user, export, now=self.clock)
 
     def test_rejects_encrypted_ps4_saves(self):
         source = self.other / 'CUSA00035'

@@ -87,6 +87,12 @@ Saves use the folder CUSA00035 from the game's metadata; do not rename it.
 A backup is made before each session. On Game & Content, select a backup and
 press Play to restore it before launch, then choose Continue/Load in the game.
 
+To bring saves in, use Game & Content > Import saves... and choose a decrypted
+PS4 save export (Apollo Save Tool: <id>_CUSA00035_<name> folders with
+sce_sys\param.sfo), another installation's savedata folder or a save backup.
+Current saves are backed up first. Encrypted saves copied straight off a PS4
+must be decrypted first. Open saves folder shows where they are kept.
+
 System > Updates checks GitHub releases and installs a verified package; the
 previous version can be restored. To update by hand, close everything, extract
 the new ZIP to a new folder and copy your user folder beside the new EXE.
@@ -162,6 +168,10 @@ Configuracao, saves, backups, caches e logs ficam em user\order1886 ao lado
 do launcher. Os saves usam a pasta CUSA00035; nao a renomeie. Um backup e
 feito antes de cada sessao. Em Game & Content, escolha um backup e clique Play
 para restaura-lo antes de iniciar; depois use Continue/Load no jogo.
+Para trazer saves, use Game & Content > Import saves... e escolha um export
+de save PS4 descriptografado (Apollo Save Tool: pastas <id>_CUSA00035_<nome>
+com sce_sys\param.sfo), a pasta savedata de outra instalacao ou um backup.
+Saves criptografados copiados direto do PS4 precisam ser descriptografados antes.
 
 System > Updates procura versoes no GitHub e instala um pacote verificado; a
 versao anterior pode ser restaurada. Para atualizar manualmente, extraia o novo
