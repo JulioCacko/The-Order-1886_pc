@@ -25,7 +25,7 @@ from launcher.order1886_options import FIELDS, PAGES
 
 MAX_REQUEST = 64 * 1024
 METHODS = frozenset(("state.get", "settings.set", "settings.reset", "session.start", "session.stop",
-                     "saves.list", "saves.backup", "saves.restore", "cache.clear", "mods.list",
+                     "saves.list", "saves.backup", "saves.restore", "saves.import", "cache.clear", "mods.list",
                      "steam.add", "shortcut.create", "updates.preflight", "performance.report",
                      "patches.list", "patches.apply"))
 FIELD_BY_KEY = {item["key"]: item for item in FIELDS}
@@ -241,6 +241,7 @@ class Worker:
                 "timing": self.timing(values),
                 "patches": self.patch_catalogue(values),
                 "backups": order1886.save_backup.list_backups(self.state),
+                "saves_dir": str(self.state / "savedata"),
                 "acceptance": "Development preview — gold gameplay and provider qualification remain open."}
 
     def patch_catalogue(self, values):
@@ -479,6 +480,15 @@ class Worker:
         if method == "saves.restore":
             self.confirm(params)
             self.restore(params.get("name", ""))
+        elif method == "saves.import":
+            self.confirm(params)
+            self.safe_state()
+            source = params.get("path")
+            if not isinstance(source, str) or not source:
+                raise ValueError("Choose the folder that holds the saves to import.")
+            self.state.mkdir(parents=True, exist_ok=True)
+            with order1886.session_lock(self.state):
+                order1886.save_backup.import_saves(self.state, source)
         elif method == "saves.backup":
             self.safe_state()
             self.state.mkdir(parents=True, exist_ok=True)

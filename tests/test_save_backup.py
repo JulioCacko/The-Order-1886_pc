@@ -113,5 +113,58 @@ class SaveBackupTest(unittest.TestCase):
         self.assertEqual(self.save.read_text(), 'v')
 
 
+class SaveImportTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        root = Path(self.temp.name)
+        self.user, self.other = root / 'user', root / 'other'
+        self.title = self.user / 'savedata' / '1' / 'CUSA00035'
+        self.clock = datetime.datetime(2026, 10, 24, 12, 0, 0)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def save(self, title_dir, name, text):
+        write(title_dir / name / 'SYSTEM.DAT', text)
+        write(title_dir / (name + '.sce_sys') / 'param.bin', 'meta-' + text)
+
+    def test_imports_from_savedata_root_and_backs_up_first(self):
+        self.save(self.title, 'Playthrough00', 'mine')
+        self.save(self.title, 'Profile', 'my-profile')
+        self.save(self.other / 'savedata' / '1' / 'CUSA00035', 'Playthrough00', 'theirs')
+        names, safety = save_backup.import_saves(self.user, self.other / 'savedata', now=self.clock)
+        self.assertEqual(names, ['Playthrough00'])
+        self.assertEqual((self.title / 'Playthrough00' / 'SYSTEM.DAT').read_text(), 'theirs')
+        self.assertEqual((self.title / 'Playthrough00.sce_sys' / 'param.bin').read_text(), 'meta-theirs')
+        self.assertEqual((self.title / 'Profile' / 'SYSTEM.DAT').read_text(), 'my-profile')
+        self.assertEqual((safety / '1' / 'CUSA00035' / 'Playthrough00' / 'SYSTEM.DAT').read_text(), 'mine')
+
+    def test_imports_a_single_save_into_an_empty_installation(self):
+        source = self.other / 'CUSA00035'
+        self.save(source, 'Playthrough00', 'theirs')
+        self.save(source, 'Profile', 'profile')
+        names, safety = save_backup.import_saves(self.user, source / 'Playthrough00', now=self.clock)
+        self.assertEqual(names, ['Playthrough00'])
+        self.assertIsNone(safety)
+        self.assertEqual((self.title / 'Playthrough00' / 'SYSTEM.DAT').read_text(), 'theirs')
+        self.assertFalse((self.title / 'Profile').exists())
+
+    def test_rejects_encrypted_ps4_saves(self):
+        source = self.other / 'CUSA00035'
+        write(source / 'Playthrough00', 'pfs image')
+        (source / 'Playthrough00.bin').write_bytes(b'pfsSKKey\x05\x00' + bytes(86))
+        with self.assertRaisesRegex(ValueError, 'encrypted PS4 saves'):
+            save_backup.import_saves(self.user, self.other, now=self.clock)
+
+    def test_rejects_folders_without_saves_and_its_own_savedata(self):
+        self.other.mkdir(parents=True)
+        with self.assertRaisesRegex(ValueError, 'No saves found'):
+            save_backup.import_saves(self.user, self.other, now=self.clock)
+        self.save(self.title, 'Playthrough00', 'mine')
+        with self.assertRaisesRegex(ValueError, 'already'):
+            save_backup.import_saves(self.user, self.title, now=self.clock)
+        self.assertEqual((self.title / 'Playthrough00' / 'SYSTEM.DAT').read_text(), 'mine')
+
+
 if __name__ == '__main__':
     unittest.main()

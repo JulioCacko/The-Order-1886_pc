@@ -16,7 +16,7 @@ type Field = {key:string;label:string;page:string;kind:string;default:unknown;de
 type Snapshot = {trophies:{id:number;unlocked_at:number}[];trophy_error:string;settings:Record<string,any>;fields:Field[];pages:{id:string;title:string}[];
   trophy_catalog?:TrophyArtwork[];trophy_catalog_error?:string;
   languages:Record<string,string>;translations:Record<string,string>;game:{ready:boolean;message:string;metadata:Record<string,unknown>};
-  busy:boolean;backups:string[];logs:string[];logfile:string;state_dir:string;last_exit:number|null;acceptance:string;
+  busy:boolean;backups:string[];saves_dir:string;logs:string[];logfile:string;state_dir:string;last_exit:number|null;acceptance:string;
   timing?:Timing;patches?:CatalogueRow[]};
 type AppBridge = {Call:(method:string,params:Record<string,unknown>)=>Promise<string>;
   Browse:(kind:string)=>Promise<string>;OpenLink:(name:string)=>Promise<void>;
@@ -92,7 +92,7 @@ function control(field:Field) {
   const disabled=!field.available||snapshot.busy||starting||disconnected?' disabled':'';
   const label=`id="field-${field.key}" data-setting="${field.key}" aria-describedby="help-${field.key}"`;
   if(field.kind==='boolean') return `<input type="checkbox" ${label}${disabled}${value?' checked':''}>`;
-  if(field.kind==='select') return `<select ${label}${disabled}>${field.choices!.map(choice=>
+  if(field.kind==='select') return `<select ${label}${disabled}>${field.choices!.filter(choice=>choice.available||value===choice.value).map(choice=>
     `<option value="${escape(String(choice.value))}"${value===choice.value?' selected':''}${!choice.available?' disabled':''}>${escape(t(choice.label))}${!choice.available?' — '+escape(t('Unavailable')):''}</option>`).join('')}</select>`;
   if(field.kind==='bindings') {
    const mapping=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
@@ -113,19 +113,22 @@ function control(field:Field) {
   return `<div class="path-input"><input type="text" ${label}${disabled} value="${escape(value)}" autocomplete="off" spellcheck="false">${['directory','file'].includes(field.kind)?`<button data-browse="${field.key}"${disabled} aria-label="${escape(t('Browse')+' '+t(field.label))}">${escape(t('Browse'))}</button>`:''}</div>`;
 }
 function fieldRow(field:Field) {
- const unavailable=field.choices?.filter(c=>!c.available)??[];
  return `<div class="setting-row ${field.kind==='bindings'?'binding-row ':''}${!field.available?'unavailable':''}" data-field-row="${field.key}">
   <div class="setting-copy">${field.kind==='bindings'?`<h2>${escape(t(field.label))}</h2>`:`<label for="field-${field.key}">${escape(t(field.label))}</label>`}
   <p id="help-${field.key}">${escape(t(field.description))}</p>
   ${field.reason?`<p class="availability">${escape(t(field.reason))}</p>`:''}
-  ${unavailable.length?`<details class="availability"><summary>${escape(t('Additional modes'))}</summary><ul>${unavailable.map(c=>`<li><strong>${escape(t(c.label))}</strong>: ${escape(t(c.reason))}</li>`).join('')}</ul></details>`:''}</div>
+</div>
   <div class="setting-control">${control(field)}</div></div>`;
 }
 function actionButton(action:string,title:string,destructive=false) {
  return `<button data-action="${action}" class="${destructive?'danger':''}"${snapshot.busy||starting||disconnected||saving?' disabled':''}>${escape(t(title))}</button>`;
 }
 function gameActions() {
- return `<section class="utility-section"><h2>${escape(t('Save backups'))}</h2>
+ return `<section class="utility-section"><h2>${escape(t('Saves'))}</h2>
+ <p>${escape(t('Saves folder'))}: <code>${escape(snapshot.saves_dir)}</code></p>
+ <p>${escape(t('Import copies saves from another installation, a save backup or a decrypted save folder. Current saves are backed up first; saves with the same name are replaced.'))}</p>
+ <div class="actions"><button data-location="saves">${escape(t('Open saves folder'))}</button>${actionButton('saves.import','Import saves…')}</div></section>
+ <section class="utility-section"><h2>${escape(t('Save backups'))}</h2>
  <p>${escape(t('Use current saves, or choose a complete backup to restore before Play. Current saves are backed up before replacement.'))}</p>
  <label for="backup">${escape(t('Selected backup'))}</label><select id="backup"${snapshot.busy?' disabled':''}>
  <option value="">${escape(t('Use current saves'))}</option>${snapshot.backups.map(name=>`<option${selectedBackup===name?' selected':''}>${escape(name)}</option>`).join('')}</select>
@@ -185,12 +188,12 @@ function achievementsPage() {
   <div class="trophy-copy"><strong>${item.name?escape(item.name):item.hidden&&item.unlocked_at===undefined?escape(t('Hidden trophy')):`${escape(t('Trophy'))} ${item.id}`}</strong>${item.detail?`<span>${escape(item.detail)}</span>`:''}<span>${item.grade?escape(t(item.grade[0].toUpperCase()+item.grade.slice(1)))+' · ':''}${escape(t(status))}</span></div>
   ${date?`<time datetime="${date.iso}">${escape(date.text)}</time>`:item.unlocked_at!==undefined?`<span class="quiet-copy">${escape(t('Unlock time unavailable'))}</span>`:''}</li>`;
  }).join('')}</ol>`:`<p class="empty-state">${escape(t('No earned trophies recorded yet. Unlocks appear here when the game writes them.'))}</p>`}
- ${snapshot.fields.filter(field=>field.page==='achievements').map(fieldRow).join('')}</section>`;
+ ${snapshot.fields.filter(field=>field.available&&field.page==='achievements').map(fieldRow).join('')}</section>`;
 }
 function settingsPage() {
- const matching=snapshot.fields.filter(field=>query?
+ const matching=snapshot.fields.filter(field=>field.available&&(query?
   `${field.label} ${field.description} ${field.reason} ${field.choices?.map(c=>c.label).join(' ')}`.toLowerCase().includes(query.toLowerCase()):
-  field.page===page);
+  field.page===page));
  if(page==='achievements'&&!query) return achievementsPage();
  return `<section class="settings-page"><div class="section-heading"><div><h1>${escape(query?t('Search settings'):t(snapshot.pages.find(p=>p.id===page)!.title))}</h1>
  <p>${escape(query?`${matching.length} ${t('matching options')}`:t('Valid changes save automatically. Game settings take effect on the next launch.'))}</p></div>
@@ -339,6 +342,11 @@ async function action(name:string) {
    if(!selectedBackup) {flash(t('Choose a save backup first.'),true);return;}
    if(!await confirmAction(t('Restore save backup?'),`${selectedBackup}. ${t('Current saves will be backed up first. Stop the game before restoring.')} `,t('Restore'))) return;
    snapshot=await call(name,{name:selectedBackup,confirmed:true});selectedBackup='';notice=t('Save restored. Start the game and choose Continue or Load.');
+  }else if(name==='saves.import'){
+   const path=await bridge().Browse('directory');
+   if(!path) return;
+   if(!await confirmAction(t('Import saves?'),`${path}. ${t('Current saves will be backed up first. Stop the game before importing.')} `,t('Import'))) return;
+   snapshot=await call(name,{path,confirmed:true});notice=t('Saves imported. Start the game and choose Continue or Load.');
   }else if(name==='cache.clear'){
    if(!await confirmAction(t('Clear shader cache?'),t('Only this title’s regenerable shader cache will be removed. Saves and settings are preserved.'),t('Clear shader cache'))) return;
    snapshot=await call(name,{confirmed:true});notice=t('Shader cache cleared.');
