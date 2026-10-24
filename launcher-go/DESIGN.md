@@ -35,7 +35,7 @@ components:
 
 Operate mode. Players select a local game installation, configure a real launch and manage their local content. The accepted reference hybrid combines cinematic Home art/prominent Play with compact sidebar navigation and solid settings pages. Canonical sources are `frontend/src/style.css`, `main.ts` and the explicit worker catalogue.
 
-This is a migration preview. The repository's existing root DESIGN.md describes the retained Tk launcher; this file records the separate Go module.
+This is the launcher's design record. The Tkinter launcher it replaced has been removed.
 
 ## Colors
 

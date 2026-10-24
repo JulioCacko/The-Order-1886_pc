@@ -141,7 +141,7 @@ $artwork = Join-Path $stage 'artwork'
 & $buildPython (Join-Path $PSScriptRoot 'order1886_icon.py') $artwork
 if ($LASTEXITCODE) { throw 'Launcher icon conversion failed.' }
 foreach ($name in @('logo-horizontal.png', 'logo-stacked.png', 'app-icon.png', 'BRANDING.txt',
-        'launcher-art.png', 'launcher-art.jpg', 'launcher-art.txt', 'play-brass.png')) {
+        'launcher-art.jpg', 'launcher-art.txt')) {
     Copy-Item -LiteralPath (Join-Path "$projectRoot/launcher/order1886" $name) -Destination $artwork
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination $destination

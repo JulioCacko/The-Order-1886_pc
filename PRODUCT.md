@@ -3,11 +3,11 @@
 
 ## Platform
 
-Windows desktop, using native Tkinter widgets. The native Windows title bar and widget semantics are intentional. A web or mobile platform label would misdescribe this application.
+Windows desktop (Linux preview), a Wails v2 window with the native title bar. Its UI is semantic HTML/CSS/TypeScript embedded in a Go executable; it is a desktop application, not a website.
 
 ## Stack
 
-Python 3, Tkinter and Pillow, packaged with PyInstaller. Reuse the existing launcher and runtime backend.
+Go and Wails v2 for the launcher (`launcher-go/`), with embedded TypeScript/HTML/CSS. The Python worker (`launcher/order1886_worker.py`, packaged with PyInstaller) prepares the game and runs sessions; reuse it rather than duplicating backend logic.
 
 ## Users
 
@@ -38,9 +38,8 @@ Preserve The Order: 1886 identity, charcoal, muted brass, ivory, Georgia page he
 
 ## Evidence on Hand
 
-Implementation is in `launcher/order1886_common.py` (the Go launcher drives it through the worker; the Tk window was retired); behavior checks are in `tests/test_order1886_launcher.py`; packaging and CPU-only smoke checks are under `packaging/windows/`. Compatibility evidence is recorded in `docs/order1886-runtime-status.md`.
+The launcher is in `launcher-go/` (design record: `launcher-go/DESIGN.md`); the backend it drives is `launcher/order1886_worker.py` with `launcher/order1886_common.py`. Behavior checks are in `launcher-go/` Go tests, `launcher-go/frontend/tests/` and `tests/test_order1886_worker*.py`; packaging and CPU-only smoke checks are under `packaging/windows/`. Compatibility evidence is recorded in `docs/order1886-runtime-status.md`.
 
-The approved composition is `.impeccable/mocks/concept-a.png`. Native captures live under `.impeccable/review/`; their review status is separate from code or packaging checks. The composition, specification and asset-plate stages are closed, while the hero webgate remains open with native measurement limitations. This file does not declare an Impeccable finish verdict or gameplay certification.
 
 ## Product Principles
 
