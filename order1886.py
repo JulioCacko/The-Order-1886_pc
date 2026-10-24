@@ -493,7 +493,7 @@ OUTPUT_RESOLUTIONS = ('automatic', '1280x720', '1920x1080', '2560x1440', '3840x2
 # Launcher key -> default. Booleans arrive as bool from settings.json and as 0/1 from the CLI.
 GRAPHICS_DEFAULTS = {'output_resolution': 'automatic', 'sharpness': 0, 'anisotropy': 1, 'frames_queued': 1,
                      'overlay_frametime': True, 'overlay_gpu': False, 'overlay_cpu': False,
-                     'overlay_memory': False, 'async_shaders': False, 'background_warmup': False,
+                     'overlay_memory': False, 'async_shaders': True, 'background_warmup': False,
                      'parallel_warmup': False, 'speculative_readbacks': False}
 
 
@@ -704,7 +704,7 @@ def argument_parser():
     parser.add_argument('--frames-queued', type=int, choices=[0, 1, 2], default=1,
                         help='Frames the GPU command thread may run ahead; 0 is unbounded')
     for name, default in (('overlay-frametime', 1), ('overlay-gpu', 0), ('overlay-cpu', 0),
-                          ('overlay-memory', 0), ('async-shaders', 0), ('background-warmup', 0),
+                          ('overlay-memory', 0), ('async-shaders', 1), ('background-warmup', 0),
                           ('parallel-warmup', 0), ('speculative-readbacks', 0)):
         parser.add_argument('--' + name, type=int, choices=[0, 1], default=default)
     parser.add_argument('--mouse-look', type=int, choices=[0, 1], default=1)

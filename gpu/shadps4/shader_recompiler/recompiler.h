@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include "common/object_pool.h"
 #include "shader_recompiler/ir/basic_block.h"
 #include "shader_recompiler/ir/program.h"
@@ -27,8 +28,11 @@ struct Pools {
     }
 };
 
+/// guest_reads_done runs once translation has read everything it needs from guest memory (the
+/// fetch shader and the SRT walk); the passes after it only use the Info's own copies.
 [[nodiscard]] IR::Program TranslateProgram(const std::span<const u32>& code, Pools& pools,
                                            Info& info, RuntimeInfo& runtime_info,
-                                           const Profile& profile);
+                                           const Profile& profile,
+                                           const std::function<void()>& guest_reads_done = {});
 
 } // namespace Shader
