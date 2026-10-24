@@ -67,7 +67,7 @@ class GraphicsWiringTests(unittest.TestCase):
         values = runtime_ini(through_backend(launcher_values()))
         self.assertEqual(values['output_res'], 'automatic')
         self.assertEqual((values['rcas'], values['anisotropy'], values['frames_queued'],
-                          values['async_shaders']), ('0', '0', '1', '0'))
+                          values['async_shaders']), ('0', '0', '1', '1'))
         env = order1886.runtime_environment(ROOT / 'out' / 'runtime.exe', ROOT / 'out' / 'state',
                                             through_backend(launcher_values()), {})
         for name in ('BACKGROUND_WARMUP', 'PARALLEL_WARMUP', 'DEFERRED_READBACK'):

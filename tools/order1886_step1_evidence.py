@@ -41,6 +41,7 @@ VARIANTS = {
     'frames-queued-2': ['frames_queued=2'],
     'frames-queued-0': ['frames_queued=0'],
     'async-shaders': ['async_shaders=1'],
+    'sync-shaders': ['async_shaders=0'],
     'background-warmup': ['background_warmup=1'],
     'parallel-warmup': ['parallel_warmup=1'],
     'deferred-readbacks': ['speculative_readbacks=1'],

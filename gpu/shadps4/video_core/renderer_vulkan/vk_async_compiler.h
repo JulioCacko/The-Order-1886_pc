@@ -42,8 +42,11 @@ public:
                         queue_wait_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
                             std::chrono::steady_clock::now() - next.enqueued).count();
                         task = std::move(next.function);
+                        ++running;
                     }
                     task();
+                    std::scoped_lock lock{mutex};
+                    --running;
                 }
             });
         }
@@ -64,6 +67,11 @@ public:
     bool HasCapacity() {
         std::scoped_lock lock{mutex};
         return !stopping && tasks.size() + urgent.size() < capacity;
+    }
+    /// A task submitted now starts at once instead of queueing behind running ones.
+    bool HasIdleWorker() {
+        std::scoped_lock lock{mutex};
+        return !stopping && tasks.empty() && urgent.empty() && running < workers.size();
     }
     static unsigned WorkerIndex() { return worker_index; }
     size_t Depth() {
@@ -96,6 +104,7 @@ private:
     static inline thread_local unsigned worker_index = 0;
     std::atomic<uint64_t> queue_wait_ns{};
     bool stopping = false;
+    size_t running = 0;
     std::vector<std::thread> workers;
 };
 

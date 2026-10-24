@@ -397,13 +397,14 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
     // (Ps4Settings::async_shaders, ORDER1886_ASYNC_SHADERS at start).
     {
         const auto count = std::clamp(Ps4Threads::Available() / 2, 1u, 6u);
-        const auto capture_count = std::min(2u, std::max(1u, Ps4Threads::Available() / 4));
+        // shader translation workers: one per idle worker is all QueueShader ever submits.
+        const auto capture_count = count;
         for (unsigned i = 0; i < count; ++i) {
             auto [result, worker_cache] = instance.GetDevice().createPipelineCacheUnique({});
             ASSERT_MSG(result == vk::Result::eSuccess, "Failed to create compiler pipeline cache");
             worker_pipeline_caches.push_back(std::move(worker_cache));
         }
-        capture_compiler = std::make_unique<AsyncCompiler>(capture_count, 8, [](unsigned index) {
+        capture_compiler = std::make_unique<AsyncCompiler>(capture_count, capture_count, [](unsigned index) {
             Common::SetCurrentThreadName(("ps4:ShaderCapture" + std::to_string(index)).c_str());
             Common::SetCurrentThreadPriority(Common::ThreadPriority::High);
         });
@@ -460,7 +461,9 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
                                  Shader::Backend::Bindings binding, size_t permutation,
                                  bool initial,
                                  std::optional<Shader::StageSpecialization> specialization) {
-    if (!compiler->HasCapacity()) {
+    // Waiting behind another translation would block the GPU thread for all of it; the draw
+    // is skipped instead and the shader queued on a later draw.
+    if (!capture_compiler->HasIdleWorker()) {
         return false;
     }
     PhaseTimer snapshot{g_ps4_snapshot_ns};
@@ -483,43 +486,44 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
     }
     build->pool_cache = &compiler_pools;
     snapshot.Stop();
-    AsyncJob<bool> capture_job;
-    if (!capture_job.Start(*capture_compiler, [this, build, binding] {
+    // The GPU thread waits only until translation has read guest memory (the fetch shader and
+    // the SRT walk): the draw may change that memory once the GPU thread moves on. The rest of
+    // the translation, the SPIR-V emission and the module run on the worker, which drops to
+    // low priority once nothing waits for it.
+    auto guest_reads = std::make_shared<std::promise<void>>();
+    auto guest_reads_done = guest_reads->get_future();
+    const bool queued = build->job.Start(*capture_compiler, [this, build, binding, guest_reads] {
+        Common::SetCurrentThreadPriority(Common::ThreadPriority::High);
+        bool released = false;
+        const auto release = [&] {
+            if (!released) {
+                released = true;
+                Common::SetCurrentThreadPriority(Common::ThreadPriority::Low);
+                guest_reads->set_value();
+            }
+        };
+        struct Guard {
+            const decltype(release)& release;
+            ~Guard() { release(); }
+        } guard{release};
         PhaseTimer capture{g_ps4_capture_ns};
         auto [pools, reused] = compiler_pools.Acquire();
         build->pools = std::move(pools);
         if (reused) {
             ++g_ps4_pool_reuses;
         }
-        // the GPU thread waits until all guest reads and specialization are captured.
         build->ir.emplace(Shader::TranslateProgram(build->code, *build->pools, build->info,
-                                                   build->runtime, profile));
+                                                   build->runtime, profile, [&] {
+            build->fetch.Capture(build->info);
+            capture.Stop();
+            release();
+        }));
+        PhaseTimer compile{g_ps4_async_ns};
+        // From here the fetch shader is read from the snapshot, never from guest memory.
+        Shader::Gcn::ScopedFetchShaderSnapshot fetch{build->fetch};
         if (build->initial) {
             build->spec = Shader::StageSpecialization(build->info, build->runtime, profile, binding);
         }
-        build->fetch.Capture(build->info);
-        return true;
-    })) {
-        return false;
-    }
-    {
-        PhaseTimer waiting{g_ps4_guest_wait_ns};
-        capture_job.Wait();
-    }
-    if (!capture_job.Poll()) {
-        if (initial) {
-            program.compilation_failed = true;
-        } else {
-            specialization->info = &program.info;
-            program.failed_permutations.push_back(std::move(*specialization));
-        }
-        LOG_ERROR(Render_Vulkan, "ps4: shader {:#x}/{} capture failed: {}", params.hash,
-                  permutation, capture_job.Error());
-        return false;
-    }
-    const bool queued = build->job.Start(*compiler, [this, build] {
-        PhaseTimer compile{g_ps4_async_ns};
-        Shader::Gcn::ScopedFetchShaderSnapshot snapshot{build->fetch};
         auto spv = Shader::Backend::SPIRV::EmitSPIRV(profile, build->runtime, *build->ir,
                                                     build->binding);
         DumpShader(build->code, build->info.pgm_hash, build->info.hw_stage, build->permutation, "bin");
@@ -533,11 +537,16 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
         compiler_pools.Recycle(std::move(build->pools));
         return build;
     }, true);
-    if (queued) {
-        program.pending = std::move(build);
-        pending_programs.push_back(&program);
+    if (!queued) {
+        return false;
     }
-    return queued;
+    {
+        PhaseTimer waiting{g_ps4_guest_wait_ns};
+        guest_reads_done.wait();
+    }
+    program.pending = std::move(build);
+    pending_programs.push_back(&program);
+    return true;
 }
 
 void PipelineCache::PublishShaders(bool wait) {

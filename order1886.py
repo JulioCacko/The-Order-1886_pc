@@ -493,7 +493,7 @@ OUTPUT_RESOLUTIONS = ('automatic', '1280x720', '1920x1080', '2560x1440', '3840x2
 # Launcher key -> default. Booleans arrive as bool from settings.json and as 0/1 from the CLI.
 GRAPHICS_DEFAULTS = {'output_resolution': 'automatic', 'sharpness': 0, 'anisotropy': 1, 'frames_queued': 1,
                      'overlay_frametime': True, 'overlay_gpu': False, 'overlay_cpu': False,
-                     'overlay_memory': False, 'async_shaders': False, 'background_warmup': False,
+                     'overlay_memory': False, 'async_shaders': True, 'background_warmup': False,
                      'parallel_warmup': False, 'speculative_readbacks': False}
 
 

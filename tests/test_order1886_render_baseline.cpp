@@ -32,7 +32,7 @@ int main() {
     Ps4Settings::Values defaults;
     assert(defaults.upscaler == Ps4Settings::UpscalerOff);
     assert(!defaults.object_motion && !defaults.jitter && !defaults.sharpen);
-    assert(!defaults.async_shaders && !defaults.rcas);
+    assert(defaults.async_shaders && !defaults.rcas);
     assert(!defaults.deferred_readback && !defaults.stale_readback);
     assert(defaults.fps_limit == 30);
     assert(Ps4Graphics::FsrPassRuns(true, false, 1920, 1080, 3840, 2160));
