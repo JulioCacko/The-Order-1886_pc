@@ -173,7 +173,7 @@ foreach ($entry in Get-ChildItem -LiteralPath "$stage/worker-dist/order1886-work
 }
 
 $manifest = [ordered]@{
-    product='The Order: 1886'; launcher='Go / Wails v2.17.0'; status='development preview'
+    product='The Order: 1886'; launcher='Go / Wails v2.17.0'; status='release'
     built_utc=(Get-Date).ToUniversalTime().ToString('o'); runtime_sha256=$hash
     runtime_build=$runtimeBuild
     # Advertised only now that the copied helper and startup recovery exist.

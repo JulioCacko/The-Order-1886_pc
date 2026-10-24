@@ -7,6 +7,7 @@ import {createSettingsSaver} from './settings-save';
 import {parseUpdate, updateHeadline, updateSection, type UpdateStatus} from './updates';
 import {timingPanel, type Timing} from './timing-panel';
 import {patchCatalogue, type CatalogueRow} from './patch-catalogue';
+import wails from '../../wails.json';
 
 type Choice = {value:string|number; label:string; available:boolean; reason:string};
 type Field = {key:string;label:string;page:string;kind:string;default:unknown;description:string;
@@ -208,7 +209,7 @@ function render() {
  const pageTitle=snapshot.pages.find(p=>p.id===page)?.title??'Home';
  replaceView(root,`<div class="shell"><aside class="sidebar"><a href="#" class="brand" data-page="home" aria-label="The Order: 1886 Home"><img src="/assets/logo-stacked.png" alt="The Order: 1886"></a>
  <nav aria-label="${escape(t('Main navigation'))}">${snapshot.pages.map(item=>`<button id="nav-${item.id}" data-page="${item.id}" class="nav-item ${page===item.id&&!query?'selected':''}"${page===item.id&&!query?' aria-current="page"':''}>${icon(item.id)}<span>${escape(t(item.title))}</span></button>`).join('')}</nav>
- <div class="sidebar-bottom"><span>CUSA00076</span><span>${escape(t('Development preview'))}</span><button class="quiet" data-link="releases">${escape(t('View releases'))}</button></div></aside>
+ <div class="sidebar-bottom"><span>CUSA00076</span><span>v${escape(wails.info.productVersion)}</span><button class="quiet" data-link="releases">${escape(t('View releases'))}</button></div></aside>
  <main><header class="topbar"><span class="current-section">${escape(t(pageTitle))}</span><label class="search">${icon('search')}<span class="sr-only">${escape(t('Search all settings'))}</span><input id="search" type="search" placeholder="${escape(t('Search all settings'))}" value="${escape(query)}" autocomplete="off"></label><span class="session-status">${escape(t(disconnected?'Connection lost':snapshot.busy?'Running':starting?'Starting…':'Idle'))}</span></header>
  <div id="content" class="content">${page==='home'&&!query?home():settingsPage()}</div>
  <footer class="launchbar"><div><p id="feedback" class="${noticeError?'error':''}" role="status" aria-live="polite">${escape(noticeError?notice:saving?t('Saving settings…'):notice||t(snapshot.busy?'Session running. Settings are locked.':'Changes are saved automatically.'))}</p>

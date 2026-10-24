@@ -22,7 +22,7 @@ Proyecto comunitario para ejecutar el binario original de **The Order: 1886**, e
 
 **Descarga publicada: preview 9, del 21 de octubre.** Paquetes para Windows y Linux x86-64, ambos compilados desde la revisión `b19c604`. El juego corre a unos 53 FPS en el patio nocturno con una RTX 3070. Conserva la carpeta `user` al actualizar.
 
-**[Descargar el paquete para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-go-windows.zip)** · **[Descargar el paquete para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/order1886-linux-x86_64.tar.gz)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.9) · [Guía de instalación](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.1.0-go-preview.9/QUICKSTART.txt)
+**[Descargar el paquete para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.0/order1886-go-windows.zip)** · **[Descargar el paquete para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.0/order1886-linux-x86_64.tar.gz)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.9) · [Guía de instalación](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.0/QUICKSTART.txt)
 
 Extrae el ZIP completo y lee **QUICKSTART.txt**, incluido en el paquete. No requiere Python, MSYS2 ni compilador. Descarga `order1886-go-windows.zip`; los archivos “Source code” son para desarrolladores. El juego no está incluido: usa tu propio dump CUSA00076. Esta versión preliminar conserva las limitaciones de compatibilidad indicadas arriba.
 
