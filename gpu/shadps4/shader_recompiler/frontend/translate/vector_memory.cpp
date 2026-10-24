@@ -214,6 +214,24 @@ void Translator::BUFFER_LOAD(u32 num_dwords, bool is_inst_typed, bool is_buffer_
     const IR::VectorReg voffset_vgpr = mubuf.idxen ? vaddr + 1 : vaddr;
     const IR::U32 voffset = mubuf.offen ? ir.GetVectorReg(voffset_vgpr) : ir.Imm32(0);
     const IR::U32 soffset{GetSrc(inst.src[3])};
+    const IR::VectorReg dst_reg{inst.src[1].code};
+
+    // ADDR64: v[vaddr:vaddr+1] holds a 64-bit guest pointer and the V# only contributes a zero
+    // base (The Order's particle shaders read their records this way). Binding that V# would
+    // yield a null buffer, so model the load as a pointer read: the SRT passes split the pointer
+    // into its uniform base plus lane offset and bind the base as a bounded buffer.
+    if (mubuf.addr64 && !is_inst_typed && !is_buffer_typed && scalar_width == 32) {
+        const IR::Value base =
+            ir.CompositeConstruct(ir.GetVectorReg(vaddr), ir.GetVectorReg(vaddr + 1));
+        const IR::U32 dword_offset{ir.ShiftRightLogical(
+            IR::U32{ir.IAdd(ir.Imm32(u32(mubuf.offset)), soffset)}, ir.Imm32(2))};
+        for (u32 i = 0; i < num_dwords; i++) {
+            ir.SetVectorReg(dst_reg + i, ir.ReadConstAddr64(
+                                             base, IR::U32{ir.IAdd(dword_offset, ir.Imm32(i))}));
+        }
+        return;
+    }
+
     const IR::Value address = ir.CompositeConstruct(index, voffset, soffset);
 
     IR::BufferInstInfo buffer_info{};
@@ -235,7 +253,6 @@ void Translator::BUFFER_LOAD(u32 num_dwords, bool is_inst_typed, bool is_buffer_
     const IR::Value handle =
         ir.CompositeConstruct(ir.GetScalarReg(sharp), ir.GetScalarReg(sharp + 1),
                               ir.GetScalarReg(sharp + 2), ir.GetScalarReg(sharp + 3));
-    const IR::VectorReg dst_reg{inst.src[1].code};
     if (buffer_info.typed) {
         const IR::Value value = ir.LoadBufferFormat(handle, address, buffer_info);
         for (u32 i = 0; i < num_dwords; i++) {

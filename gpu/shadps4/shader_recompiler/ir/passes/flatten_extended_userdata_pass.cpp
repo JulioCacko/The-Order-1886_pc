@@ -964,6 +964,13 @@ void FlattenExtendedUserdataPass(IR::Program& program) {
             inst && inst->GetOpcode() == IR::Opcode::ReadFirstLane) {
             continue;
         }
+        if (IR::IsReadConstAddr64(inst) &&
+            (!inst->Arg(1).IsImmediate() || !IsReadConstSource(base->Arg(0)) ||
+             !IsReadConstSource(base->Arg(1)))) {
+            // ADDR64 pointer with a lane-varying offset or an unresolved base: the walker cannot
+            // read it, LowerDynamicReadConstPass binds the uniform base as a GPU buffer instead.
+            continue;
+        }
         ASSERT_MSG(IsReadConstSource(base->Arg(0)), "ReadConst base low not from constant memory");
         ASSERT_MSG(IsReadConstSource(base->Arg(1)), "ReadConst base high not from constant memory");
 
@@ -1032,6 +1039,8 @@ static u64 ReadConstIndexUpperBound(const IR::Value& value, u32 depth = 0) {
     }
 }
 
+static constexpr u32 Addr64ReadConstBytes = 4_MB;
+
 static std::optional<u32> ReadConstByteSpan(const IR::Value& index) {
     const u64 bytes = (ReadConstIndexUpperBound(index) + 1) * sizeof(u32);
     if (bytes > std::numeric_limits<u32>::max()) {
@@ -1085,8 +1094,25 @@ void LowerDynamicReadConstPass(IR::Program& program) {
                 continue;
             }
             SharpFetch<AmdGpu::Buffer> fetch{};
-            const auto span = ReadConstByteSpan(inst.Arg(1));
+            const bool addr64 = IR::IsReadConstAddr64(&inst);
+            auto span = ReadConstByteSpan(inst.Arg(1));
+            if (!span && addr64) {
+                // The V# of an ADDR64 load has no bound (num_records ~0), so the lane offset is
+                // unbounded too. Bind this much of the pointer's mapping; BindBuffers clamps it to
+                // the VMA and robustBufferAccess2 reads zero beyond it, as the null bind did.
+                // ponytail: fixed cap, raise if a game indexes further from one pointer.
+                span = Addr64ReadConstBytes;
+            }
             if (!span || !ReadConstPointerFetch(inst.Arg(0), fetch)) {
+                if (addr64 && !EmulatorSettings.IsDirectMemoryAccessEnabled()) {
+                    LOG_ERROR(Render_Recompiler,
+                              "Shader {:#x}: ADDR64 load base is not uniform constant memory, "
+                              "reading zero",
+                              info.pgm_hash);
+                    IR::IREmitter ir{*block, IR::Block::InstructionList::s_iterator_to(inst)};
+                    inst.ReplaceUsesWith(ir.Imm32(0));
+                    continue;
+                }
                 ASSERT_MSG(EmulatorSettings.IsDirectMemoryAccessEnabled(),
                            "Unsupported dynamic ReadConst: no bounded uniform base/index");
                 continue;

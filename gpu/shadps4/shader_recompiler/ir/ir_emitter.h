@@ -14,6 +14,15 @@
 
 namespace Shader::IR {
 
+// ReadConst flag bit above the u16/u32 flat-buffer offset: the pointer came from a MUBUF ADDR64
+// vector address, so an unresolvable base is a soft failure (the load reads zero) instead of an
+// SRT walker assertion.
+constexpr u64 ReadConstAddr64Flag = u64{1} << 32;
+
+[[nodiscard]] inline bool IsReadConstAddr64(const Inst* inst) {
+    return (inst->Flags<u64>() & ReadConstAddr64Flag) != 0;
+}
+
 class IREmitter {
 public:
     explicit IREmitter() = default;
@@ -114,6 +123,7 @@ public:
     [[nodiscard]] T SharedAtomicDec(const U32& address, bool is_gds);
 
     [[nodiscard]] U32 ReadConst(const Value& base, const U32& offset);
+    [[nodiscard]] U32 ReadConstAddr64(const Value& base, const U32& offset);
     [[nodiscard]] U32 ReadConstBuffer(const Value& handle, const U32& index, BufferInstInfo info);
 
     [[nodiscard]] U8 LoadBufferU8(const Value& handle, const Value& address, BufferInstInfo info);
