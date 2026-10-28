@@ -122,7 +122,9 @@ jobs:
           go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
           # Ubuntu 24.04 ships WebKitGTK 4.1 only; Wails selects it with the webkit2_41 tag.
           "$(go env GOPATH)/bin/wails" build -clean -skipbindings -platform linux/amd64 -tags webkit2_41
-          ls -l build/bin/
+          # The entry points link no WebKitGTK, so they start on SteamOS and other systems without it (#114).
+          CGO_ENABLED=0 go build -tags noui -trimpath -ldflags '-s -w' -o build/entry/order1886-entry .
+          ls -l build/bin/ build/entry/
       - name: Build the Python worker
         run: |
           python -m pip install --disable-pip-version-check 'pyinstaller==6.20.0' 'cryptography==50.0.1'
@@ -141,6 +143,7 @@ jobs:
             --runtime out/order1886-runtime \
             --gpu out/gpu/libps4gpu.so \
             --launcher "launcher-go/build/bin/The Order 1886" \
+            --entry launcher-go/build/entry/order1886-entry \
             --worker out/worker-dist/order1886-worker
           echo "archive=$(ls out/order1886-go-package/*/order1886-linux-x86_64.tar.gz | tail -1)" >> "$GITHUB_OUTPUT"
           echo 'Host/package smoke only. Gameplay, stability and performance remain unverified on Linux.' >> "$GITHUB_STEP_SUMMARY"

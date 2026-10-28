@@ -44,8 +44,8 @@ def main() -> None:
         if hashlib.file_digest(path.open('rb'), 'sha256').hexdigest() != entry['sha256']:
             raise SystemExit('Package hash mismatch: ' + entry['path'])
 
-    for relative in ('The Order 1886', 'Play The Order 1886', 'bin/order1886-runtime',
-                     'bin/gpu/libps4gpu.so'):
+    for relative in ('The Order 1886', 'Play The Order 1886', 'bin/order1886-launcher',
+                     'bin/order1886-runtime', 'bin/gpu/libps4gpu.so'):
         path = package / relative
         if not path.is_file():
             raise SystemExit('Missing packaged file: ' + relative)
@@ -53,6 +53,14 @@ def main() -> None:
             raise SystemExit('Not an ELF binary: ' + relative)
     if not os.access(package / 'The Order 1886', os.X_OK):
         raise SystemExit('The launcher is not executable in the package.')
+    # Both entry points must start where WebKitGTK is missing (SteamOS, #114); only the window links it.
+    for relative in ('The Order 1886', 'Play The Order 1886'):
+        dynamic = subprocess.run(['readelf', '-d', str(package / relative)], capture_output=True,
+                                 text=True, check=True).stdout
+        linked = [name for name in re.findall(r'Shared library: \[([^\]]+)\]', dynamic)
+                  if re.search(r'webkit|javascriptcore|gtk|gdk|soup', name)]
+        if linked:
+            raise SystemExit(f'{relative} links the launcher window libraries: {", ".join(linked)}')
 
     # Every library the packager bundled must be the one the runtime loads, so a machine without the
     # build host's FFmpeg, SDL3, fmt or Zydis still starts it.
@@ -90,6 +98,26 @@ def main() -> None:
             if result.returncode:
                 raise SystemExit(f'{name} failed its worker smoke: '
                                  + result.stderr.decode('utf-8', 'replace')[-600:])
+
+        # A system without WebKitGTK: the window fails in the dynamic linker. The entry must say so
+        # and, with no game folder saved, explain --game-dir instead of failing silently.
+        window = root / 'bin/order1886-launcher'
+        window.rename(window.with_name('order1886-launcher.real'))
+        window.write_text('#!/bin/sh\necho "$0: error while loading shared libraries: '
+                          'libwebkit2gtk-4.1.so.0: cannot open shared object file: No such file or '
+                          'directory" >&2\nexit 127\n', encoding='utf-8')
+        window.chmod(0o755)
+        headless = {key: value for key, value in environment.items() if key not in ('DISPLAY', 'WAYLAND_DISPLAY')}
+        result = subprocess.run([str(root / 'The Order 1886'), '--state-dir', str(state)], cwd=temporary,
+                                env=headless, timeout=120, capture_output=True)
+        message = result.stderr.decode('utf-8', 'replace')
+        if (result.returncode == 0 or 'needs WebKitGTK 4.1' not in message
+                or 'libwebkit2gtk-4.1.so.0' not in message or '--game-dir' not in message):
+            raise SystemExit('Missing WebKitGTK was not reported: ' + message[-800:])
+        if 'needs WebKitGTK 4.1' not in (state / 'logs/launcher-entry.log').read_text(encoding='utf-8'):
+            raise SystemExit('Missing WebKitGTK was not logged for players without a terminal.')
+        window.unlink()
+        window.with_name('order1886-launcher.real').rename(window)
 
         recovery = subprocess.run([str(root / 'The Order 1886'), '--update-helper',
                                    '--update-action', 'recover', '--update-installation', str(root),
@@ -146,9 +174,9 @@ def main() -> None:
         if (state / 'savedata').exists():
             raise SystemExit('The smoke created save data.')
 
-    print('Linux portable smoke passed: manifest and hashes, ELF entry points, update ABI and clean '
-          'helper, Unicode relocation, restricted PATH, worker protocol, update preflight, autosave, '
-          'language and rejected settings.')
+    print('Linux portable smoke passed: manifest and hashes, ELF entry points without WebKitGTK, '
+          'missing-WebKitGTK report, update ABI and clean helper, Unicode relocation, restricted PATH, '
+          'worker protocol, update preflight, autosave, language and rejected settings.')
 
 
 if __name__ == '__main__':
