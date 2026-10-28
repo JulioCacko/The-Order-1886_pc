@@ -6,6 +6,12 @@ the artifacts the native and Go builds already produce rather than building them
   --runtime   out/order1886-runtime          (build.sh, ELF, rpath $ORIGIN/gpu)
   --gpu       out/gpu/libps4gpu.so           (the GPU library the runtime loads)
   --launcher  launcher-go/build/bin/The Order 1886   (wails build -platform linux/amd64)
+  --entry     the same Go source built with -tags noui (go build), which links no WebKitGTK
+
+The launcher window links WebKitGTK 4.1, which SteamOS and other systems lack, and the dynamic
+linker then refuses to start it at all (#114). So the window ships as `bin/order1886-launcher`
+and both entry points, `The Order 1886` and `Play The Order 1886`, are the WebKit-free build: it
+starts the window when it can, and otherwise says what is missing and plays the saved settings.
   --worker    <pyinstaller onedir>/          (PyInstaller --onedir of launcher/order1886_worker.py)
 
 Layout matches what the backend resolves: `bin/order1886-runtime`, the GPU library beside it in
@@ -98,6 +104,7 @@ def main() -> None:
     parser.add_argument('--runtime', type=Path, required=True)
     parser.add_argument('--gpu', type=Path, required=True)
     parser.add_argument('--launcher', type=Path, required=True)
+    parser.add_argument('--entry', type=Path, required=True, help='WebKit-free (-tags noui) build')
     parser.add_argument('--worker', type=Path, required=True,
                         help='PyInstaller --onedir output directory')
     parser.add_argument('--output', type=Path, default=Path('out/order1886-go-package'))
@@ -118,6 +125,16 @@ def main() -> None:
 
     launcher = args.launcher.resolve()
     elf_or_fail(launcher, 'Go launcher')
+    entry = args.entry.resolve()
+    elf_or_fail(entry, 'WebKit-free entry')
+    # readelf only reads the ELF; ldd may run the binary's own loader.
+    dynamic = subprocess.run(['readelf', '-d', str(entry)], capture_output=True, text=True,
+                             check=True, timeout=60).stdout
+    linked = [name for name in re.findall(r'Shared library: \[([^\]]+)\]', dynamic)
+              if re.search(r'webkit|javascriptcore|gtk|gdk|soup', name)]
+    if linked:
+        fail(f'The entry build links the launcher window libraries ({", ".join(linked)}); '
+             'build it with -tags noui.')
     elf_or_fail(runtime, 'Runtime')
     gpu = args.gpu.resolve()
     elf_or_fail(gpu, 'GPU library')
@@ -136,8 +153,10 @@ def main() -> None:
                           encoding='utf-8')
 
     for name in ('The Order 1886', 'Play The Order 1886'):
-        shutil.copy2(launcher, destination / name)
+        shutil.copy2(entry, destination / name)
         (destination / name).chmod(0o755)
+    shutil.copy2(launcher, destination / 'bin/order1886-launcher')
+    (destination / 'bin/order1886-launcher').chmod(0o755)
     shutil.copy2(runtime, destination / 'bin/order1886-runtime')
     (destination / 'bin/order1886-runtime').chmod(0o755)
     (destination / 'bin/gpu').mkdir()
@@ -169,9 +188,10 @@ def main() -> None:
     notices = project / 'packaging/windows'
     for source, target in (('ATTRIBUTION-Order1886.txt', 'notices/ATTRIBUTION.txt'),
                            ('README-Order1886.txt', 'README-Order1886.txt'),
-                           ('QUICKSTART-Order1886.txt', 'QUICKSTART.txt')):
+                           ):
         if (notices / source).is_file():
             shutil.copy2(notices / source, destination / target)
+    shutil.copy2(project / 'packaging/linux/QUICKSTART-Linux.txt', destination / 'QUICKSTART.txt')
 
     files = []
     for path in sorted(destination.rglob('*')):

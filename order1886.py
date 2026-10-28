@@ -85,9 +85,26 @@ def emit_status(message, *, error=False, fallback=None):
 
 def default_game_dir():
     relative = Path('ShadPs4Plus-PkgExtractor-1.1-windows') / TITLE_ID
-    for base in (INSTALL_ROOT, INSTALL_ROOT.parent, INSTALL_ROOT.parent.parent):
+    bases = (INSTALL_ROOT, INSTALL_ROOT.parent, INSTALL_ROOT.parent.parent)
+    for base in bases:
         if (base / relative / 'eboot.bin').is_file():
             return base / relative
+    # Without the launcher window (Linux without WebKitGTK, #114) nothing picks a folder, so a
+    # game folder of any edition and any name in or beside the installation is used.
+    for base in bases[:2]:
+        if base == base.parent:  # never scan a drive or filesystem root
+            break
+        try:
+            folders = sorted(base.iterdir())
+        except OSError:
+            continue
+        for folder in folders:
+            try:
+                found = (folder / 'eboot.bin').is_file()
+            except OSError:  # a folder this user may not read
+                continue
+            if found and editions.supported((prepare.read_sfo(folder / 'sce_sys/param.sfo') or {}).get('TITLE_ID')):
+                return folder
     return INSTALL_ROOT / relative
 
 

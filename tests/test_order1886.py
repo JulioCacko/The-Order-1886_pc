@@ -59,6 +59,15 @@ class OrderBackendTests(unittest.TestCase):
                 self.metadata['TITLE_ID'] = title_id
                 self.assertEqual(order1886.inspect_game(self.game)['TITLE_ID'], title_id)
 
+    def test_finds_a_game_folder_of_any_name_beside_the_package(self):
+        # Without the launcher window nothing picks a folder (#114).
+        package = self.base / 'The Order 1886'
+        with patch.object(order1886, 'INSTALL_ROOT', package):
+            self.assertEqual(order1886.default_game_dir(), self.game)
+            self.metadata['TITLE_ID'] = 'CUSA01623'
+            self.assertEqual(order1886.default_game_dir(),
+                             package / 'ShadPs4Plus-PkgExtractor-1.1-windows' / 'CUSA00076')
+
     def test_names_empty_or_missing_game_files(self):
         (self.game / 'eboot.bin').write_bytes(b'')
         with self.assertRaisesRegex(ValueError, 'eboot.bin'):

@@ -9,6 +9,16 @@ from launcher import order1886_worker as worker
 from tests.test_order1886_trophy_history import trophy_archive, PNG
 
 
+class FrozenInstallationRootTests(unittest.TestCase):
+    def test_both_package_layouts_resolve_to_the_package_folder(self):
+        # Linux ships PyInstaller's one-directory worker one level deeper than Windows does, and
+        # the backend found no runtime there before #114.
+        package = Path('/opt/The Order 1886')
+        self.assertEqual(worker.frozen_installation_root(package / 'bin/order1886-worker.exe'), package)
+        self.assertEqual(worker.frozen_installation_root(package / 'bin/order1886-worker/order1886-worker'),
+                         package)
+
+
 class WorkerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

@@ -563,11 +563,18 @@ def serve(worker, source, output):
         worker.close()
 
 
+def frozen_installation_root(executable):
+    """The package folder of a frozen worker: bin/order1886-worker.exe on Windows, and on Linux
+    PyInstaller's one-directory bin/order1886-worker/order1886-worker (launcher-go pkgpath.Worker)."""
+    folder = executable.parent
+    return folder.parent.parent if folder.name == "order1886-worker" else folder.parent
+
+
 def main(argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
     if args and args[0] == "--run-backend":
         if getattr(sys, "frozen", False):
-            order1886.INSTALL_ROOT = Path(sys.executable).resolve().parent.parent
+            order1886.INSTALL_ROOT = frozen_installation_root(Path(sys.executable).resolve())
         return order1886.main(args[1:])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-dir", type=Path, required=True)

@@ -24,6 +24,15 @@ func Play() string {
 	return "Play The Order 1886"
 }
 
+// UI is the launcher window on Linux. There, both entry points are a WebKit-free build that
+// starts it, so a system without WebKitGTK can still play (#114). Windows has no separate UI file.
+func UI() string {
+	if runtime.GOOS == "windows" {
+		return ""
+	}
+	return "bin/order1886-launcher"
+}
+
 // Worker is the frozen Python worker the launcher drives over stdio. PyInstaller's one-directory
 // mode nests the binary inside a folder named after it, which is the layout the Linux packager ships.
 func Worker() string {

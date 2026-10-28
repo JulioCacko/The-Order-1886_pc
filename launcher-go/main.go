@@ -2,12 +2,10 @@ package main
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"net/url"
 	"os"
 	"os/exec"
@@ -16,19 +14,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	desktop "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/pkgpath"
 	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/updatehost"
 	"github.com/JulioCacko/The-Order-1886_pc/launcher-go/internal/updates"
 )
-
-//go:embed all:frontend/dist
-var assets embed.FS
 
 type App struct {
 	directDone      chan int
@@ -286,6 +277,7 @@ func main() {
 	state := flag.String("state-dir", "", "Portable title state directory")
 	python := flag.String("python", "python", "Python executable for source development only")
 	direct := flag.Bool("direct-play", strings.HasPrefix(strings.ToLower(filepath.Base(executable)), "play "), "Launch saved configuration")
+	gameDir := flag.String("game-dir", "", "Direct play: validate and save this game folder first")
 	probe := flag.Bool("worker-smoke", false, "Check the bundled worker without starting the game")
 	helper := flag.Bool("update-helper", false, "Internal: run one packaged update action")
 	action := flag.String("update-action", "", "Internal: apply, recover or rollback")
@@ -348,38 +340,73 @@ func main() {
 		return
 	}
 	if *direct {
-		app.directDone = make(chan int, 1)
-		if err = app.connect(); err == nil {
-			_, err = app.Call("session.start", json.RawMessage("{\"mode\":\"play\"}"))
-			if err == nil {
-				select {
-				case code := <-app.directDone:
-					app.worker.Close()
-					<-app.worker.done
-					os.Exit(code)
-				case <-app.worker.done:
-					os.Exit(1)
-				}
-			}
+		code, playErr := app.playDirect(*gameDir)
+		if playErr == nil {
+			os.Exit(code)
 		}
-		app.startupError = "Direct play needs setup: " + err.Error()
+		app.startupError = "Direct play needs setup: " + playErr.Error()
 	}
-	frontend, err := fs.Sub(assets, "frontend/dist")
-	if err != nil {
-		panic(err)
-	}
-	err = wails.Run(&options.App{
-		Title: "The Order: 1886", Width: 1280, Height: 820, MinWidth: 940, MinHeight: 620,
-		BackgroundColour: &options.RGBA{R: 12, G: 14, B: 15, A: 255},
-		AssetServer:      &assetserver.Options{Assets: frontend},
-		Bind:             []interface{}{app}, OnStartup: app.startup, OnBeforeClose: app.beforeClose,
-		OnShutdown: app.shutdown,
-		// Separate portable installations must not reuse a live WebView profile.
-		Windows: &windows.Options{Theme: windows.SystemDefault,
-			WebviewUserDataPath: filepath.Join(app.state, "webview")},
-	})
-	if err != nil {
+	if err = runUI(app); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// playDirect starts the saved configuration and waits for the game to end. A game folder given
+// on the command line (a Steam launch option, for one) is saved first, so a machine without the
+// launcher window can still be set up once; a folder the session then refuses is not kept.
+func (app *App) playDirect(gameDir string) (int, error) {
+	app.directDone = make(chan int, 1)
+	if err := app.connect(); err != nil {
+		return 1, err
+	}
+	previous := ""
+	if gameDir != "" {
+		folder, err := filepath.Abs(gameDir)
+		if err != nil {
+			return 1, err
+		}
+		if previous, err = app.savedGameDir(); err != nil {
+			return 1, err
+		}
+		if err = app.setGameDir(folder); err != nil {
+			return 1, fmt.Errorf("cannot use --game-dir %s: %w", folder, err)
+		}
+	}
+	if _, err := app.Call("session.start", json.RawMessage("{\"mode\":\"play\"}")); err != nil {
+		if gameDir != "" {
+			_ = app.setGameDir(previous)
+		}
+		return 1, err
+	}
+	select {
+	case code := <-app.directDone:
+		app.worker.Close()
+		<-app.worker.done
+		return code, nil
+	case <-app.worker.done:
+		return 1, nil
+	}
+}
+
+func (app *App) savedGameDir() (string, error) {
+	state, err := app.Call("state.get", json.RawMessage("{}"))
+	if err != nil {
+		return "", err
+	}
+	var snapshot struct {
+		Settings struct {
+			GameDir string `json:"game_dir"`
+		} `json:"settings"`
+	}
+	if err = json.Unmarshal([]byte(state), &snapshot); err != nil {
+		return "", fmt.Errorf("cannot read the saved game folder: %w", err)
+	}
+	return snapshot.Settings.GameDir, nil
+}
+
+func (app *App) setGameDir(folder string) error {
+	params, _ := json.Marshal(map[string]any{"values": map[string]string{"game_dir": folder}})
+	_, err := app.Call("settings.set", params)
+	return err
 }
