@@ -85,7 +85,7 @@ How these were taken, with hashes and logs: [preview 9 release verification](doc
 
 ## What's new
 
-**v0.2.4 — 28 October 2026.** The Linux package starts without WebKitGTK 4.1, so it plays on SteamOS and the Steam Deck: both entry points are now a WebKit-free build that opens the launcher window when it can and otherwise plays the saved settings, with `--game-dir` to set the game folder (#114). Linux packages also find their runtime again. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.4)
+**v0.2.4 — 28 October 2026.** The Linux package starts without WebKitGTK 4.1, for example on SteamOS (#114). `Play The Order 1886` starts the game directly with the saved settings, and `--game-dir` sets the game folder. `The Order 1886` opens the launcher window, which still needs WebKitGTK 4.1, and without it reports what is missing and plays the saved settings. Tested in an Arch Linux container on software Vulkan, not on a Steam Deck. Linux packages also find their runtime again. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.4)
 
 **v0.2.3 — 28 October 2026.** 60 FPS, 16:9 and the other experimental options work with update 1.02, and all six editions of the game are accepted (#113). Save import refuses an export without a title ID and imports mixed folders. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.3)
 
@@ -150,7 +150,7 @@ The packages include the launcher, the dedicated runtime and the libraries they 
 
 **Linux x86-64**
 
-Extract the `tar.gz` and run `The Order 1886`. You need a Vulkan GPU driver, a desktop session with GTK 3 and WebKitGTK 4.1, and glibc 2.39 or newer. The package has started on Ubuntu 26.04; gameplay on a Linux GPU driver is not tested yet.
+Extract the `tar.gz` and run `The Order 1886`. You need a Vulkan GPU driver and glibc 2.39 or newer. The launcher window also needs GTK 3 and WebKitGTK 4.1. Without them, `Play The Order 1886 --game-dir /path/to/game` plays directly (SteamOS and Steam: see `QUICKSTART.txt` in the package). The package has started on Ubuntu 26.04; gameplay on a Linux GPU driver is not tested yet.
 
 Original game files stay unchanged. Prepared images, settings, caches, logs, saves and backups live under the installation's `user/order1886` folder.
 

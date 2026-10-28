@@ -20,7 +20,7 @@ Proyecto comunitario para ejecutar el binario original de **The Order: 1886**, a
 
 ## Descargar
 
-**Descarga publicada: preview 9, del 21 de octubre.** Paquetes para Windows y Linux x86-64, ambos compilados desde la revisión `b19c604`. El juego corre a unos 53 FPS en el patio nocturno con una RTX 3070. Conserva la carpeta `user` al actualizar.
+**Descarga publicada: v0.2.4, del 28 de octubre.** Paquetes para Windows y Linux x86-64, ambos compilados desde la revisión `a3c035c`. En Linux, `Play The Order 1886` ya arranca sin WebKitGTK 4.1 (por ejemplo, en SteamOS); la ventana del launcher todavía lo necesita. Conserva la carpeta `user` al actualizar.
 
 **[Descargar el paquete para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-go-windows.zip)** · **[Descargar el paquete para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-linux-x86_64.tar.gz)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.4) · [Guía de instalación](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/QUICKSTART.txt)
 
