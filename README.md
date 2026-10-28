@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.2/order1886-go-windows.zip"><b>⬇ Windows package</b></a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.2/order1886-linux-x86_64.tar.gz"><b>⬇ Linux package</b></a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.2">Release notes</a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-go-windows.zip"><b>⬇ Windows package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-linux-x86_64.tar.gz"><b>⬇ Linux package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.3">Release notes</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
@@ -85,6 +85,8 @@ How these were taken, with hashes and logs: [preview 9 release verification](doc
 
 ## What's new
 
+**v0.2.3 — 28 October 2026.** 60 FPS, 16:9 and the other experimental options work with update 1.02, and all six editions of the game are accepted (#113). Save import refuses an export without a title ID and imports mixed folders. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.3)
+
 **v0.2.2 — 24 October 2026 (launcher hotfix).** Import saves… accepts decrypted PS4 save exports (Apollo Save Tool folders with `sce_sys\param.sfo`). [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.2)
 
 **v0.2.1 — 24 October 2026 (launcher hotfix).** Game & Content → Saves shows the saves folder and imports saves from another installation, a backup or one save; options that do not work yet are hidden. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.1)
@@ -127,13 +129,13 @@ See [current status](docs/STATUS.md) and the [4K/60 acceptance plan](docs/order1
 
 ## Download and start
 
-**Published download: v0.2.2 (October 24).** Windows and Linux x86-64 packages. Keep your `user` folder when upgrading.
+**Published download: v0.2.3 (October 28).** Windows and Linux x86-64 packages. Keep your `user` folder when upgrading.
 
-**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.2/order1886-go-windows.zip)** ·
-**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.2/order1886-linux-x86_64.tar.gz)** ·
-[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.2/QUICKSTART.txt) ·
-[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.2/order1886-go-windows.zip.sha256) ·
-[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.2/order1886-linux-x86_64.tar.gz.sha256)
+**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-go-windows.zip)** ·
+**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-linux-x86_64.tar.gz)** ·
+[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/QUICKSTART.txt) ·
+[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-go-windows.zip.sha256) ·
+[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-linux-x86_64.tar.gz.sha256)
 
 The packages include the launcher, the dedicated runtime and the libraries they need. No Python, MSYS2 or compiler is required. GitHub's "Source code" archives are for developers.
 
