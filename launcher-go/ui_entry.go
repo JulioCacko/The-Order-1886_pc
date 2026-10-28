@@ -88,10 +88,15 @@ func report(app *App, message string) {
 			file.Close()
 		}
 	}
+	// The dialog never holds up the game, and its text is shown literally (a path may hold & or <).
+	var command *exec.Cmd
 	if zenity, err := exec.LookPath("zenity"); err == nil {
-		_ = exec.Command(zenity, "--warning", "--no-wrap", "--timeout=60", "--title=The Order: 1886",
-			"--text="+message).Run()
+		command = exec.Command(zenity, "--warning", "--no-wrap", "--no-markup", "--timeout=60",
+			"--title=The Order: 1886", "--text="+message)
 	} else if notify, err := exec.LookPath("notify-send"); err == nil {
-		_ = exec.Command(notify, "The Order: 1886", message).Run()
+		command = exec.Command(notify, "The Order: 1886", message)
+	}
+	if command != nil && command.Start() == nil {
+		go func() { _ = command.Wait() }()
 	}
 }

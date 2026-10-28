@@ -353,24 +353,30 @@ func main() {
 }
 
 // playDirect starts the saved configuration and waits for the game to end. A game folder given
-// on the command line (a Steam launch option, for one) is validated and saved first, so a machine
-// without the launcher window can still be set up once.
+// on the command line (a Steam launch option, for one) is saved first, so a machine without the
+// launcher window can still be set up once; a folder the session then refuses is not kept.
 func (app *App) playDirect(gameDir string) (int, error) {
 	app.directDone = make(chan int, 1)
 	if err := app.connect(); err != nil {
 		return 1, err
 	}
+	previous := ""
 	if gameDir != "" {
 		folder, err := filepath.Abs(gameDir)
 		if err != nil {
 			return 1, err
 		}
-		params, _ := json.Marshal(map[string]any{"values": map[string]string{"game_dir": folder}})
-		if _, err = app.Call("settings.set", params); err != nil {
+		if previous, err = app.savedGameDir(); err != nil {
+			return 1, err
+		}
+		if err = app.setGameDir(folder); err != nil {
 			return 1, fmt.Errorf("cannot use --game-dir %s: %w", folder, err)
 		}
 	}
 	if _, err := app.Call("session.start", json.RawMessage("{\"mode\":\"play\"}")); err != nil {
+		if gameDir != "" {
+			_ = app.setGameDir(previous)
+		}
 		return 1, err
 	}
 	select {
@@ -381,4 +387,26 @@ func (app *App) playDirect(gameDir string) (int, error) {
 	case <-app.worker.done:
 		return 1, nil
 	}
+}
+
+func (app *App) savedGameDir() (string, error) {
+	state, err := app.Call("state.get", json.RawMessage("{}"))
+	if err != nil {
+		return "", err
+	}
+	var snapshot struct {
+		Settings struct {
+			GameDir string `json:"game_dir"`
+		} `json:"settings"`
+	}
+	if err = json.Unmarshal([]byte(state), &snapshot); err != nil {
+		return "", fmt.Errorf("cannot read the saved game folder: %w", err)
+	}
+	return snapshot.Settings.GameDir, nil
+}
+
+func (app *App) setGameDir(folder string) error {
+	params, _ := json.Marshal(map[string]any{"values": map[string]string{"game_dir": folder}})
+	_, err := app.Call("settings.set", params)
+	return err
 }

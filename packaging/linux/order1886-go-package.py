@@ -127,7 +127,7 @@ def main() -> None:
     elf_or_fail(launcher, 'Go launcher')
     entry = args.entry.resolve()
     elf_or_fail(entry, 'WebKit-free entry')
-    linked = subprocess.run(['ldd', str(entry)], capture_output=True, text=True, check=False).stdout
+    linked = subprocess.run(['ldd', str(entry)], capture_output=True, text=True, check=False, timeout=60).stdout
     if 'webkit' in linked.lower() or 'gtk' in linked.lower():
         fail(f'The entry build links the launcher window libraries; build it with -tags noui:\n{linked}')
     elf_or_fail(runtime, 'Runtime')
