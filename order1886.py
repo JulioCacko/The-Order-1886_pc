@@ -90,9 +90,8 @@ def default_game_dir():
         if (base / relative / 'eboot.bin').is_file():
             return base / relative
     # Without the launcher window (Linux without WebKitGTK, #114) nothing picks a folder, so a
-    # game folder of any edition and any name in or beside the installation is used. The frozen
-    # Linux worker sits in bin/order1886-worker/, three levels below the folder beside the package.
-    for base in (INSTALL_ROOT, *INSTALL_ROOT.parents[:3]):
+    # game folder of any edition and any name in or beside the installation is used.
+    for base in bases[:2]:
         if base == base.parent:  # never scan a drive or filesystem root
             break
         try:
