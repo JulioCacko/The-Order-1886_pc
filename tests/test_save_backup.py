@@ -192,6 +192,25 @@ class SaveImportTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'not The Order'):
             save_backup.import_saves(self.user, export, now=self.clock)
 
+    def test_rejects_an_export_without_a_title_id(self):
+        export = self.other / 'UNNAMED_SAVE'
+        write(export / 'data.bin', 'x')
+        self.sfo(export / 'sce_sys' / 'param.sfo', {'SAVEDATA_DIRECTORY': 'Playthrough00'})
+        with self.assertRaisesRegex(ValueError, 'an unnamed title, not The Order'):
+            save_backup.import_saves(self.user, export, now=self.clock)
+        self.assertFalse((self.title / 'Playthrough00').exists())
+
+    def test_imports_runtime_saves_and_exports_from_one_folder(self):
+        source = self.other / 'CUSA00035'
+        self.save(source, 'Playthrough00', 'runtime')
+        export = source / '10000001_CUSA00035_Playthrough01'
+        write(export / 'SYSTEM.DAT', 'exported')
+        self.sfo(export / 'sce_sys' / 'param.sfo', {'SAVEDATA_DIRECTORY': 'Playthrough01', 'TITLE_ID': 'CUSA00035'})
+        names, _ = save_backup.import_saves(self.user, source, now=self.clock)
+        self.assertEqual(sorted(names), ['Playthrough00', 'Playthrough01'])
+        self.assertEqual((self.title / 'Playthrough00' / 'SYSTEM.DAT').read_text(), 'runtime')
+        self.assertEqual((self.title / 'Playthrough01' / 'SYSTEM.DAT').read_text(), 'exported')
+
     def test_rejects_encrypted_ps4_saves(self):
         source = self.other / 'CUSA00035'
         write(source / 'Playthrough00', 'pfs image')

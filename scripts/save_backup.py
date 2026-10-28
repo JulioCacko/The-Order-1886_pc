@@ -134,8 +134,9 @@ def _exported_save(folder):
     if not sfo_path.is_file():
         return None
     sfo = read_sfo(sfo_path)
-    if sfo.get('TITLE_ID', SAVE_TITLE) != SAVE_TITLE:
-        raise ValueError(f'{folder.name} is a save of {sfo["TITLE_ID"]}, not The Order: 1886 ({SAVE_TITLE}).')
+    if sfo.get('TITLE_ID') != SAVE_TITLE:
+        raise ValueError(f'{folder.name} is a save of {sfo.get("TITLE_ID") or "an unnamed title"}, '
+                         f'not The Order: 1886 ({SAVE_TITLE}).')
     name = sfo.get('SAVEDATA_DIRECTORY') or folder.name.rsplit('_' + SAVE_TITLE + '_', 1)[-1]
     if not _valid_name(name):
         raise ValueError(f'{folder.name} names an invalid save directory: {name!r}')
@@ -167,7 +168,8 @@ def find_saves(source):
     for folder in candidates:
         if folder.is_dir():
             _reject_encrypted(folder)
-            saves = _runtime_saves(folder) or [s for s in map(_exported_save, sorted(
+            # A folder may hold both layouts: runtime saves and decrypted exports.
+            saves = _runtime_saves(folder) + [s for s in map(_exported_save, sorted(
                 d for d in folder.iterdir() if d.is_dir())) if s]
             if saves:
                 return saves
