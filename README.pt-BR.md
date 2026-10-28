@@ -20,9 +20,9 @@ Projeto comunitário para executar o binário original de **The Order: 1886**, a
 
 ## Baixar
 
-**Download publicado: preview 9, de 21 de outubro.** Pacotes para Windows e Linux x86-64, ambos compilados a partir da revisão `b19c604`. A jogabilidade roda a cerca de 53 FPS no pátio noturno numa RTX 3070. Preserve a pasta `user` ao atualizar.
+**Download publicado: v0.2.4, de 28 de outubro.** Pacotes para Windows e Linux x86-64, ambos compilados a partir da revisão `a3c035c`. No Linux, `Play The Order 1886` agora inicia sem o WebKitGTK 4.1 (por exemplo, no SteamOS); a janela do launcher ainda precisa dele. Preserve a pasta `user` ao atualizar.
 
-**[Baixar o pacote para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-go-windows.zip)** · **[Baixar o pacote para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-linux-x86_64.tar.gz)** · [Notas da versão](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.3) · [Manual de instalação](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/QUICKSTART.txt)
+**[Baixar o pacote para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-go-windows.zip)** · **[Baixar o pacote para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-linux-x86_64.tar.gz)** · [Notas da versão](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.4) · [Manual de instalação](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/QUICKSTART.txt)
 
 Extraia o ZIP inteiro e leia **QUICKSTART.txt**, incluído no pacote. Não precisa de Python, MSYS2 ou compilador. Baixe `order1886-go-windows.zip`; os arquivos “Source code” são para desenvolvedores. O jogo não está incluído: use seu próprio dump (qualquer uma das seis edições). Esta prévia mantém as limitações de compatibilidade descritas acima.
 
@@ -62,7 +62,7 @@ Use sua própria cópia extraída de qualquer uma das seis edições, contendo `
 3. Comece com **30 FPS**; selecione o modo de exibição e FSR 1 ou Linear.
 4. Use **Play**, **Advanced → View session log** e **Stop session** para iniciar, acompanhar ou encerrar a sessão.
 
-No código-fonte, execute `Launch The Order 1886.cmd` ou o launcher em Go compilado após seguir as [instruções de build para Windows](docs/order1886-build.md). Usuários do pacote não precisam de Python ou MSYS2. **Linux x86-64 volta a ser compilado** como `tar.gz` portátil com o launcher em Go, o runtime nativo e o worker em Python. Não está qualificado: nada disso executou o jogo, e o teste automático cobre o pacote, não o jogo. Requer um driver com Vulkan e um desktop com GTK 3 e WebKitGTK 4.1. Veja o [guia de build](docs/order1886-build.md).
+No código-fonte, execute `Launch The Order 1886.cmd` ou o launcher em Go compilado após seguir as [instruções de build para Windows](docs/order1886-build.md). Usuários do pacote não precisam de Python ou MSYS2. **Linux x86-64 volta a ser compilado** como `tar.gz` portátil com o launcher em Go, o runtime nativo e o worker em Python. Não está qualificado: nada disso executou o jogo, e o teste automático cobre o pacote, não o jogo. Requer um driver com Vulkan. A janela do launcher também requer GTK 3 e WebKitGTK 4.1; sem eles, `Play The Order 1886 --game-dir /caminho/do/jogo` inicia o jogo diretamente (para SteamOS e Steam, veja `QUICKSTART.txt`). Veja o [guia de build](docs/order1886-build.md).
 
 ## Estado e desempenho
 

@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-go-windows.zip"><b>⬇ Windows package</b></a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-linux-x86_64.tar.gz"><b>⬇ Linux package</b></a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.3">Release notes</a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-go-windows.zip"><b>⬇ Windows package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-linux-x86_64.tar.gz"><b>⬇ Linux package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.4">Release notes</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
@@ -85,6 +85,8 @@ How these were taken, with hashes and logs: [preview 9 release verification](doc
 
 ## What's new
 
+**v0.2.4 — 28 October 2026.** The Linux package starts without WebKitGTK 4.1, for example on SteamOS (#114). `Play The Order 1886` starts the game directly with the saved settings, and `--game-dir` sets the game folder. `The Order 1886` opens the launcher window, which still needs WebKitGTK 4.1, and without it reports what is missing and plays the saved settings. Tested in an Arch Linux container on software Vulkan, not on a Steam Deck. Linux packages also find their runtime again. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.4)
+
 **v0.2.3 — 28 October 2026.** 60 FPS, 16:9 and the other experimental options work with update 1.02, and all six editions of the game are accepted (#113). Save import refuses an export without a title ID and imports mixed folders. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.3)
 
 **v0.2.2 — 24 October 2026 (launcher hotfix).** Import saves… accepts decrypted PS4 save exports (Apollo Save Tool folders with `sce_sys\param.sfo`). [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.2)
@@ -129,13 +131,13 @@ See [current status](docs/STATUS.md) and the [4K/60 acceptance plan](docs/order1
 
 ## Download and start
 
-**Published download: v0.2.3 (October 28).** Windows and Linux x86-64 packages. Keep your `user` folder when upgrading.
+**Published download: v0.2.4 (October 28).** Windows and Linux x86-64 packages. Keep your `user` folder when upgrading.
 
-**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-go-windows.zip)** ·
-**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-linux-x86_64.tar.gz)** ·
-[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/QUICKSTART.txt) ·
-[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-go-windows.zip.sha256) ·
-[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.3/order1886-linux-x86_64.tar.gz.sha256)
+**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-go-windows.zip)** ·
+**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-linux-x86_64.tar.gz)** ·
+[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/QUICKSTART.txt) ·
+[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-go-windows.zip.sha256) ·
+[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-linux-x86_64.tar.gz.sha256)
 
 The packages include the launcher, the dedicated runtime and the libraries they need. No Python, MSYS2 or compiler is required. GitHub's "Source code" archives are for developers.
 
@@ -148,7 +150,7 @@ The packages include the launcher, the dedicated runtime and the libraries they 
 
 **Linux x86-64**
 
-Extract the `tar.gz` and run `The Order 1886`. You need a Vulkan GPU driver, a desktop session with GTK 3 and WebKitGTK 4.1, and glibc 2.39 or newer. The package has started on Ubuntu 26.04; gameplay on a Linux GPU driver is not tested yet.
+Extract the `tar.gz` and run `The Order 1886`. You need a Vulkan GPU driver and glibc 2.39 or newer. The launcher window also needs GTK 3 and WebKitGTK 4.1. Without them, `Play The Order 1886 --game-dir /path/to/game` plays directly (SteamOS and Steam: see `QUICKSTART.txt` in the package). The package has started on Ubuntu 26.04; gameplay on a Linux GPU driver is not tested yet.
 
 Original game files stay unchanged. Prepared images, settings, caches, logs, saves and backups live under the installation's `user/order1886` folder.
 
