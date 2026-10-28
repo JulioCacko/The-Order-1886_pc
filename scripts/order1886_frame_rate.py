@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Hash-bound Order timing recipe for derived preparation output only.
+"""Byte-checked Order timing recipes for derived preparation output only.
 
-The 60 FPS candidate is derived from illusion's published Order 01.02 patch and verified
-against this exact local executable's instruction and timing consumers. Its
-metadata is 01.00/01.03; it is not presented as a version match to that patch.
+The 60 FPS recipe is illusion's published Order 01.02 patch. Every edition in
+order1886_editions runs the same 01.02 code, so a recipe binds to the instruction bytes at
+its sites, not to one executable's hash: the eboot.bin first verified here (SELF SHA256
+a8ce5fe1..., the CUSA00076 01.02 executable) is one of several builds with that code (#113).
 
 The 90 FPS and unlocked recipes come from this executable alone
 (docs/verification/2026-10-21-graphics-step8-frame-rate.md). The engine clock
@@ -23,13 +24,9 @@ import json
 from pathlib import Path
 import struct
 
+import order1886_editions as editions
 import prepare
 
-EXPECTED_SELF_SHA256 = 'a8ce5fe151573dca0b3951e1edfd608b3e027b53cc30761f7805e44c9d9ddec0'
-EXPECTED_ELF_SHA256 = '65cd8eaf3a724890d63bde7da084b05a8f63e5c36982d8580e71b51fe3557190'
-EXPECTED_METADATA = {'TITLE_ID': 'CUSA00076', 'APP_VER': '01.00', 'VERSION': '01.03'}
-EXPECTED_IMAGE_SIZE = 24512608
-EXPECTED_ENTRY = 0xa0
 INSTRUCTION_RVA = 0x4507be
 TARGET_GLOBAL_RVA = 0x15c0d54
 EXPECTED_INSTRUCTION = bytes.fromhex('c7058c05170102000000')
@@ -88,8 +85,7 @@ def recipe(frame_rate):
     if rate in (90, UNLOCKED):
         return {'id': f'order1886-a8ce-engine-{rate or "unlocked"}-v1', 'engine_fps': rate,
                 'host_fps_limit': rate, 'vblank_hz': 60, 'experimental': True,
-                'source_self_sha256': EXPECTED_SELF_SHA256, 'source_elf_sha256': EXPECTED_ELF_SHA256,
-                'metadata': dict(EXPECTED_METADATA), 'target_global_rva': hex(TARGET_GLOBAL_RVA),
+                'title_ids': list(editions.TITLE_IDS), 'target_global_rva': hex(TARGET_GLOBAL_RVA),
                 'edits': [{'rva': hex(rva), 'expected': old.hex(), 'replacement': new.hex()}
                           for rva, old, new in edits(rate)],
                 'author': 'this project; reverse-engineered from the verified executable',
@@ -98,11 +94,10 @@ def recipe(frame_rate):
               'engine_fps': rate, 'host_fps_limit': rate, 'vblank_hz': 60,
               'experimental': rate == 60}
     if rate == 60:
-        result.update(source_self_sha256=EXPECTED_SELF_SHA256, source_elf_sha256=EXPECTED_ELF_SHA256,
-                      metadata=dict(EXPECTED_METADATA), instruction_rva=hex(INSTRUCTION_RVA),
+        result.update(title_ids=list(editions.TITLE_IDS), instruction_rva=hex(INSTRUCTION_RVA),
                       expected_instruction=EXPECTED_INSTRUCTION.hex(),
                       replacement_instruction=(EXPECTED_INSTRUCTION[:6] + b'\x01\0\0\0').hex(),
-                      target_global_rva=hex(TARGET_GLOBAL_RVA), author='illusion; current-hash verification by this project',
+                      target_global_rva=hex(TARGET_GLOBAL_RVA), author='illusion; instruction verification by this project',
                       public_patch_url=PUBLIC_PATCH_URL, public_patch_app_ver='01.02',
                       public_patch_file='patches/TheOrder1886-Orbis.xml',
                       public_patch_xml_sha256_lf=PUBLIC_PATCH_XML_SHA256,
@@ -117,23 +112,57 @@ def recipe_sha256(frame_rate):
                                      separators=(',', ':')).encode('utf-8')).hexdigest()
 
 
-def verify_source_identity(eboot, metadata, *, feature, recovery):
-    """Exact identity shared by independent derived patches, with accurate recovery guidance."""
+def image_bytes(elf, ph, rva, size):
+    """The bytes the loaded image holds at rva, read from the decoded ELF; None if unmapped."""
+    for p in ph:
+        if p['type'] in (1, 0x61000010) and p['vaddr'] <= rva and rva + size <= p['vaddr'] + p['filesz']:
+            start = p['offset'] + rva - p['vaddr']
+            return bytes(elf[start:start + size])
+    return None
+
+
+def verify_source_identity(eboot, metadata, sites, *, feature, recovery):
+    """An accepted edition whose executable holds the expected bytes at every recipe site.
+
+    No hash or APP_VER is required: the bytes are what the edits depend on, and a build whose
+    code differs at any site is refused before preparation."""
+    title_id = metadata.get('TITLE_ID')
+    if not editions.supported(title_id):
+        raise ValueError(f'{feature} supports {", ".join(editions.TITLE_IDS)}; '
+                         f'the selected game is {title_id or "unknown"}. {recovery}')
     source = Path(eboot).resolve()
-    data = source.read_bytes()
-    actual_self = hashlib.sha256(data).hexdigest()
-    if actual_self != EXPECTED_SELF_SHA256:
-        raise ValueError(f'{feature} unsupported SELF SHA256 {actual_self}; '
-                         f'expected {EXPECTED_SELF_SHA256}. {recovery}')
-    elf = prepare.parse_self(data)[0]
-    actual_elf = hashlib.sha256(elf).hexdigest()
-    if actual_elf != EXPECTED_ELF_SHA256:
-        raise ValueError(f'{feature} reconstructed ELF SHA256 mismatch: {actual_elf}. {recovery}')
-    for name, expected in EXPECTED_METADATA.items():
-        if metadata.get(name) != expected:
-            raise ValueError(f'{feature} metadata mismatch for {name}: '
-                             f'expected {expected}, found {metadata.get(name)}. {recovery}')
-    return dict(source_verified=True, source_eboot=str(source))
+    data = prepare.read_self(source)
+    elf, _, ph = prepare.parse_self(data)[:3]
+    for rva, expected in sites:
+        found = image_bytes(elf, ph, rva, len(expected))
+        if found != expected:
+            raise ValueError(f'{feature} does not match this executable at RVA {rva:#x}: expected '
+                             f'{expected.hex()}, found {found.hex() if found else "unmapped"} '
+                             f'(APP_VER {metadata.get("APP_VER", "unknown")}). {recovery}')
+    return dict(source_verified=True, source_eboot=str(source), title_id=title_id,
+                source_self_sha256=hashlib.sha256(data).hexdigest(),
+                source_elf_sha256=hashlib.sha256(elf).hexdigest())
+
+
+def source_sites(frame_rate):
+    """(rva, expected) of every instruction a non-native rate edits."""
+    if frame_rate == 60:
+        return [(INSTRUCTION_RVA, EXPECTED_INSTRUCTION)]
+    return [(rva, expected) for rva, expected, _ in edits(frame_rate)]
+
+
+def prepared_image(path):
+    """(bytes, image offset, image size) of a derived PS4BOOT2 container, bounds-checked."""
+    data = bytearray(Path(path).read_bytes())
+    if len(data) < HEADER.size:
+        raise ValueError('Truncated PS4BOOT2 header')
+    magic, size, entry, ns, nr, ni, flags = HEADER.unpack_from(data)
+    if magic != b'PS4BOOT2':
+        raise ValueError('Not a derived PS4BOOT2 image')
+    start = HEADER.size + ns * 24 + ni * 128 + nr * 32
+    if size <= 0 or start + size != len(data):
+        raise ValueError('PS4BOOT2 image bounds mismatch')
+    return data, start, size
 
 
 def validate_source(eboot, frame_rate, metadata):
@@ -142,7 +171,7 @@ def validate_source(eboot, frame_rate, metadata):
                'source_verified': False, 'gameplay_verified': False}
     if rate == 30:
         return profile
-    profile.update(verify_source_identity(eboot, metadata, feature=FEATURES[rate],
+    profile.update(verify_source_identity(eboot, metadata, source_sites(rate), feature=FEATURES[rate],
                                          recovery='Select 30 FPS to use the native baseline.'))
     return profile
 
@@ -155,17 +184,11 @@ def apply_prepared(boot, profile):
     path = Path(boot).resolve()
     if profile.get('source_eboot') and path == Path(profile['source_eboot']).resolve():
         raise ValueError('Timing patches may only modify a derived prepared image')
-    data = bytearray(path.read_bytes())
-    if len(data) < HEADER.size:
-        raise ValueError('Truncated PS4BOOT2 header')
-    magic, size, entry, ns, nr, ni, flags = HEADER.unpack_from(data)
-    if magic != b'PS4BOOT2' or size != EXPECTED_IMAGE_SIZE or entry != EXPECTED_ENTRY:
-        raise ValueError('Unexpected PS4BOOT2 header for the verified timing recipe')
-    image_offset = HEADER.size + ns * 24 + ni * 128 + nr * 32
-    if image_offset + size != len(data) or INSTRUCTION_RVA + len(EXPECTED_INSTRUCTION) > size:
-        raise ValueError('PS4BOOT2 image bounds mismatch')
+    data, image_offset, size = prepared_image(path)
     if rate != 60:
-        return apply_edits(path, data, image_offset, profile)
+        return apply_edits(path, data, image_offset, size, profile)
+    if INSTRUCTION_RVA + len(EXPECTED_INSTRUCTION) > size:
+        raise ValueError('PS4BOOT2 image bounds mismatch')
     offset = image_offset + INSTRUCTION_RVA
     instruction = bytes(data[offset:offset + len(EXPECTED_INSTRUCTION)])
     if instruction != EXPECTED_INSTRUCTION:
@@ -173,9 +196,7 @@ def apply_prepared(boot, profile):
     target = INSTRUCTION_RVA + len(instruction) + struct.unpack_from('<i', instruction, 2)[0]
     if target != TARGET_GLOBAL_RVA or target + 4 > size:
         raise ValueError('Experimental 60 FPS instruction RIP target mismatch')
-    if (not profile.get('source_verified') or profile.get('source_self_sha256') != EXPECTED_SELF_SHA256
-            or profile.get('source_elf_sha256') != EXPECTED_ELF_SHA256
-            or profile.get('recipe_sha256') != recipe_sha256(60)):
+    if not profile.get('source_verified') or profile.get('recipe_sha256') != recipe_sha256(60):
         raise ValueError('Experimental 60 FPS source/recipe verification is missing or stale')
     before = hashlib.sha256(data).hexdigest()
     data[offset + 6] = 1  # Only mov dword [RIP+disp32], 2 -> 1; never force the live global.
@@ -187,17 +208,15 @@ def apply_prepared(boot, profile):
             'boot_sha256_before': before, 'boot_sha256_after': after}
 
 
-def apply_edits(path, data, image_offset, profile):
+def apply_edits(path, data, image_offset, size, profile):
     """Every site of the 90 or unlocked recipe must match before any byte changes."""
     rate = profile['engine_fps']
     feature = FEATURES[rate]
-    if (not profile.get('source_verified') or profile.get('source_self_sha256') != EXPECTED_SELF_SHA256
-            or profile.get('source_elf_sha256') != EXPECTED_ELF_SHA256
-            or profile.get('recipe_sha256') != recipe_sha256(rate)):
+    if not profile.get('source_verified') or profile.get('recipe_sha256') != recipe_sha256(rate):
         raise ValueError(f'{feature} source/recipe verification is missing or stale')
     sites = edits(rate)
     for rva, expected, _ in sites:
-        if bytes(data[image_offset + rva:image_offset + rva + len(expected)]) != expected:
+        if rva + len(expected) > size or bytes(data[image_offset + rva:image_offset + rva + len(expected)]) != expected:
             raise ValueError(f'{feature} instruction signature mismatch at RVA {rva:#x}')
     before = hashlib.sha256(data).hexdigest()
     for rva, _, replacement in sites:

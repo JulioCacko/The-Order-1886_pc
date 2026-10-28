@@ -163,7 +163,7 @@ foreach ($name in @('prepare.py','link_modules.py','link_libc.py','save_backup.p
         'order1886_frame_trace.py','order1886_perf_report.py',
         # order1886.py imports this by name from the shipped scripts/ directory; without it
         # every packaged Play fails on the import, before any game file is read.
-        'order1886_patches.py')) {
+        'order1886_patches.py','order1886_editions.py')) {
     Copy-Item -LiteralPath (Join-Path "$projectRoot/scripts" $name) -Destination $scriptData
 }
 & $buildPython -m PyInstaller --noconfirm --clean --console --onedir --log-level WARN --name order1886-worker --paths $projectRoot --add-data "$scriptData;scripts" --distpath "$stage/worker-dist" --workpath "$stage/worker-build" --specpath $stage "$projectRoot/launcher/order1886_worker.py"

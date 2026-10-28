@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Version-checked Order patch recipes, applied only to a derived image copy (#15).
 
-A recipe names the exact guest build it was verified against (title id, APP_VER, VERSION),
-the SHA256 of the selected game's executable and of the decoded image its offsets address,
-and the byte edits it makes. Nothing is written until every guard passes, a patch always
-lands in a new file, and the source image is never modified in place.
+A recipe names the editions it applies to (order1886_editions: every 01.02 release shares
+the same code) and the byte edits it makes, each with the original bytes it expects. Nothing
+is written until the edition and every expected byte match, a patch always lands in a new
+file, and the source image is never modified in place.
 
 This module deliberately carries only recipes that were verified against a real
 executable, so a Cheats page can list what exists instead of promising what does not.
@@ -22,12 +22,12 @@ if str(Path(__file__).resolve().parent) not in sys.path:  # also importable as s
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 import prepare
 import order1886_display as display
+import order1886_editions as editions
 import order1886_frame_rate as timing
 
 # The offsets below address the decoded executable image, which is what the runtime loads:
 # the guest executable itself is a SELF container whose image is extracted before use.
 IMAGE_KIND = 'decoded-executable'
-TARGET_FIELDS = ('TITLE_ID', 'APP_VER', 'VERSION')
 TIMING = timing.recipe(60)
 ASPECT = display.recipe('16:9')
 
@@ -35,16 +35,12 @@ RECIPES = (
     {
         'id': TIMING['id'],
         'title': '60 FPS unlock',
-        'description': ('Engine timing unlock verified against the CUSA00076 executable. '
-                        'Experimental: the published patch warns of QTE softlocks in Chapters 6 '
-                        'and 9, so gameplay remains unverified.'),
-        'title_id': timing.EXPECTED_METADATA['TITLE_ID'],
-        'app_ver': timing.EXPECTED_METADATA['APP_VER'],
-        'version': timing.EXPECTED_METADATA['VERSION'],
+        'description': ('Engine timing unlock from the published 01.02 patch, checked against '
+                        'the selected executable\'s instructions. Experimental: the patch warns of '
+                        'QTE softlocks in Chapters 6 and 9, so gameplay remains unverified.'),
+        'title_ids': editions.TITLE_IDS,
         'guest_executable': 'eboot.bin',
-        'guest_sha256': timing.EXPECTED_SELF_SHA256,
         'image': IMAGE_KIND,
-        'image_sha256': timing.EXPECTED_ELF_SHA256,
         'edits': ({'offset': timing.INSTRUCTION_RVA,
                    'expected': timing.EXPECTED_INSTRUCTION,
                    'replacement': bytes.fromhex(TIMING['replacement_instruction'])},),
@@ -54,16 +50,13 @@ RECIPES = (
     {
         'id': ASPECT['id'],
         'title': '16:9 full-screen framing',
-        'description': ('Full-screen 16:9 aspect ratio verified against the CUSA00076 executable. '
-                        'Experimental: the source patch warns of visual issues at native 1080p, '
-                        'so image quality and gameplay remain unverified.'),
-        'title_id': timing.EXPECTED_METADATA['TITLE_ID'],
-        'app_ver': timing.EXPECTED_METADATA['APP_VER'],
-        'version': timing.EXPECTED_METADATA['VERSION'],
+        'description': ('Full-screen 16:9 aspect ratio from the published 01.02 patch, checked '
+                        'against the selected executable\'s instructions. Experimental: the patch '
+                        'warns of visual issues at native 1080p, so image quality and gameplay '
+                        'remain unverified.'),
+        'title_ids': editions.TITLE_IDS,
         'guest_executable': 'eboot.bin',
-        'guest_sha256': timing.EXPECTED_SELF_SHA256,
         'image': IMAGE_KIND,
-        'image_sha256': timing.EXPECTED_ELF_SHA256,
         'edits': ({'offset': display.INSTRUCTION_RVA,
                    'expected': display.EXPECTED_INSTRUCTION,
                    'replacement': display.REPLACEMENT_INSTRUCTION},),
@@ -82,15 +75,14 @@ def recipe(identifier):
 
 
 def target(recipe):
-    """The guest build metadata a recipe applies to."""
-    return dict(zip(TARGET_FIELDS, (recipe['title_id'], recipe['app_ver'], recipe['version'])))
+    """The editions a recipe applies to."""
+    return {'TITLE_IDS': list(recipe['title_ids'])}
 
 
 def recipe_sha256(recipe):
     """Identity of the edits themselves, independent of description or dict order."""
     canonical = {'id': recipe['id'], 'guest_executable': recipe['guest_executable'],
-                 'guest_sha256': recipe['guest_sha256'], 'image': recipe['image'],
-                 'image_sha256': recipe['image_sha256'], 'target': target(recipe),
+                 'image': recipe['image'], 'target': target(recipe),
                  'edits': [{'offset': edit['offset'], 'expected': edit['expected'].hex(),
                             'replacement': edit['replacement'].hex()} for edit in recipe['edits']]}
     return hashlib.sha256(json.dumps(canonical, sort_keys=True,
@@ -98,15 +90,13 @@ def recipe_sha256(recipe):
 
 
 def identity_error(recipe, metadata):
-    """None when the selected game reports the build this recipe was verified against."""
+    """None when the selected game is an edition this recipe applies to."""
     if not isinstance(metadata, dict):
-        return f"{recipe['title']} needs the guest build metadata (TITLE_ID, APP_VER, VERSION)."
-    expected = target(recipe)
-    for name in TARGET_FIELDS:
-        found = metadata.get(name)
-        if found != expected[name]:
-            return (f"{recipe['title']} applies to {name} {expected[name]}; "
-                    f"the selected game reports {found if found else 'nothing'}.")
+        return f"{recipe['title']} needs the guest build metadata (TITLE_ID)."
+    found = metadata.get('TITLE_ID')
+    if found not in recipe['title_ids']:
+        return (f"{recipe['title']} applies to {', '.join(recipe['title_ids'])}; "
+                f"the selected game reports {found if found else 'nothing'}.")
     return None
 
 
@@ -119,10 +109,6 @@ def validate_guest(recipe, guest_bytes, metadata):
         return f"{recipe['title']} needs the {recipe['guest_executable']} bytes, not text."
     if not len(guest_bytes):
         return f"{recipe['title']} received an empty {recipe['guest_executable']}."
-    digest = hashlib.sha256(guest_bytes).hexdigest()
-    if digest != recipe['guest_sha256']:
-        return (f"{recipe['title']} was verified against {recipe['guest_executable']} SHA256 "
-                f"{recipe['guest_sha256']}; the selected game's file is {digest}.")
     return None
 
 
@@ -130,8 +116,7 @@ def validate_recipe(recipe, image_bytes, metadata):
     """None when this recipe may be applied to these bytes, or the precise reason it may not.
 
     The bytes are the guest image the recipe's offsets address. Validation only reads them:
-    it checks the build identity, the verified image hash, the offset bounds and the expected
-    bytes at every edit.
+    it checks the edition, the offset bounds and the expected bytes at every edit.
     """
     error = identity_error(recipe, metadata)
     if error:
@@ -141,10 +126,6 @@ def validate_recipe(recipe, image_bytes, metadata):
     size = len(image_bytes)
     if not size:
         return f"{recipe['title']} received an empty guest image."
-    digest = hashlib.sha256(image_bytes).hexdigest()
-    if digest != recipe['image_sha256']:
-        return (f"{recipe['title']} was verified against guest image SHA256 "
-                f"{recipe['image_sha256']}; the supplied image is {digest}.")
     for edit in recipe['edits']:
         offset, expected, replacement = edit['offset'], edit['expected'], edit['replacement']
         if (type(offset) is not int or offset < 0 or not expected
@@ -161,9 +142,14 @@ def validate_recipe(recipe, image_bytes, metadata):
 
 
 def decode(recipe, guest_bytes):
-    """The guest image a recipe's offsets address, decoded from the guest executable."""
+    """The loaded image a recipe's offsets (RVAs) address, decoded from the guest executable."""
     try:
-        return bytes(prepare.parse_self(guest_bytes)[0])
+        elf, _, ph = prepare.parse_self(guest_bytes)[:3]
+        loads = [p for p in ph if p['type'] in (1, 0x61000010)]
+        image = bytearray(max(p['vaddr'] + p['memsz'] for p in loads))
+        for p in loads:
+            image[p['vaddr']:p['vaddr'] + p['filesz']] = prepare.span(elf, p['offset'], p['filesz'])
+        return bytes(image)
     except (ValueError, struct.error) as exc:
         raise ValueError(f"{recipe['title']} cannot address this executable: {exc}") from exc
 
@@ -196,7 +182,8 @@ def catalogue(guest_bytes, metadata):
 
 def apply_recipe_bytes(recipe, image_bytes, destination_path, metadata=None):
     """Write a patched copy of these image bytes to a new path, and only after validation."""
-    error = validate_recipe(recipe, image_bytes, target(recipe) if metadata is None else metadata)
+    error = validate_recipe(recipe, image_bytes,
+                            {'TITLE_ID': recipe['title_ids'][0]} if metadata is None else metadata)
     if error:
         raise ValueError(error)
     destination = Path(destination_path)
@@ -223,7 +210,7 @@ def apply_recipe(recipe, source_path, destination_path, metadata=None):
     """Copy an image to a new path and apply the edits to the copy, never in place.
 
     The source is read once and never written, so an original or prepared image can only be
-    read. `metadata` defaults to the build the recipe declares; pass the selected game's own
+    read. `metadata` defaults to the first edition the recipe declares; pass the selected game's own
     metadata to check it here instead of in the caller.
     """
     source, destination = Path(source_path), Path(destination_path)

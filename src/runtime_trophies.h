@@ -7,7 +7,8 @@
 #define RUNTIME_TROPHY_INVALID ((int32_t)0x80551604)
 /* Generic runtime/kernel EIO, not an invented NpTrophy-specific error code. */
 #define RUNTIME_TROPHY_IO_ERROR ((int32_t)0x80020005)
-#define RUNTIME_TROPHY_RELATIVE_PATH "trophies/CUSA00076/NPWR06616_00/user-1/unlocks.txt"
+/* One store per edition: printf format taking the TITLE_ID. */
+#define RUNTIME_TROPHY_PATH_FORMAT "trophies/%s/NPWR06616_00/user-1/unlocks.txt"
 
 typedef struct {
     int64_t unlocked_at[RUNTIME_TROPHY_LIMIT];
@@ -15,7 +16,9 @@ typedef struct {
     uint32_t count;
 } RuntimeTrophySnapshot;
 
-/* Explicit Order profile: CUSA00076, NPWR06616_00, local user 1, service label 0.
+/* 1 for a TITLE_ID of The Order: 1886 (scripts/order1886_editions.py lists the same six). */
+int runtime_order_title(const char *title_id);
+/* Explicit Order profile: an Order TITLE_ID, NPWR06616_00, local user 1, service label 0.
  * The caller supplies its validated state root, outside the original game directory. */
 int32_t runtime_trophy_configure(const char *state_root, const char *title_id);
 /* On storage failure, returns EIO with the last visible in-process snapshot.

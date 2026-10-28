@@ -23,7 +23,7 @@ static void snapshot(int32_t result) {
 int main(int argc, char **argv) {
     assert(argc >= 3);
     if (!strcmp(argv[2], "wrong-title")) {
-        snapshot(runtime_trophy_configure(argv[1], "CUSA00035"));
+        snapshot(runtime_trophy_configure(argv[1], "CUSA00207"));
         return 0;
     }
     int32_t result = runtime_trophy_configure(argv[1], "CUSA00076");
@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
     assert(flags[0] == (1u << 7) && count == 1);
     if (!strcmp(argv[2], "corrupt-reload")) {
         char path[2048];
-        assert(snprintf(path, sizeof(path), "%s/%s", argv[1], RUNTIME_TROPHY_RELATIVE_PATH) > 0);
+        assert(snprintf(path, sizeof(path), "%s/trophies/CUSA00076/NPWR06616_00/user-1/unlocks.txt", argv[1]) > 0);
         FILE *file = fopen(path, "wb");
         assert(file && fputs("corrupt\n", file) >= 0 && fclose(file) == 0);
         assert(runtime_trophy_configure(argv[1], "CUSA00076") == RUNTIME_TROPHY_IO_ERROR);

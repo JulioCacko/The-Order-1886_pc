@@ -693,7 +693,7 @@ int main(int argc, char **argv) {
         snprintf(sfo,sizeof(sfo),"%s/sce_sys/param.sfo",app0 ? app0 : ".");
         runtime_sfo_value(sfo,"TITLE",title,sizeof(title),NULL);
         runtime_sfo_value(sfo,"TITLE_ID",serial,sizeof(serial),NULL);
-        if (!strcmp(serial,"CUSA00076")) order_profile=1;
+        if (runtime_order_title(serial)) order_profile=1;
         runtime_sfo_value(sfo,"ATTRIBUTE",NULL,0,&attributes);
         uint64_t sdk=0;
         if (procparam) memcpy(&sdk,image+procparam+16,8); /* procparam: size, magic, count, sdk_version */

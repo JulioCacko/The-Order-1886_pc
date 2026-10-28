@@ -200,13 +200,16 @@ class Worker:
             game = self.installation / game
         try:
             metadata = order1886.inspect_game(game)
-            readiness = {"ready": True, "message": "Game files found", "metadata": metadata}
+            experimental = order1886.editions.experimental(metadata["TITLE_ID"])
+            readiness = {"ready": True, "metadata": metadata, "experimental": experimental,
+                         "message": "Game files found (experimental edition)" if experimental else "Game files found"}
         except (OSError, ValueError) as exc:
-            readiness = {"ready": False, "message": str(exc), "metadata": {}}
+            readiness = {"ready": False, "message": str(exc), "metadata": {}, "experimental": False}
         from scripts import order1886_trophy_history
         trophy_error = ""
         try:
-            trophies = order1886_trophy_history.read(self.state)
+            trophies = order1886_trophy_history.read(
+                self.state, readiness["metadata"].get("TITLE_ID", order1886.TITLE_ID))
         except (OSError, ValueError) as exc:
             trophies, trophy_error = [], str(exc)
         trophy_catalog, trophy_catalog_error = [], ""

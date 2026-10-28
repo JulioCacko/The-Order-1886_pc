@@ -7,8 +7,11 @@ import re
 import struct
 from scripts.order1886_cache import _check_ancestors
 
-RELATIVE_PATH = Path("trophies/CUSA00076/NPWR06616_00/user-1/unlocks.txt")
-HEADER = b"ORDER1886-TROPHIES 1 CUSA00076 NPWR06616_00 1\n"
+from scripts.order1886_editions import VERIFIED_TITLE_ID
+
+# One store per edition, as src/runtime_trophies.c keeps them (RUNTIME_TROPHY_PATH_FORMAT).
+RELATIVE_PATH = "trophies/{}/NPWR06616_00/user-1/unlocks.txt"
+HEADER = "ORDER1886-TROPHIES 1 {} NPWR06616_00 1\n"
 
 
 def _archive(game):
@@ -90,18 +93,19 @@ def catalog_text(game, trophy_key, language=None):
     return text.trophies(text.decrypt_entry(bytes(data[offset:offset + length]), text.entry_key(key)))
 
 
-def read(state):
-    path = Path(state).absolute() / RELATIVE_PATH
+def read(state, title_id=VERIFIED_TITLE_ID):
+    path = Path(state).absolute() / RELATIVE_PATH.format(title_id)
+    header = HEADER.format(title_id).encode("ascii")
     _check_ancestors(path)
     try:
         with path.open("rb") as stream:
             data = stream.read(16385)
     except FileNotFoundError:
         return []
-    if len(data) > 16384 or not data.startswith(HEADER) or not data.endswith(b"\n"):
+    if len(data) > 16384 or not data.startswith(header) or not data.endswith(b"\n"):
         raise ValueError("Local trophy history has an invalid header or size.")
     try:
-        lines = data[len(HEADER):].decode("ascii").splitlines()
+        lines = data[len(header):].decode("ascii").splitlines()
         footer = lines.pop().split(" ")
         if len(footer) != 3 or footer[0] != "END" or len(lines) > 128:
             raise ValueError()

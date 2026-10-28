@@ -28,7 +28,9 @@
 compatibility runtime. The original x86-64 executable runs on the host CPU,
 PS4 system interfaces are reimplemented, and a
 [shadPS4-derived video core](https://github.com/shadps4-emu/shadPS4) translates
-GPU commands and shaders to Vulkan. The target is **CUSA00076**, on Windows and Linux x86-64.
+GPU commands and shaders to Vulkan. The target is The Order: 1886 update 1.02 in any edition
+(CUSA00076, CUSA00035, CUSA00070, CUSA00100, CUSA00670, CUSA00785), on Windows and Linux x86-64.
+Only CUSA00076 has been run with a real dump; the others are accepted as experimental.
 
 > **No game files are included.** You need your own extracted copy. This is an
 > unofficial community project, not an official PC release.
@@ -119,7 +121,7 @@ See [implementation and issue status](docs/order1886-issue-status.md).
 | Launcher | Go launcher on Windows and Linux; graphics, timing and effect options reach the runtime | Broader DPI and language coverage |
 | Temporal providers | FSR 1 presentation; FSR 3.1 or NVIDIA DLAA (DLSS at native size) in place of the game's temporal resolve, selectable in the launcher on Windows (next preview) | Lower render sizes and DLSS quality modes, XeSS and FSR 4 ([#10](https://github.com/JulioCacko/The-Order-1886_pc/issues/10)–[#13](https://github.com/JulioCacko/The-Order-1886_pc/issues/13)) |
 | Linux | The package starts on Ubuntu 26.04 and reaches the title menu on software Vulkan | Gameplay on a Linux GPU driver |
-| Game versions | CUSA00076 APP_VER 01.00 / VERSION 01.03 | Update 1.02 report [#23](https://github.com/JulioCacko/The-Order-1886_pc/issues/23) |
+| Game versions | CUSA00076 with or without update 1.02 (base and update SFOs); the 60 FPS, 16:9 and effect recipes check the executable's instructions, not its version ([#113](https://github.com/JulioCacko/The-Order-1886_pc/issues/113)) | The other five editions with real dumps; update 1.02 crash report [#23](https://github.com/JulioCacko/The-Order-1886_pc/issues/23) |
 
 See [current status](docs/STATUS.md) and the [4K/60 acceptance plan](docs/order1886-4k60-verification.md).
 
@@ -139,7 +141,7 @@ The packages include the launcher, the dedicated runtime and the libraries they 
 
 1. Extract the entire ZIP to a writable folder. Keep the executables and `bin` together.
 2. Read **QUICKSTART.txt**, then open **The Order 1886.exe**.
-3. Choose your extracted **CUSA00076** folder. It must contain `eboot.bin`, `sce_sys`, `sce_module`, `_data` and `archivemap.bin`.
+3. Choose your extracted game folder (any name; CUSA00076, CUSA00035, CUSA00070, CUSA00100, CUSA00670 or CUSA00785). It must contain `eboot.bin`, `sce_sys`, `sce_module`, `_data` and `archivemap.bin`.
 4. Start with **30 FPS** or **60 FPS**, choose a display mode and press **Play**.
 
 **Linux x86-64**

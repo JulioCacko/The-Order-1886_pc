@@ -8,12 +8,12 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from unittest.mock import patch
-from paths import ROOT
+from paths import ROOT, guest_self
 
 sys.path.insert(0, str(ROOT / 'scripts'))
 import order1886_frame_rate as timing
 
-METADATA = {'TITLE_ID': 'CUSA00076', 'APP_VER': '01.00', 'VERSION': '01.03'}
+METADATA = {'TITLE_ID': 'CUSA00076', 'APP_VER': '01.02', 'VERSION': '01.00'}
 SITE_RVA = 0x4507be
 IMAGE_SIZE = 24512608
 SIGNATURE = bytes.fromhex('c7058c05170102000000')
@@ -34,13 +34,14 @@ def write_boot_fixture(path):
     return image_offset + SITE_RVA
 
 
+# Every site any timing recipe edits, holding the bytes the 01.02 executable has there.
+SITES = sorted({(rva, expected) for rate in (60, 90, timing.UNLOCKED) for rva, expected in timing.source_sites(rate)})
+
+
 @contextmanager
-def verified_fixture_source(source):
-    elf = bytearray(b'fixture reconstructed ELF')
-    with patch.object(timing, 'EXPECTED_SELF_SHA256', hashlib.sha256(source.read_bytes()).hexdigest()), \
-            patch.object(timing, 'EXPECTED_ELF_SHA256', hashlib.sha256(elf).hexdigest()), \
-            patch.object(timing.prepare, 'parse_self', return_value=(elf, None, None, None, None)):
-        yield timing.validate_source(source, 60, METADATA)
+def verified_fixture_source(source, metadata=METADATA, sites=SITES):
+    with patch.object(timing.prepare, 'parse_self', return_value=guest_self(sites)):
+        yield timing.validate_source(source, 60, metadata)
 
 
 class FrameRateRecipeTests(unittest.TestCase):
@@ -49,7 +50,8 @@ class FrameRateRecipeTests(unittest.TestCase):
         content = source.read_bytes().replace(b'\r\n', b'\n')
         self.assertEqual(hashlib.sha256(content).hexdigest(), timing.PUBLIC_PATCH_XML_SHA256)
         document = ET.fromstring(content)
-        self.assertIn(timing.EXPECTED_METADATA['TITLE_ID'], [node.text for node in document.findall('./TitleID/ID')])
+        self.assertEqual(sorted(node.text for node in document.findall('./TitleID/ID')),
+                         sorted(timing.editions.TITLE_IDS))
         unlock = next(node for node in document.findall('Metadata') if node.get('Name') == '60 FPS Unlock')
         lines = unlock.findall('./PatchList/Line')
         self.assertEqual(len(lines), 1)
@@ -64,7 +66,6 @@ class FrameRateRecipeTests(unittest.TestCase):
         self.assertEqual(profile['public_patch_xml_sha256_lf'], timing.PUBLIC_PATCH_XML_SHA256)
         self.assertEqual(profile['public_patch_entry'], '60 FPS Unlock')
         self.assertEqual(profile['public_patch_address'], lines[0].get('Address'))
-        self.assertNotEqual(unlock.get('AppVer'), timing.EXPECTED_METADATA['APP_VER'])
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -81,22 +82,31 @@ class FrameRateRecipeTests(unittest.TestCase):
         self.assertEqual(result['engine_fps'], 30)
         self.assertFalse(absent.exists())
 
-    def test_unsupported_rate_and_self_hash_are_explicit_errors(self):
+    def test_unsupported_rate_title_and_executable_are_explicit_errors(self):
         before = self.source.read_bytes()
         with self.assertRaisesRegex(ValueError, '30, 60 or 90'):
             timing.validate_source(self.source, 120, METADATA)
-        with self.assertRaisesRegex(ValueError, 'SELF SHA256'):
+        with self.assertRaisesRegex(ValueError, 'supports CUSA00076.*selected game is CUSA00207'):
+            timing.validate_source(self.source, 60, {**METADATA, 'TITLE_ID': 'CUSA00207'})
+        with self.assertRaisesRegex(ValueError, 'expected PS4 SELF or ELF'):
             timing.validate_source(self.source, 60, METADATA)
         self.assertEqual(self.source.read_bytes(), before)
 
-    def test_reconstructed_elf_and_metadata_must_also_match(self):
-        with patch.object(timing, 'EXPECTED_SELF_SHA256', hashlib.sha256(self.source.read_bytes()).hexdigest()), \
-                patch.object(timing.prepare, 'parse_self', return_value=(b'wrong ELF', None, None, None, None)):
-            with self.assertRaisesRegex(ValueError, 'ELF SHA256'):
-                timing.validate_source(self.source, 60, METADATA)
-        with verified_fixture_source(self.source):
-            with self.assertRaisesRegex(ValueError, 'APP_VER'):
-                timing.validate_source(self.source, 60, {**METADATA, 'APP_VER': '01.02'})
+    def test_different_code_at_a_site_is_refused_and_names_the_build(self):
+        changed = [(SITE_RVA, b'\x90' * len(SIGNATURE))]
+        with self.assertRaisesRegex(ValueError, r'RVA 0x4507be.*found 9090.*APP_VER 01\.00.*Select 30 FPS'):
+            with verified_fixture_source(self.source, {**METADATA, 'APP_VER': '01.00'}, changed):
+                pass
+
+    def test_every_edition_and_app_ver_with_the_expected_bytes_is_accepted(self):
+        # #113: the reporter's 01.02 SFO (APP_VER 01.02, VERSION 01.00) was refused while its
+        # executable was byte-identical to the verified one. Only the bytes decide now.
+        for title_id in timing.editions.TITLE_IDS:
+            for app_ver, version in (('01.02', '01.00'), ('01.00', '01.03')):
+                metadata = {'TITLE_ID': title_id, 'APP_VER': app_ver, 'VERSION': version}
+                with self.subTest(title_id=title_id, app_ver=app_ver), verified_fixture_source(self.source, metadata) as profile:
+                    self.assertTrue(profile['source_verified'])
+                    self.assertEqual(profile['title_id'], title_id)
 
     def test_only_the_immediate_changes_and_original_source_is_untouched(self):
         boot = self.base / 'derived boot.bin'
@@ -164,6 +174,14 @@ def write_high_rate_fixture(path):
 def verified_high_rate_source(source, rate):
     with verified_fixture_source(source):
         yield timing.validate_source(source, rate, METADATA)
+
+
+class SourceAddressingTests(unittest.TestCase):
+    def test_rvas_are_read_through_the_load_segment_not_as_file_offsets(self):
+        elf, _, ph = guest_self([(SITE_RVA, SIGNATURE)])[:3]
+        self.assertEqual(timing.image_bytes(elf, ph, SITE_RVA, len(SIGNATURE)), SIGNATURE)
+        self.assertNotEqual(bytes(elf[SITE_RVA:SITE_RVA + len(SIGNATURE)]), SIGNATURE)
+        self.assertIsNone(timing.image_bytes(elf, ph, len(elf), 4))
 
 
 class HighRateRecipeTests(unittest.TestCase):

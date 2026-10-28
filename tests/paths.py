@@ -19,3 +19,17 @@ def native_environment():
 
 if str(ROOT / 'scripts') not in sys.path:
     sys.path.insert(0, str(ROOT / 'scripts'))
+
+
+def guest_self(sites):
+    """What prepare.parse_self returns for a synthetic eboot.bin holding these (rva, bytes).
+
+    The one load segment starts at file offset 0x4000 with RVA 0, as the real executable's
+    does, so a check that reads RVAs straight from the ELF file offsets fails here too."""
+    size = max(rva + len(data) for rva, data in sites) + 16
+    elf = bytearray(0x4000 + size)
+    for rva, data in sites:
+        elf[0x4000 + rva:0x4000 + rva + len(data)] = data
+    ph = [{'type': 1, 'flags': 5, 'offset': 0x4000, 'vaddr': 0, 'paddr': 0,
+           'filesz': size, 'memsz': size, 'align': 0x4000}]
+    return elf, None, ph, [], []

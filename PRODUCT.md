@@ -11,7 +11,7 @@ Go and Wails v2 for the launcher (`launcher-go/`), with embedded TypeScript/HTML
 
 ## Users
 
-Players with an extracted CUSA00076 copy of The Order: 1886 who want to configure and attempt to start a session on Windows.
+Players with an extracted copy of The Order: 1886 in any edition (CUSA00076, CUSA00035, CUSA00070, CUSA00100, CUSA00670 or CUSA00785) who want to configure and attempt to start a session on Windows.
 
 ## Product Purpose
 
@@ -19,7 +19,7 @@ Make choosing the game folder, adjusting essential settings and starting a sessi
 
 ## Operating Context
 
-The launcher is experimental emulator-backed compatibility software for CUSA00076. It starts a separate native runtime, keeps launcher state outside the original game folder and records session logs. It must work with a mouse and keyboard at ordinary Windows window sizes.
+The launcher is experimental emulator-backed compatibility software for The Order: 1886 (CUSA00076 tested; the other editions experimental). It starts a separate native runtime, keeps launcher state outside the original game folder and records session logs. It must work with a mouse and keyboard at ordinary Windows window sizes.
 
 ## Capabilities and Constraints
 

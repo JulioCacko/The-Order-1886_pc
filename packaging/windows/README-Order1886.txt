@@ -5,7 +5,7 @@ launcher pages, controls, saves, updates and troubleshooting, in English and
 Brazilian Portuguese.
 
 Extract the entire archive to a writable folder and open The Order 1886.exe.
-Choose your own extracted CUSA00076 game folder on Game & Content, then press
+Choose your own extracted game folder (CUSA00076, CUSA00035, CUSA00070, CUSA00100, CUSA00670 or CUSA00785) on Game & Content, then press
 Play. Play The Order 1886.exe starts the game directly with the saved
 configuration; Game & Content can create a desktop shortcut or add it to Steam.
 Keep both EXEs and the bin folder together. No Python or compiler is required.

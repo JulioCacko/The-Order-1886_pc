@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Hash-bound post-effect switches for derived preparation output only (#16).
+"""Byte-checked post-effect switches for derived preparation output only (#16).
 
 Every switch leaves its effect off the way the game itself does when a lens asks for none.
 Each frame the engine clamps the blended lens parameters (the sanitizer at RVA 0x834930) and
@@ -23,8 +23,8 @@ zero strength and takes its own "effect absent" path:
 The offsets come from the engine's own reflection: the lens parameter constructor
 (RVA 0x8ff3b0) registers CMotionBlurParams, CDOFParams, CAltDOFParams, CFilmGrainParams,
 CAltFilmGrainParams, CChromAberParams and CAltChromAberParams at those offsets.
-Every edit keeps the instruction length, and nothing is written unless the source SELF, its
-decoded ELF, the build metadata and every expected instruction match.
+Every edit keeps the instruction length, and nothing is written unless the edition is one of
+order1886_editions and every expected instruction matches, in the source and the prepared copy.
 """
 from __future__ import annotations
 
@@ -79,9 +79,7 @@ def recipe(disabled):
     disabled = validate_disabled(disabled)
     result = {'id': 'order1886-post-effects-v1', 'disabled': list(disabled)}
     if disabled:
-        result.update(source_self_sha256=timing.EXPECTED_SELF_SHA256,
-                      source_elf_sha256=timing.EXPECTED_ELF_SHA256,
-                      metadata=dict(timing.EXPECTED_METADATA),
+        result.update(title_ids=list(timing.editions.TITLE_IDS),
                       edits=[{'effect': name, 'rva': hex(rva), 'expected': expected, 'replacement': replacement}
                              for name in disabled for rva, expected, replacement in EFFECTS[name][1]],
                       author='this project (Ghidra analysis of the CUSA00076 executable)',
@@ -100,7 +98,8 @@ def validate_source(eboot, disabled, metadata):
                'source_verified': False, 'gameplay_verified': False}
     if not disabled:
         return profile
-    profile.update(timing.verify_source_identity(eboot, metadata, feature='Post-effect switches',
+    sites = [(rva, bytes.fromhex(expected)) for name in disabled for rva, expected, _ in EFFECTS[name][1]]
+    profile.update(timing.verify_source_identity(eboot, metadata, sites, feature='Post-effect switches',
                                                 recovery='Turn every post effect back on to recover.'))
     return profile
 
@@ -113,25 +112,15 @@ def apply_prepared(boot, profile):
     path = Path(boot).resolve()
     if profile.get('source_eboot') and path == Path(profile['source_eboot']).resolve():
         raise ValueError('Post-effect patches may only modify a derived prepared image')
-    data = bytearray(path.read_bytes())
-    if len(data) < timing.HEADER.size:
-        raise ValueError('Truncated PS4BOOT2 header')
-    magic, size, entry, ns, nr, ni, flags = timing.HEADER.unpack_from(data)
-    if magic != b'PS4BOOT2' or size != timing.EXPECTED_IMAGE_SIZE or entry != timing.EXPECTED_ENTRY:
-        raise ValueError('Unexpected PS4BOOT2 header for the verified post-effect recipe')
-    start = timing.HEADER.size + ns * 24 + ni * 128 + nr * 32
-    if start + size != len(data):
-        raise ValueError('PS4BOOT2 image bounds mismatch')
-    if (not profile.get('source_verified') or profile.get('source_self_sha256') != timing.EXPECTED_SELF_SHA256
-            or profile.get('source_elf_sha256') != timing.EXPECTED_ELF_SHA256
-            or profile.get('recipe_sha256') != recipe_sha256(disabled)):
+    data, start, size = timing.prepared_image(path)
+    if not profile.get('source_verified') or profile.get('recipe_sha256') != recipe_sha256(disabled):
         raise ValueError('Post-effect source/recipe verification is missing or stale')
     edits = [(name, rva, bytes.fromhex(expected), bytes.fromhex(replacement))
              for name in disabled for rva, expected, replacement in EFFECTS[name][1]]
     # Check every site first, so a mismatch leaves the image untouched.
     for name, rva, expected, replacement in edits:
         found = bytes(data[start + rva:start + rva + len(expected)])
-        if len(replacement) != len(expected) or found != expected:
+        if len(replacement) != len(expected) or rva + len(expected) > size or found != expected:
             raise ValueError(f'{EFFECTS[name][0]} instruction signature mismatch at RVA {rva:#x}')
     before = hashlib.sha256(data).hexdigest()
     for name, rva, expected, replacement in edits:

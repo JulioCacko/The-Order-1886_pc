@@ -53,13 +53,13 @@ reference feature.
 Both Order repositories vendor shadPS4 revision
 `b4e7ae776071ceb1dd35004577a8719481e1d258`. This makes narrow diffs useful; it does
 not make complete files interchangeable. The reference reports CUSA00035 01.02;
-this checkout validates CUSA00076 and hash-specific recipes.
+this checkout accepts the same six editions and checks recipe bytes, not hashes (#113).
 
 | Candidate | Evidence and decision |
 | --- | --- |
 | Performance instrumentation and repeated-run tools | Reference `tools/batch_runs.py` and launcher diagnostics can inform a bounded test harness. Useful before enabling performance switches; reference tools were not run against the user's dump. |
 | GPU readbacks, stream memory and shader warmup controls | Exposed in reference `build_performance`; compare implementations/defaults against this runtime before introducing adapters. Our profile disables pipeline binaries/background/parallel warmup and fixes stream memory to cached. No gain is claimed here. |
-| Multi-region metadata and patch selection | Reference documents multiple title IDs. Local preparation requires CUSA00076 and executable hashes; expanding this requires real metadata/hashes for each region, not just copying an ID list. |
+| Multi-region metadata and patch selection | Adopted in #113: `scripts/order1886_editions.py` lists the six IDs the published patch and both reference ports use, and every recipe checks the original instructions at each site. Only CUSA00076 was run with a real dump. |
 | Save and launcher utilities | The page/backup pattern is integrated using our backend. Import/export, remapping, localization and updater behavior can be adapted separately while retaining title/data isolation. |
 | Vulkan image-allocation fallback | **Do not copy as a fix for the supplied crash.** Reference `UniqueImage::Create` retries without the within-budget flag and falls back to a 1×1 dummy image. Its constructor lacks our explicit device-format-limits rejection. Neither establishes why the descriptor requests 8,029 layers; a dummy image can conceal incorrect rendering. |
 

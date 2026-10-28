@@ -1,4 +1,4 @@
-"""Hash-guarded full-screen aspect patch, confined to derived preparation output."""
+"""Byte-checked full-screen aspect patch, confined to derived preparation output."""
 from __future__ import annotations
 
 import hashlib
@@ -26,15 +26,13 @@ def recipe(aspect):
     result = dict(id='order1886-original-aspect-v1' if aspect == 'original' else 'order1886-a8ce-16x9-v1',
                   aspect_ratio=aspect, experimental=aspect != 'original')
     if aspect == '16:9':
-        result.update(source_self_sha256=timing.EXPECTED_SELF_SHA256,
-                      source_elf_sha256=timing.EXPECTED_ELF_SHA256,
-                      metadata=dict(timing.EXPECTED_METADATA), instruction_rva=hex(INSTRUCTION_RVA),
+        result.update(title_ids=list(timing.editions.TITLE_IDS), instruction_rva=hex(INSTRUCTION_RVA),
                       expected_instruction=EXPECTED_INSTRUCTION.hex(),
                       replacement_instruction=REPLACEMENT_INSTRUCTION.hex(),
                       public_patch_entry='16:9 Aspect Ratio (Full Screen)', public_patch_app_ver='01.02',
                       public_patch_address='0x0084ce8c', public_patch_file='patches/TheOrder1886-Orbis.xml',
                       public_patch_xml_sha256_lf=timing.PUBLIC_PATCH_XML_SHA256,
-                      author='illusion; current-hash verification by this project',
+                      author='illusion; instruction verification by this project',
                       render_size_policy='native; no resolution patch', warning=WARNING)
     return result
 
@@ -48,8 +46,9 @@ def validate_source(eboot, aspect, metadata):
                'source_verified': False, 'gameplay_verified': False}
     if aspect == 'original':
         return profile
-    # Reuse exact SELF/ELF/metadata checks, without applying the independent timing patch.
-    profile.update(timing.verify_source_identity(eboot, metadata, feature='Full-screen 16:9',
+    # Reuse the edition and instruction checks, without applying the independent timing patch.
+    profile.update(timing.verify_source_identity(eboot, metadata, [(INSTRUCTION_RVA, EXPECTED_INSTRUCTION)],
+                                                feature='Full-screen 16:9',
                                                 recovery='Select Original cinematic aspect to recover.'))
     return profile
 
@@ -61,22 +60,14 @@ def apply_prepared(boot, profile):
     path = Path(boot).resolve()
     if profile.get('source_eboot') and path == Path(profile['source_eboot']).resolve():
         raise ValueError('Aspect patches may only modify a derived prepared image')
-    data = bytearray(path.read_bytes())
-    if len(data) < timing.HEADER.size:
-        raise ValueError('Truncated PS4BOOT2 header')
-    magic, size, entry, ns, nr, ni, flags = timing.HEADER.unpack_from(data)
-    if magic != b'PS4BOOT2' or size != timing.EXPECTED_IMAGE_SIZE or entry != timing.EXPECTED_ENTRY:
-        raise ValueError('Unexpected PS4BOOT2 header for the verified aspect recipe')
-    start = timing.HEADER.size + ns * 24 + ni * 128 + nr * 32
-    if start + size != len(data) or INSTRUCTION_RVA + len(EXPECTED_INSTRUCTION) > size:
+    data, start, size = timing.prepared_image(path)
+    if INSTRUCTION_RVA + len(EXPECTED_INSTRUCTION) > size:
         raise ValueError('PS4BOOT2 image bounds mismatch')
     offset = start + INSTRUCTION_RVA
     instruction = bytes(data[offset:offset + len(EXPECTED_INSTRUCTION)])
     if instruction != EXPECTED_INSTRUCTION:
         raise ValueError(f'Full-screen aspect instruction signature mismatch at RVA {INSTRUCTION_RVA:#x}')
-    if (not profile.get('source_verified') or profile.get('source_self_sha256') != timing.EXPECTED_SELF_SHA256
-            or profile.get('source_elf_sha256') != timing.EXPECTED_ELF_SHA256
-            or profile.get('recipe_sha256') != recipe_sha256('16:9')):
+    if not profile.get('source_verified') or profile.get('recipe_sha256') != recipe_sha256('16:9'):
         raise ValueError('Full-screen aspect source/recipe verification is missing or stale')
     before = hashlib.sha256(data).hexdigest()
     data[offset + 6:offset + 10] = REPLACEMENT_INSTRUCTION[6:10]
