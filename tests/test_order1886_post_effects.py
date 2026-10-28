@@ -1,4 +1,4 @@
-"""Post-effect switches (#16): hash-gated edits of the prepared image, never the game folder."""
+"""Post-effect switches (#16): byte-checked edits of the prepared image, never the game folder."""
 import hashlib
 import json
 from pathlib import Path
@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
-from paths import ROOT
+from paths import ROOT, guest_self
 
 sys.path.insert(0, str(ROOT / 'scripts'))
 import order1886
@@ -16,7 +16,8 @@ import prepare
 from launcher import order1886_common as launcher
 from launcher import order1886_worker as worker
 
-METADATA = dict(timing.EXPECTED_METADATA)
+METADATA = {'TITLE_ID': 'CUSA00076', 'APP_VER': '01.02', 'VERSION': '01.00'}
+IMAGE_SIZE = 24512608  # the 01.02 executable's loaded image
 # The extracted game sits next to the checkout, or above it for a worktree.
 GAME = next((base / 'ShadPs4Plus-PkgExtractor-1.1-windows' / 'CUSA00076' for base in (ROOT, *ROOT.parents)
              if (base / 'ShadPs4Plus-PkgExtractor-1.1-windows' / 'CUSA00076' / 'eboot.bin').is_file()), ROOT)
@@ -25,12 +26,12 @@ SITES = [(name, rva, bytes.fromhex(expected), bytes.fromhex(replacement))
 
 
 def fixture(path):
-    """A PS4BOOT2 container of the verified size holding every expected instruction."""
+    """A PS4BOOT2 container of the 01.02 image size holding every expected instruction."""
     start = timing.HEADER.size + 24 + 128 + 32
     with path.open('wb') as stream:
-        stream.write(timing.HEADER.pack(b'PS4BOOT2', timing.EXPECTED_IMAGE_SIZE, 0xa0, 1, 1, 1, 1))
+        stream.write(timing.HEADER.pack(b'PS4BOOT2', IMAGE_SIZE, 0xa0, 1, 1, 1, 1))
         stream.write(b'\0' * (24 + 128 + 32))
-        stream.seek(start + timing.EXPECTED_IMAGE_SIZE - 1)
+        stream.seek(start + IMAGE_SIZE - 1)
         stream.write(b'\0')
         for _name, rva, expected, _replacement in SITES:
             stream.seek(start + rva)
@@ -45,13 +46,10 @@ class PostEffectPreparationTests(unittest.TestCase):
         self.base = Path(temporary.name)
         self.source = self.base / 'original eboot.bin'
         self.source.write_bytes(b'original fixture')
-        elf = b'reconstructed ELF fixture'
-        for target, value in ((timing, ('EXPECTED_SELF_SHA256', hashlib.sha256(self.source.read_bytes()).hexdigest())),
-                              (timing, ('EXPECTED_ELF_SHA256', hashlib.sha256(elf).hexdigest())),
-                              (timing.prepare, ('parse_self', lambda data: (elf, None, None, None, None)))):
-            patcher = patch.object(target, *value)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        guest = guest_self([(rva, expected) for _name, rva, expected, _replacement in SITES])
+        patcher = patch.object(timing.prepare, 'parse_self', lambda data: guest)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_all_on_never_touches_a_missing_derived_image(self):
         profile = effects.validate_source(self.source, [], {})
@@ -109,8 +107,8 @@ class PostEffectPreparationTests(unittest.TestCase):
         self.assertEqual(boot.read_bytes(), before)
         with self.assertRaisesRegex(ValueError, 'Unknown post effect'):
             effects.validate_source(self.source, ['model_detail'], METADATA)
-        with self.assertRaisesRegex(ValueError, 'APP_VER'):
-            effects.validate_source(self.source, ['film_grain'], {**METADATA, 'APP_VER': '01.02'})
+        with self.assertRaisesRegex(ValueError, 'selected game is CUSA00207.*every post effect back on'):
+            effects.validate_source(self.source, ['film_grain'], {**METADATA, 'TITLE_ID': 'CUSA00207'})
 
     def test_recipe_identity_ignores_selection_order(self):
         self.assertEqual(effects.recipe_sha256(['film_grain', 'motion_blur']),
@@ -162,8 +160,6 @@ class PostEffectLauncherTests(unittest.TestCase):
 class PostEffectExecutableTests(unittest.TestCase):
     def test_every_site_holds_its_expected_instruction_in_the_real_executable(self):
         data = (GAME / 'eboot.bin').read_bytes()
-        if hashlib.sha256(data).hexdigest() != timing.EXPECTED_SELF_SHA256:
-            self.skipTest('a different CUSA00076 executable is installed')
         elf = prepare.parse_self(data)[0]
         offset, count = int.from_bytes(elf[0x20:0x28], 'little'), int.from_bytes(elf[0x38:0x3a], 'little')
         for index in range(count):

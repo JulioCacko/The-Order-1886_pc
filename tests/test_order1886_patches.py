@@ -1,4 +1,4 @@
-"""Version-checked patch recipes refuse every image they were not verified against.
+"""Byte-checked patch recipes refuse every edition and image whose code they do not match.
 
 Only recipes bound to a real executable are catalogued, so every test here works on
 synthetic guest images in a temporary directory and never on the game folder.
@@ -21,15 +21,16 @@ import order1886_display as display
 import order1886_frame_rate as timing
 from scripts import order1886_patches as patches
 
-METADATA = {'TITLE_ID': 'CUSA00076', 'APP_VER': '01.00', 'VERSION': '01.03'}
+METADATA = {'TITLE_ID': 'CUSA00076', 'APP_VER': '01.02', 'VERSION': '01.00'}
+IMAGE_SIZE = 24512608  # the 01.02 executable's loaded image
 
 
 def elf_image(size, sites=()):
-    """A minimal plain ELF the SELF parser returns unchanged, with optional edit sites."""
+    """A minimal plain ELF mapped at RVA 0, so file offsets and RVAs coincide, with edit sites."""
     image = bytearray(size)
     image[:7] = b'\x7fELF\x02\x01\x01'
     struct.pack_into('<HHIQQQIHHHHHH', image, 16, 2, 62, 1, 0x1000, 64, 0, 0, 64, 56, 1, 0, 0, 0)
-    struct.pack_into('<IIQQQQQQ', image, 64, 1, 5, 0, 0x1000, 0x1000, size, size, 0x1000)
+    struct.pack_into('<IIQQQQQQ', image, 64, 1, 5, 0, 0, 0, size, size, 0x1000)
     for offset, data in sites:
         image[offset:offset + len(data)] = data
     return bytes(image)
@@ -42,10 +43,8 @@ def matching_image(recipe):
 
 
 def bound_to(recipe, image):
-    """The recipe re-verified against a synthetic image, so only the tested guard can fail."""
-    return dict(recipe, image_sha256=hashlib.sha256(image).hexdigest(),
-                guest_sha256=hashlib.sha256(image).hexdigest(),
-                edits=tuple(dict(edit) for edit in recipe['edits']))
+    """A copy of the recipe for a synthetic image; recipes bind to bytes, not to a hash."""
+    return dict(recipe, edits=tuple(dict(edit) for edit in recipe['edits']))
 
 
 class RecipeCatalogueTests(unittest.TestCase):
@@ -70,13 +69,10 @@ class RecipeCatalogueTests(unittest.TestCase):
                 self.assertTrue(recipe['title'])
                 self.assertTrue(recipe['description'])
                 self.assertEqual(recipe['guest_executable'], 'eboot.bin')
-                self.assertEqual(recipe['guest_sha256'], timing.EXPECTED_SELF_SHA256)
-                self.assertEqual(recipe['image_sha256'], timing.EXPECTED_ELF_SHA256)
-                self.assertEqual(patches.target(recipe), timing.EXPECTED_METADATA)
+                self.assertEqual(patches.target(recipe), {'TITLE_IDS': list(timing.editions.TITLE_IDS)})
                 for edit in recipe['edits']:
                     self.assertEqual(len(edit['expected']), len(edit['replacement']))
-                    self.assertLessEqual(edit['offset'] + len(edit['expected']),
-                                         timing.EXPECTED_IMAGE_SIZE)
+                    self.assertLessEqual(edit['offset'] + len(edit['expected']), IMAGE_SIZE)
 
     def test_identities_are_unique_and_do_not_depend_on_dict_order(self):
         self.assertEqual(len({item['id'] for item in patches.RECIPES}), len(patches.RECIPES))
@@ -93,27 +89,19 @@ class RecipeCatalogueTests(unittest.TestCase):
 
 
 class RecipeRejectionTests(unittest.TestCase):
-    def test_every_recipe_rejects_a_wrong_title_id_app_ver_and_version(self):
+    def test_every_recipe_takes_any_edition_and_version_and_refuses_another_title(self):
         for recipe in patches.RECIPES:
             image = matching_image(recipe)
             bound = bound_to(recipe, image)
-            with self.subTest(recipe=recipe['id'], field='match'):
-                self.assertIsNone(patches.validate_recipe(bound, image, dict(METADATA)))
-            for name, wrong in (('TITLE_ID', 'CUSA99999'), ('APP_VER', '01.02'), ('VERSION', '01.00')):
-                with self.subTest(recipe=recipe['id'], field=name):
-                    error = patches.validate_recipe(bound, image, {**METADATA, name: wrong})
-                    self.assertIn(name, error)
-                    self.assertIn(wrong, error)
-
-    def test_every_recipe_rejects_a_hash_mismatch_without_reading_the_edits(self):
-        for recipe in patches.RECIPES:
-            image = matching_image(recipe)
-            bound = bound_to(recipe, image)
-            other = elf_image(len(image))
-            with self.subTest(recipe=recipe['id']):
-                error = patches.validate_recipe(bound, other, dict(METADATA))
-                self.assertIn('SHA256', error)
-                self.assertIn(bound['image_sha256'], error)
+            for edition in timing.editions.TITLE_IDS:
+                for app_ver, version in (('01.02', '01.00'), ('01.00', '01.03')):
+                    with self.subTest(recipe=recipe['id'], edition=edition, app_ver=app_ver):
+                        metadata = {'TITLE_ID': edition, 'APP_VER': app_ver, 'VERSION': version}
+                        self.assertIsNone(patches.validate_recipe(bound, image, metadata))
+            with self.subTest(recipe=recipe['id'], edition='other title'):
+                error = patches.validate_recipe(bound, image, {**METADATA, 'TITLE_ID': 'CUSA99999'})
+                self.assertIn('CUSA99999', error)
+                self.assertIn('CUSA00785', error)
 
     def test_every_recipe_rejects_an_edit_past_the_end_of_the_image(self):
         for recipe in patches.RECIPES:
@@ -187,8 +175,8 @@ class RecipeApplicationTests(unittest.TestCase):
         other = elf_image(len(self.image))
         self.source.write_bytes(other)
         before = hashlib.sha256(other).hexdigest()
-        for metadata, pattern in ((dict(METADATA), 'SHA256'),
-                                  ({**METADATA, 'APP_VER': '01.02'}, 'APP_VER')):
+        for metadata, pattern in ((dict(METADATA), 'expects'),
+                                  ({**METADATA, 'TITLE_ID': 'CUSA99999'}, 'CUSA99999')):
             with self.subTest(pattern=pattern), self.assertRaisesRegex(ValueError, pattern):
                 patches.apply_recipe(self.recipe, self.source, self.destination, metadata)
             self.assertFalse(self.destination.exists())
@@ -200,7 +188,7 @@ class RecipeApplicationTests(unittest.TestCase):
             patches.apply_recipe(self.recipe, self.base / 'absent.bin', self.destination, dict(METADATA))
         self.assertFalse(self.destination.exists())
 
-    def test_a_caller_without_metadata_still_requires_the_verified_image(self):
+    def test_a_caller_without_metadata_still_requires_the_expected_bytes(self):
         patched = bytearray(self.image)
         for edit in self.recipe['edits']:
             start = edit['offset']
@@ -208,9 +196,9 @@ class RecipeApplicationTests(unittest.TestCase):
         second = self.base / 'second copy.bin'
         result = patches.apply_recipe(self.recipe, self.source, second)
         self.assertEqual(second.read_bytes(), bytes(patched))
-        self.assertEqual(result['target'], dict(METADATA))
-        with self.assertRaisesRegex(ValueError, 'VERSION'):
-            patches.apply_recipe(self.recipe, self.source, second, {**METADATA, 'VERSION': '01.02'})
+        self.assertEqual(result['target'], {'TITLE_IDS': list(timing.editions.TITLE_IDS)})
+        with self.assertRaisesRegex(ValueError, 'CUSA99999'):
+            patches.apply_recipe(self.recipe, self.source, second, {**METADATA, 'TITLE_ID': 'CUSA99999'})
         self.assertEqual(hashlib.sha256(self.source.read_bytes()).hexdigest(), self.source_sha256)
 
     def test_a_malformed_edit_is_refused_instead_of_raising(self):
@@ -228,8 +216,6 @@ def fixture_recipe(image, offset=0x1C0, expected=b'ORIGINAL', replacement=b'PATC
     """A catalogue-shaped recipe whose edit lands inside a small synthetic image."""
     return dict(patches.RECIPES[0], id='order1886-fixture-v1', title='Fixture patch',
                 description='Test-only recipe shape.',
-                image_sha256=hashlib.sha256(image).hexdigest(),
-                guest_sha256=hashlib.sha256(image).hexdigest(),
                 edits=({'offset': offset, 'expected': expected, 'replacement': replacement},))
 
 
@@ -257,10 +243,10 @@ class GuestImageTests(unittest.TestCase):
             self.assertEqual(listed[0]['recipe_sha256'], patches.recipe_sha256(self.recipe))
             wrong_executable = patches.catalogue(elf_image(4096), dict(METADATA))
             self.assertFalse(wrong_executable[0]['applicable'])
-            self.assertIn('SHA256', wrong_executable[0]['reason'])
+            self.assertIn('expects 4f524947494e414c at offset 0x1c0', wrong_executable[0]['reason'])
             wrong_build = patches.catalogue(self.guest, {**METADATA, 'TITLE_ID': 'CUSA99999'})
             self.assertFalse(wrong_build[0]['applicable'])
-            self.assertIn('TITLE_ID', wrong_build[0]['reason'])
+            self.assertIn('CUSA99999', wrong_build[0]['reason'])
             unreadable = patches.catalogue(b'', dict(METADATA))
             self.assertFalse(unreadable[0]['applicable'])
             self.assertIn('empty', unreadable[0]['reason'])
@@ -270,8 +256,8 @@ class GuestImageTests(unittest.TestCase):
         self.addCleanup(os.chdir, previous)
         os.chdir(self.base)
         self.assertIsNone(patches.applicability(self.recipe, self.guest, dict(METADATA)))
-        self.assertIn('TITLE_ID', patches.applicability(self.recipe, self.guest,
-                                                        {**METADATA, 'TITLE_ID': 'CUSA99999'}))
+        self.assertIn('CUSA99999', patches.applicability(self.recipe, self.guest,
+                                                         {**METADATA, 'TITLE_ID': 'CUSA99999'}))
         self.assertEqual(sorted(path.name for path in self.base.iterdir()), [])
 
 
@@ -351,8 +337,8 @@ class WorkerPatchTests(unittest.TestCase):
         with self.selected_game():
             listing = self.app.dispatch('patches.list', {})
             self.assertFalse(listing['recipes'][0]['applicable'])
-            self.assertIn('SHA256', listing['recipes'][0]['reason'])
-            with self.assertRaisesRegex(ValueError, 'SHA256'):
+            self.assertIn('expects', listing['recipes'][0]['reason'])
+            with self.assertRaisesRegex(ValueError, 'expects'):
                 self.app.dispatch('patches.apply', {'id': self.recipe['id'], 'confirmed': True})
         self.assertEqual(self.game_folder(), before)
         self.assertFalse((self.state / 'patched').exists())

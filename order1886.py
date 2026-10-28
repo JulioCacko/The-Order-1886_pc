@@ -36,8 +36,9 @@ import order1886_post_effects as post_effects
 import order1886_mods as mods
 import order1886_input as inputs
 import order1886_patches as patch_catalogue
+import order1886_editions as editions
 
-TITLE_ID = 'CUSA00076'
+TITLE_ID = editions.VERIFIED_TITLE_ID  # the default folder name; every edition is accepted
 RUNTIME_ABI = 'order1886-native-1'
 SHADER_CACHE_ABI = 'native-ps4-v1'
 # OrbisSystemParamLanguage: pt is Brazilian Portuguese; zh is Simplified Chinese.
@@ -97,8 +98,9 @@ def inspect_game(game):
         if not file.is_file() or file.stat().st_size == 0:
             raise ValueError(f'Missing or empty game file: {file}')
     metadata = prepare.load_sfo(game / 'sce_sys/param.sfo')
-    if metadata.get('TITLE_ID') != TITLE_ID:
-        raise ValueError(f'Expected {TITLE_ID} (The Order: 1886), found {metadata.get("TITLE_ID", "unknown title")}')
+    if not editions.supported(metadata.get('TITLE_ID')):
+        raise ValueError(f'Expected The Order: 1886 ({", ".join(editions.TITLE_IDS)}), '
+                         f'found {metadata.get("TITLE_ID", "unknown title")}')
     if not (game / '_data').is_dir() or not (game / 'archivemap.bin').is_file():
         raise ValueError('The Order game content is incomplete: _data and archivemap.bin are required.')
     return metadata
@@ -169,7 +171,7 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=(), 
     effects_profile = post_effects.validate_source(game / 'eboot.bin', disabled_effects, metadata)
     fingerprint = {name: sha256(game / name) for name in REQUIRED_FILES}
     for name in ('prepare.py', 'link_modules.py', 'link_libc.py', 'order1886_frame_rate.py', 'order1886_display.py',
-                 'order1886_post_effects.py'):
+                 'order1886_post_effects.py', 'order1886_editions.py'):
         fingerprint['tool/' + name] = sha256(SCRIPTS / name)
     fingerprint.update(frame_rate=profile['engine_fps'], host_fps_limit=profile['host_fps_limit'],
                        frame_rate_recipe_sha256=profile['recipe_sha256'], runtime_abi=RUNTIME_ABI,
@@ -773,6 +775,15 @@ def main(argv=None):
                 emit_status('Cancelled before preparation.', fallback=diagnostic_log)
                 return 130
             emit_status(f'{metadata["TITLE"]} | {metadata["TITLE_ID"]} | APP_VER {metadata.get("APP_VER")} | VERSION {metadata.get("VERSION")}', fallback=diagnostic_log)
+            if editions.experimental(metadata['TITLE_ID']):
+                emit_status(f'{metadata["TITLE_ID"]} is an experimental edition: only '
+                            f'{editions.VERIFIED_TITLE_ID} has been run with a real dump. If it fails, '
+                            'report it with logs/last-run.json and the newest log.', fallback=diagnostic_log)
+            language = editions.system_language(metadata['TITLE_ID'], args.system_language)
+            if language != args.system_language:
+                emit_status(f'{metadata["TITLE_ID"]} has no assets for system language {args.system_language}; '
+                            f'using {language}.', fallback=diagnostic_log)
+                args.system_language = language
             runtime = None if args.prepare_only else find_runtime(args.runtime)
             if not args.prepare_only and runtime is None:
                 raise ValueError('Order runtime not found in this installation. Build build.sh or explicitly select a runtime in Settings.')
@@ -829,7 +840,7 @@ def main(argv=None):
                       'game': str(game), 'mounted_game': str(mounted_game),
                       'mods': {'enabled': bool(args.mods_enabled) and not args.check_imports,
                                'folder': args.mods_dir, 'order': mod_order},
-                      'title_id': TITLE_ID, 'image_sha256': prepared['image_sha256'],
+                      'title_id': metadata['TITLE_ID'], 'image_sha256': prepared['image_sha256'],
                       'game_metadata': {key: metadata.get(key) for key in
                                         ('TITLE', 'TITLE_ID', 'APP_VER', 'VERSION', 'INSTALL_DIR_SAVEDATA', 'SYSTEM_VER')},
                       'shader_cache_abi': SHADER_CACHE_ABI,

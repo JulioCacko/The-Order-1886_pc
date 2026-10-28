@@ -18,8 +18,11 @@ It changes one byte in derived preparation output before linking. Preparation
 identity includes the selected rate and recipe; returning to 30 rebuilds the native
 image. Original game files are preserved.
 
-This adapts illusion's published 01.02 recipe to the exact local 01.00/01.03
-executable hash. The published recipe warns of QTE softlocks in Chapters 6 and 9.
+This is illusion's published 01.02 recipe. The local executable (SELF SHA256
+`a8ce5fe1...`) is the 1.02 one: the base dump had the update's files merged in while its
+`param.sfo` still said 01.00/01.03, and the 1.02 update's own `eboot.bin` has the same hash.
+Since #113 the recipe checks the instruction bytes at its site in any of the six editions
+instead of that hash or the SFO version. The published recipe warns of QTE softlocks in Chapters 6 and 9.
 Campaign behavior remains unverified. The game can legitimately change its timing
 divisor during transitions; the runtime does not continuously force that global.
 

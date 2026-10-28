@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         This is experimental compatibility software; a startup failure can be a runtime defect.
-        Check the README and current status report, confirm the CUSA00076 folder layout,
+        Check the README and current status report, confirm the game folder layout,
         and include the exact failure evidence rather than assuming the dump is at fault.
 
   - type: input

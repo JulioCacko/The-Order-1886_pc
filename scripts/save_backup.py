@@ -9,6 +9,7 @@ import datetime
 from pathlib import Path
 import re
 import shutil
+import struct
 
 KEEP = 10
 STAMP = '%Y%m%d-%H%M%S'
@@ -86,45 +87,99 @@ def restore(user_dir, name, now=None):
 
 # The SFO's INSTALL_DIR_SAVEDATA: the runtime keeps The Order's saves under this title id.
 SAVE_TITLE = 'CUSA00035'
+# src/runtime_savedata.c Param: title[128], subtitle[128], detail[1024], user_param, pad,
+# mtime (the runtime takes it from the file), reserved[32].
+PARAM_BIN = struct.Struct('<128s128s1024sIiq32s')
 
 
-def _save_pairs(title_dir):
+def read_sfo(path):
+    """Text and integer entries of a PS4 param.sfo."""
+    data = Path(path).read_bytes()
+    magic, _, keys, values, count = struct.unpack_from('<4sIIII', data)
+    if magic != b'\0PSF':
+        raise ValueError(f'Not a param.sfo: {path}')
+    entries = {}
+    for i in range(count):
+        key_at, fmt, length, _, value_at = struct.unpack_from('<HHIII', data, 20 + i * 16)
+        key = data[keys + key_at:data.index(b'\0', keys + key_at)].decode()
+        value = data[values + value_at:values + value_at + length]
+        if fmt == 0x0404:
+            entries[key] = int.from_bytes(value[:4], 'little')
+        elif fmt == 0x0204:
+            entries[key] = value.rstrip(b'\0').decode('utf-8', 'replace')
+    return entries
+
+
+def param_bin(sfo):
+    """The runtime's param.bin for a save exported with its param.sfo."""
+    text = lambda key, size: sfo.get(key, '').encode('utf-8')[:size - 1]
+    return PARAM_BIN.pack(text('MAINTITLE', 128), text('SUBTITLE', 128), text('DETAIL', 1024),
+                          sfo.get('SAVEDATA_LIST_PARAM', 0), 0, 0, b'')
+
+
+def _valid_name(name):
+    return 0 < len(name) < 32 and not set(name) & set('/\\:') and not name.startswith('.')
+
+
+def _runtime_saves(folder):
     """Saves in the runtime's layout: <name>/ with its metadata in <name>.sce_sys/param.bin."""
-    return sorted(d.name for d in title_dir.iterdir()
-                  if d.is_dir() and not d.name.endswith('.sce_sys')
-                  and (title_dir / (d.name + '.sce_sys') / 'param.bin').is_file())
+    return [(d.name, d, folder / (d.name + '.sce_sys'), None) for d in sorted(folder.iterdir())
+            if d.is_dir() and not d.name.endswith('.sce_sys')
+            and (folder / (d.name + '.sce_sys') / 'param.bin').is_file()]
 
 
-def _reject_unconverted(folder):
+def _exported_save(folder):
+    """A decrypted PS4 export (Apollo): the save's files plus sce_sys/param.sfo inside it."""
+    sfo_path = folder / 'sce_sys' / 'param.sfo'
+    if not sfo_path.is_file():
+        return None
+    sfo = read_sfo(sfo_path)
+    if sfo.get('TITLE_ID') != SAVE_TITLE:
+        raise ValueError(f'{folder.name} is a save of {sfo.get("TITLE_ID") or "an unnamed title"}, '
+                         f'not The Order: 1886 ({SAVE_TITLE}).')
+    name = sfo.get('SAVEDATA_DIRECTORY') or folder.name.rsplit('_' + SAVE_TITLE + '_', 1)[-1]
+    if not _valid_name(name):
+        raise ValueError(f'{folder.name} names an invalid save directory: {name!r}')
+    return name, folder, folder / 'sce_sys', sfo
+
+
+def _reject_encrypted(folder):
     for entry in folder.iterdir():
         key = folder / (entry.name + '.bin')
         if entry.is_file() and key.is_file() and key.read_bytes()[:8] == b'pfsSKKey':
             raise ValueError('These are encrypted PS4 saves (a save image with a pfsSKKey .bin). '
                              'Decrypt them first, for example with Apollo Save Tool on a PS4, '
                              'then import the decrypted folder.')
-        if entry.is_dir() and (entry / 'sce_sys' / 'param.sfo').is_file():
-            raise ValueError('This folder uses the PS4 export layout (sce_sys/param.sfo inside the '
-                             'save). Import a folder from another installation\'s savedata or a '
-                             'save backup instead: <name> beside <name>.sce_sys/param.bin.')
 
 
 def find_saves(source):
-    """(title folder, save names) for a savedata folder, a user or title folder, or one save."""
+    """(name, files, metadata, sfo or None) for each save in a savedata folder, a user or
+    title folder, a folder of PS4 exports, or one save of either layout."""
     source = Path(source)
     if not source.is_dir():
         raise ValueError(f'Not a folder: {source}')
+    exported = _exported_save(source)
+    if exported:
+        return [exported]
     if (source.parent / (source.name + '.sce_sys') / 'param.bin').is_file():
-        return source.parent, [source.name]
+        return [(source.name, source, source.parent / (source.name + '.sce_sys'), None)]
     candidates = [source, source / SAVE_TITLE]
     candidates += sorted(p / SAVE_TITLE for p in source.iterdir() if p.is_dir())
     for folder in candidates:
         if folder.is_dir():
-            _reject_unconverted(folder)
-            names = _save_pairs(folder)
-            if names:
-                return folder, names
+            _reject_encrypted(folder)
+            # A folder may hold both layouts: runtime saves and decrypted exports.
+            saves = _runtime_saves(folder) + [s for s in map(_exported_save, sorted(
+                d for d in folder.iterdir() if d.is_dir())) if s]
+            if saves:
+                return saves
     raise ValueError(f'No saves found in {source}. Choose a savedata folder, its {SAVE_TITLE} '
-                     'folder, or one save folder that has a matching <name>.sce_sys/param.bin.')
+                     'folder, a decrypted PS4 save export, or one save folder.')
+
+
+def _replace(staging, target):
+    shutil.rmtree(target, ignore_errors=True)
+    staging.rename(target)
 
 
 def import_saves(user_dir, source, now=None):
@@ -132,20 +187,27 @@ def import_saves(user_dir, source, now=None):
     savedata = Path(user_dir) / 'savedata'
     source = Path(source).resolve()
     if source == savedata.resolve() or savedata.resolve() in source.parents:
-        raise ValueError('That folder is already this installation\'s savedata.')
-    folder, names = find_saves(source)
+        raise ValueError("That folder is already this installation's savedata.")
+    saves = find_saves(source)
     safety = _copy(user_dir, now)
     users = sorted(p.name for p in savedata.iterdir() if p.is_dir() and p.name.isdigit()) \
         if savedata.is_dir() else []
     target = savedata / (users[0] if users else '1') / SAVE_TITLE
     target.mkdir(parents=True, exist_ok=True)
-    for name in names:
-        for part in (name, name + '.sce_sys'):
-            staging = target / (part + '.importing')
-            shutil.rmtree(staging, ignore_errors=True)
-            shutil.copytree(folder / part, staging)
-            shutil.rmtree(target / part, ignore_errors=True)
-            staging.rename(target / part)
+    for name, files, meta, sfo in saves:
+        staging = target / (name + '.importing')
+        shutil.rmtree(staging, ignore_errors=True)
+        shutil.copytree(files, staging, ignore=shutil.ignore_patterns('sce_sys') if sfo else None)
+        meta_staging = target / (name + '.sce_sys.importing')
+        shutil.rmtree(meta_staging, ignore_errors=True)
+        if sfo is None:
+            shutil.copytree(meta, meta_staging)
+        else:
+            meta_staging.mkdir()
+            (meta_staging / 'param.bin').write_bytes(param_bin(sfo))
+            if (meta / 'icon0.png').is_file():
+                shutil.copy2(meta / 'icon0.png', meta_staging / 'icon0.png')
+        _replace(staging, target / name)
+        _replace(meta_staging, target / (name + '.sce_sys'))
     _prune(user_dir)
-    return names, safety
-
+    return [save[0] for save in saves], safety

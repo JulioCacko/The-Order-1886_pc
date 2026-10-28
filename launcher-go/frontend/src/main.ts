@@ -15,7 +15,7 @@ type Field = {key:string;label:string;page:string;kind:string;default:unknown;de
   input_kind?:string;buttons?:{id:string;label:string;default:string[]}[]};
 type Snapshot = {trophies:{id:number;unlocked_at:number}[];trophy_error:string;settings:Record<string,any>;fields:Field[];pages:{id:string;title:string}[];
   trophy_catalog?:TrophyArtwork[];trophy_catalog_error?:string;
-  languages:Record<string,string>;translations:Record<string,string>;game:{ready:boolean;message:string;metadata:Record<string,unknown>};
+  languages:Record<string,string>;translations:Record<string,string>;game:{ready:boolean;message:string;metadata:Record<string,unknown>;experimental?:boolean};
   busy:boolean;backups:string[];saves_dir:string;logs:string[];logfile:string;state_dir:string;last_exit:number|null;acceptance:string;
   timing?:Timing;patches?:CatalogueRow[]};
 type AppBridge = {Call:(method:string,params:Record<string,unknown>)=>Promise<string>;
@@ -169,7 +169,8 @@ function home() {
  <div class="installation"><h2>${escape(t('Game installation'))}</h2>
  <p class="readiness ${snapshot.game.ready?'ready':''}">${escape(t(snapshot.game.ready?'Game files found':'Setup required'))}</p>
  <p class="truncate" title="${escape(values.game_dir)}">${escape(values.game_dir||t('Choose your extracted game folder'))}</p>
- <p class="quiet-copy">${snapshot.game.ready?`APP_VER ${escape(snapshot.game.metadata.APP_VER)} · VERSION ${escape(snapshot.game.metadata.VERSION)}`:escape(snapshot.game.message)}</p>
+ <p class="quiet-copy">${snapshot.game.ready?`${escape(snapshot.game.metadata.TITLE_ID)} · APP_VER ${escape(snapshot.game.metadata.APP_VER)} · VERSION ${escape(snapshot.game.metadata.VERSION)}`:escape(snapshot.game.message)}</p>
+ ${snapshot.game.experimental?`<p class="quiet-copy">${escape(t('Experimental edition: only CUSA00076 has been tested with a real dump. If something fails, report it with the session log.'))}</p>`:''}
  <button class="quiet" data-page="game">${escape(t('Manage game and saves'))}</button></div></section>`;
 }
 function achievementsPage() {
@@ -212,7 +213,7 @@ function render() {
  const pageTitle=snapshot.pages.find(p=>p.id===page)?.title??'Home';
  replaceView(root,`<div class="shell"><aside class="sidebar"><a href="#" class="brand" data-page="home" aria-label="The Order: 1886 Home"><img src="/assets/logo-stacked.png" alt="The Order: 1886"></a>
  <nav aria-label="${escape(t('Main navigation'))}">${snapshot.pages.map(item=>`<button id="nav-${item.id}" data-page="${item.id}" class="nav-item ${page===item.id&&!query?'selected':''}"${page===item.id&&!query?' aria-current="page"':''}>${icon(item.id)}<span>${escape(t(item.title))}</span></button>`).join('')}</nav>
- <div class="sidebar-bottom"><span>CUSA00076</span><span>v${escape(wails.info.productVersion)}</span><button class="quiet" data-link="releases">${escape(t('View releases'))}</button></div></aside>
+ <div class="sidebar-bottom"><span>${escape(snapshot.game.metadata?.TITLE_ID??'')}</span><span>v${escape(wails.info.productVersion)}</span><button class="quiet" data-link="releases">${escape(t('View releases'))}</button></div></aside>
  <main><header class="topbar"><span class="current-section">${escape(t(pageTitle))}</span><label class="search">${icon('search')}<span class="sr-only">${escape(t('Search all settings'))}</span><input id="search" type="search" placeholder="${escape(t('Search all settings'))}" value="${escape(query)}" autocomplete="off"></label><span class="session-status">${escape(t(disconnected?'Connection lost':snapshot.busy?'Running':starting?'Starting…':'Idle'))}</span></header>
  <div id="content" class="content">${page==='home'&&!query?home():settingsPage()}</div>
  <footer class="launchbar"><div><p id="feedback" class="${noticeError?'error':''}" role="status" aria-live="polite">${escape(noticeError?notice:saving?t('Saving settings…'):notice||t(snapshot.busy?'Session running. Settings are locked.':'Changes are saved automatically.'))}</p>

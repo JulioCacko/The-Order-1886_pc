@@ -58,6 +58,15 @@ class ShaderCacheTests(unittest.TestCase):
         for path in preserved:
             self.assertEqual(path.read_bytes(), b'preserve me', str(path))
 
+    def test_removes_the_cache_of_every_edition(self):
+        other = self.cache.parent / 'CUSA00785' / 'shader.bin'
+        other.parent.mkdir()
+        other.write_bytes(b'cached shader')
+        self.assertTrue(self.clear())
+        self.assertFalse(self.cache.exists())
+        self.assertFalse(other.parent.exists())
+        self.assertFalse(self.clear())
+
     def test_missing_cache_is_idempotent(self):
         self.assertTrue(self.clear())
         self.assertFalse(self.clear())

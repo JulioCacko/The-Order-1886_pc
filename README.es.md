@@ -4,7 +4,7 @@
 
 [English](README.md) · [Português (Brasil)](README.pt-BR.md) · **Español**
 
-Proyecto comunitario para ejecutar el binario original de **The Order: 1886**, edición PS4 **CUSA00076**, mediante un launcher nativo de Windows y un runtime Vulkan. Reutiliza infraestructura de carga PS4 y trabajo de gráficos/APIs de [shadPS4](https://github.com/shadps4-emu/shadPS4).
+Proyecto comunitario para ejecutar el binario original de **The Order: 1886**, actualización 1.02 en cualquier edición PS4 (**CUSA00076**, probada; CUSA00035, CUSA00070, CUSA00100, CUSA00670 y CUSA00785, experimentales), mediante un launcher nativo de Windows y un runtime Vulkan. Reutiliza infraestructura de carga PS4 y trabajo de gráficos/APIs de [shadPS4](https://github.com/shadps4-emu/shadPS4).
 
 **En desarrollo — 18 de octubre de 2026.** Se renderizan cinemáticas y se ha recorrido una ruta de calle, pero el rendimiento sigue siendo bajo. La progresión, los guardados por checkpoint, la estabilidad y 4K/60 todavía no están aceptados. La prueba del Capítulo 2 con copias de guardados llegó al timeout sin la aserción de 8.029 capas; quedan errores SRT y la issue #5 sigue abierta.
 
@@ -22,9 +22,9 @@ Proyecto comunitario para ejecutar el binario original de **The Order: 1886**, e
 
 **Descarga publicada: preview 9, del 21 de octubre.** Paquetes para Windows y Linux x86-64, ambos compilados desde la revisión `b19c604`. El juego corre a unos 53 FPS en el patio nocturno con una RTX 3070. Conserva la carpeta `user` al actualizar.
 
-**[Descargar el paquete para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.1/order1886-go-windows.zip)** · **[Descargar el paquete para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.1/order1886-linux-x86_64.tar.gz)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.1.0-go-preview.9) · [Guía de instalación](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.1/QUICKSTART.txt)
+**[Descargar el paquete para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.2/order1886-go-windows.zip)** · **[Descargar el paquete para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.2/order1886-linux-x86_64.tar.gz)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.2) · [Guía de instalación](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.2/QUICKSTART.txt)
 
-Extrae el ZIP completo y lee **QUICKSTART.txt**, incluido en el paquete. No requiere Python, MSYS2 ni compilador. Descarga `order1886-go-windows.zip`; los archivos “Source code” son para desarrolladores. El juego no está incluido: usa tu propio dump CUSA00076. Esta versión preliminar conserva las limitaciones de compatibilidad indicadas arriba.
+Extrae el ZIP completo y lee **QUICKSTART.txt**, incluido en el paquete. No requiere Python, MSYS2 ni compilador. Descarga `order1886-go-windows.zip`; los archivos “Source code” son para desarrolladores. El juego no está incluido: usa tu propio dump (cualquiera de las seis ediciones). Esta versión preliminar conserva las limitaciones de compatibilidad indicadas arriba.
 
 ## Novedades en el código fuente — 18 de octubre
 
@@ -55,7 +55,7 @@ Usa **Save settings** para guardar las opciones. Iniciar desde una página de op
 
 ## Iniciar
 
-Usa tu propia copia extraída de CUSA00076 con `eboot.bin`, `sce_sys` y `sce_module`. No se distribuyen ejecutables, dumps ni partidas guardadas del jugador. Los originales se conservan; las imágenes preparadas, configuración, cachés, registros, guardados y copias de seguridad se almacenan aparte.
+Usa tu propia copia extraída de cualquiera de las seis ediciones con `eboot.bin`, `sce_sys` y `sce_module`. No se distribuyen ejecutables, dumps ni partidas guardadas del jugador. Los originales se conservan; las imágenes preparadas, configuración, cachés, registros, guardados y copias de seguridad se almacenan aparte.
 
 1. Extrae el paquete portátil completo en una carpeta con permisos de escritura.
 2. Abre **The Order 1886.exe** y selecciona **Game folder** en la barra inferior.

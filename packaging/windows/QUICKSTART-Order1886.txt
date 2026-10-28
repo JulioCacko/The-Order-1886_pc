@@ -12,8 +12,9 @@ You do not need Python, MSYS2 or a compiler. This is unofficial,
 emulator-backed compatibility software, not an official PC port.
 
 No game executable, game archives, firmware or player saves are included.
-Use your own extracted PS4 copy of The Order: 1886, title ID CUSA00076.
-Other title IDs are not accepted.
+Use your own extracted PS4 copy of The Order: 1886, in any edition:
+CUSA00076 (tested), CUSA00035, CUSA00070, CUSA00100, CUSA00670 or CUSA00785
+(experimental: report how they run). Update 1.02 may be applied or not.
 
 BEFORE STARTING
 
@@ -29,7 +30,7 @@ YOUR GAME FOLDER
 
 Choose the folder that directly contains these items, not its parent:
 
-  CUSA00076\
+  CUSA00076\   (any folder name)
     eboot.bin
     archivemap.bin
     _data\
@@ -46,7 +47,7 @@ The original files are only read; a separate working copy is prepared.
 FIRST SESSION
 
 1. Open The Order 1886.exe.
-2. On Game & Content, choose your CUSA00076 folder.
+2. On Game & Content, choose your game folder.
 3. On Performance, start with 30 FPS (60 FPS is also offered).
 4. On Graphics, choose a display mode and upscaling: FSR 1, AMD FSR 3.1 or,
    on GeForce RTX, NVIDIA DLAA.
@@ -86,6 +87,12 @@ Settings, prepared files, caches, logs and saves are kept in
 Saves use the folder CUSA00035 from the game's metadata; do not rename it.
 A backup is made before each session. On Game & Content, select a backup and
 press Play to restore it before launch, then choose Continue/Load in the game.
+
+To bring saves in, use Game & Content > Import saves... and choose a decrypted
+PS4 save export (Apollo Save Tool: <id>_CUSA00035_<name> folders with
+sce_sys\param.sfo), another installation's savedata folder or a save backup.
+Current saves are backed up first. Encrypted saves copied straight off a PS4
+must be decrypted first. Open saves folder shows where they are kept.
 
 System > Updates checks GitHub releases and installs a verified package; the
 previous version can be restored. To update by hand, close everything, extract
@@ -135,7 +142,8 @@ Order 1886.exe), o runtime de compatibilidade com suas bibliotecas em bin e as
 licencas. Nao precisa de Python, MSYS2 ou compilador. E software de
 compatibilidade nao oficial, baseado em emulacao; nao e um port oficial.
 Nao inclui jogo, firmware ou saves. Use sua propria copia PS4 extraida de
-The Order: 1886, titulo CUSA00076.
+The Order: 1886, em qualquer edicao (CUSA00076 testada; CUSA00035,
+CUSA00070, CUSA00100, CUSA00670 e CUSA00785 experimentais).
 
 COMO INICIAR
 
@@ -162,6 +170,10 @@ Configuracao, saves, backups, caches e logs ficam em user\order1886 ao lado
 do launcher. Os saves usam a pasta CUSA00035; nao a renomeie. Um backup e
 feito antes de cada sessao. Em Game & Content, escolha um backup e clique Play
 para restaura-lo antes de iniciar; depois use Continue/Load no jogo.
+Para trazer saves, use Game & Content > Import saves... e escolha um export
+de save PS4 descriptografado (Apollo Save Tool: pastas <id>_CUSA00035_<nome>
+com sce_sys\param.sfo), a pasta savedata de outra instalacao ou um backup.
+Saves criptografados copiados direto do PS4 precisam ser descriptografados antes.
 
 System > Updates procura versoes no GitHub e instala um pacote verificado; a
 versao anterior pode ser restaurada. Para atualizar manualmente, extraia o novo

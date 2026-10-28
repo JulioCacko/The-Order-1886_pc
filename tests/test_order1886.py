@@ -50,8 +50,14 @@ class OrderBackendTests(unittest.TestCase):
 
     def test_rejects_another_title_before_preparation(self):
         self.metadata['TITLE_ID'] = 'CUSA01623'
-        with self.assertRaisesRegex(ValueError, 'Expected CUSA00076'):
+        with self.assertRaisesRegex(ValueError, r'Expected The Order: 1886 \(CUSA00076, .*CUSA00785\), found CUSA01623'):
             order1886.inspect_game(self.game)
+
+    def test_accepts_every_edition_in_any_folder(self):
+        for title_id in order1886.editions.TITLE_IDS:
+            with self.subTest(title_id=title_id):
+                self.metadata['TITLE_ID'] = title_id
+                self.assertEqual(order1886.inspect_game(self.game)['TITLE_ID'], title_id)
 
     def test_names_empty_or_missing_game_files(self):
         (self.game / 'eboot.bin').write_bytes(b'')
@@ -170,8 +176,11 @@ class OrderBackendTests(unittest.TestCase):
             return {'exit_code': 0, 'runtime_exit_code': 0, 'timed_out': False,
                     'stop_requested': False, 'forced_stop': False, 'elapsed_seconds': 0}
 
-        for choice, expected in ((None, 1), (8, 8), (0, 0), (17, 17)):
-            with self.subTest(choice=choice), \
+        # Brazilian Portuguese (17) exists only in CUSA00785; other editions get Portugal's (7).
+        for title_id, choice, expected in (('CUSA00076', None, 1), ('CUSA00076', 8, 8), ('CUSA00076', 0, 0),
+                                           ('CUSA00076', 17, 7), ('CUSA00785', 17, 17)):
+            self.metadata['TITLE_ID'] = title_id
+            with self.subTest(title_id=title_id, choice=choice), \
                     patch.object(order1886, 'find_runtime', return_value=runtime), \
                     patch.object(order1886, 'prepare_game', return_value={'image_sha256': 'fixture'}), \
                     patch.object(order1886.save_backup, 'backup'), \
@@ -201,7 +210,7 @@ class OrderBackendTests(unittest.TestCase):
         (out / 'prepared.json').write_text('{"previous": "preserve"}')
         (out / 'boot-linked.bin').write_bytes(b'previous valid image')
         before = {p.name: p.read_bytes() for p in out.iterdir()}
-        with self.assertRaisesRegex(ValueError, 'SELF SHA256'):
+        with self.assertRaisesRegex(ValueError, 'expected PS4 SELF or ELF'):
             order1886.prepare_game(self.game, out, frame_rate=60)
         self.assertEqual({p.name: p.read_bytes() for p in out.iterdir()}, before)
 

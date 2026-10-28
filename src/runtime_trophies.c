@@ -25,7 +25,7 @@
 #include <unistd.h>
 #endif
 
-#define HEADER "ORDER1886-TROPHIES 1 CUSA00076 NPWR06616_00 1\n"
+#define HEADER_FORMAT "ORDER1886-TROPHIES 1 %s NPWR06616_00 1\n"
 enum { MAX_OBJECTS = 32, PATH_BYTES = 2048, STATE_BYTES = 8192 };
 typedef struct { int32_t id; int registered; } Context;
 typedef struct { int32_t id; int aborted; } Handle;
@@ -36,6 +36,8 @@ static Handle handles[MAX_OBJECTS];
 static uint32_t next_id = 1;
 static int ready;
 static char history_path[PATH_BYTES];
+static char header[64]; /* HEADER_FORMAT for the configured edition */
+static size_t header_length;
 static int check_parents(const char *path, int create);
 #ifdef _WIN32
 static HANDLE store_lock = INVALID_HANDLE_VALUE;
@@ -198,11 +200,11 @@ static int load_state(int64_t result[RUNTIME_TROPHY_LIMIT]) {
     size_t size = fread(bytes, 1, sizeof(bytes), file);
     int ok = !ferror(file) && size < sizeof(bytes) && fgetc(file) == EOF;
     if (fclose(file)) ok = 0;
-    if (!ok || size < sizeof(HEADER) - 1 || memchr(bytes, 0, size) ||
-        memcmp(bytes, HEADER, sizeof(HEADER) - 1)) return 0;
-    uint64_t hash = checksum(UINT64_C(14695981039346656037), bytes, sizeof(HEADER) - 1);
+    if (!ok || size < header_length || memchr(bytes, 0, size) ||
+        memcmp(bytes, header, header_length)) return 0;
+    uint64_t hash = checksum(UINT64_C(14695981039346656037), bytes, header_length);
     unsigned count = 0;
-    char *line = bytes + sizeof(HEADER) - 1, *end = bytes + size;
+    char *line = bytes + header_length, *end = bytes + size;
     while (line < end) {
         char *newline = memchr(line, '\n', (size_t)(end - line));
         if (!newline) return 0;
@@ -237,8 +239,9 @@ static int replace_state_posix(const char *temporary, const char *target) {
 
 static int persist(const int64_t values[RUNTIME_TROPHY_LIMIT]) {
     if (!check_parents(history_path, 0)) return 0;
-    char bytes[STATE_BYTES] = HEADER, temporary[PATH_BYTES];
-    size_t used = sizeof(HEADER) - 1;
+    char bytes[STATE_BYTES], temporary[PATH_BYTES];
+    memcpy(bytes, header, header_length);
+    size_t used = header_length;
     unsigned count = 0;
     for (unsigned i = 0; i < RUNTIME_TROPHY_LIMIT; ++i) {
         if (!values[i]) continue;
@@ -274,15 +277,24 @@ static int persist(const int64_t values[RUNTIME_TROPHY_LIMIT]) {
     return ok;
 }
 
+int runtime_order_title(const char *title_id) {
+    static const char *const ids[] = {"CUSA00076", "CUSA00035", "CUSA00070", "CUSA00100", "CUSA00670", "CUSA00785"};
+    for (size_t i = 0; title_id && i < sizeof(ids) / sizeof(ids[0]); ++i)
+        if (!strcmp(title_id, ids[i])) return 1;
+    return 0;
+}
+
 int32_t runtime_trophy_configure(const char *state_root, const char *title_id) {
     pthread_mutex_lock(&trophy_lock);
     ready = 0;
     memset(contexts, 0, sizeof(contexts));
     memset(handles, 0, sizeof(handles));
     int32_t result = RUNTIME_TROPHY_INVALID;
-    if (state_root && *state_root && title_id && !strcmp(title_id, "CUSA00076")) {
-        char path[PATH_BYTES];
-        int n = snprintf(path, sizeof(path), "%s/%s", state_root, RUNTIME_TROPHY_RELATIVE_PATH);
+    if (state_root && *state_root && runtime_order_title(title_id)) {
+        char path[PATH_BYTES], relative[128];
+        header_length = (size_t)snprintf(header, sizeof(header), HEADER_FORMAT, title_id);
+        snprintf(relative, sizeof(relative), RUNTIME_TROPHY_PATH_FORMAT, title_id);
+        int n = snprintf(path, sizeof(path), "%s/%s", state_root, relative);
         result = RUNTIME_TROPHY_IO_ERROR;
         int64_t loaded[RUNTIME_TROPHY_LIMIT] = {0};
         int loaded_ok = n > 0 && (size_t)n < sizeof(path) && check_parents(path, 1) &&

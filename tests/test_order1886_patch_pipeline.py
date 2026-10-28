@@ -9,7 +9,7 @@ from scripts import order1886_patches as patches
 from scripts import order1886_frame_rate as timing
 
 ROOT = Path(__file__).resolve().parents[1]
-METADATA = {'TITLE_ID': 'CUSA00076', 'APP_VER': '01.00', 'VERSION': '01.03'}
+METADATA = {'TITLE_ID': 'CUSA00076', 'APP_VER': '01.02', 'VERSION': '01.00'}
 
 
 def container(image):
@@ -23,10 +23,8 @@ def third_party(offset=0x1C0, expected=b'ORIGINAL', replacement=b'PATCHED!'):
     return {'id': 'order1886-test-third-party',
             'title': 'Test third-party recipe',
             'description': 'Not shipped; proves the preparation pipeline applies catalogued recipes.',
-            'title_id': METADATA['TITLE_ID'], 'app_ver': METADATA['APP_VER'],
-            'version': METADATA['VERSION'],
-            'guest_executable': 'eboot.bin', 'guest_sha256': '0' * 64,
-            'image': patches.IMAGE_KIND, 'image_sha256': '0' * 64,
+            'title_ids': (METADATA['TITLE_ID'],),
+            'guest_executable': 'eboot.bin', 'image': patches.IMAGE_KIND,
             'edits': ({'offset': offset, 'expected': expected, 'replacement': replacement},),
             'experimental': True, 'warning': 'test only'}
 
@@ -42,13 +40,12 @@ class SelectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             patches.select(['order1886-does-not-exist'], METADATA)
 
-    def test_a_wrong_build_is_refused(self):
+    def test_a_title_the_recipe_does_not_list_is_refused(self):
         original = patches.RECIPES
         try:
             patches.RECIPES = original + (third_party(),)
-            with self.assertRaises(ValueError):
-                patches.select([third_party()['id']], {'TITLE_ID': 'CUSA00076', 'APP_VER': '01.02',
-                                                       'VERSION': '01.03'})
+            with self.assertRaisesRegex(ValueError, 'CUSA00785'):
+                patches.select([third_party()['id']], {**METADATA, 'TITLE_ID': 'CUSA00785'})
         finally:
             patches.RECIPES = original
 

@@ -38,7 +38,7 @@ def field(key, label, page, kind, default, description, choices=None, reason="",
     FIELDS.append(item)
 
 
-field("game_dir", "Game folder", "game", "directory", "", "Select the extracted CUSA00076 game. Original files remain unchanged.")
+field("game_dir", "Game folder", "game", "directory", "", "Select your extracted game folder (any edition: CUSA00076, CUSA00035, CUSA00070, CUSA00100, CUSA00670 or CUSA00785). Original files remain unchanged.")
 field("runtime", "Runtime executable", "system", "file", "", "Leave empty to use the installation's verified Order runtime.")
 field("trophy_key", "Trophy key", "achievements", "secret", "",
       "Optional: your own console's trophy key, 32 hexadecimal digits, as shadPS4 uses it. With it the launcher decrypts trophy names and descriptions from your game's own files; hidden trophies stay hidden until earned. The key stays in this installation's settings and is never sent anywhere.")
