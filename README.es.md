@@ -62,7 +62,7 @@ Usa tu propia copia extraída de cualquiera de las seis ediciones con `eboot.bin
 3. Empieza con **30 FPS** y elige el modo de pantalla y FSR 1 o Linear.
 4. Usa **Play**, **Advanced → View session log** y **Stop session** para iniciar, revisar o detener la sesión.
 
-Desde el código fuente, ejecuta `Launch The Order 1886.cmd` o el launcher de Go compilado después de seguir las [instrucciones de compilación para Windows](docs/order1886-build.md). El paquete no requiere Python ni MSYS2. **Linux x86-64 vuelve a compilarse** como `tar.gz` portable con el launcher de Go, el runtime nativo y el worker de Python. No está cualificado: nada de ello ha ejecutado el juego, y la prueba automática cubre el paquete, no el juego. Requiere un driver con Vulkan y un escritorio con GTK 3 y WebKitGTK 4.1. Véase la [guía de compilación](docs/order1886-build.md).
+Desde el código fuente, ejecuta `Launch The Order 1886.cmd` o el launcher de Go compilado después de seguir las [instrucciones de compilación para Windows](docs/order1886-build.md). El paquete no requiere Python ni MSYS2. **Linux x86-64 vuelve a compilarse** como `tar.gz` portable con el launcher de Go, el runtime nativo y el worker de Python. No está cualificado: nada de ello ha ejecutado el juego, y la prueba automática cubre el paquete, no el juego. Requiere un driver con Vulkan. La ventana del launcher requiere además GTK 3 y WebKitGTK 4.1; sin ellos, `Play The Order 1886 --game-dir /ruta/al/juego` inicia el juego directamente (para SteamOS y Steam, consulta `QUICKSTART.txt`). Véase la [guía de compilación](docs/order1886-build.md).
 
 ## Estado y rendimiento
 
