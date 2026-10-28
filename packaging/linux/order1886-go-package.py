@@ -127,9 +127,14 @@ def main() -> None:
     elf_or_fail(launcher, 'Go launcher')
     entry = args.entry.resolve()
     elf_or_fail(entry, 'WebKit-free entry')
-    linked = subprocess.run(['ldd', str(entry)], capture_output=True, text=True, check=False, timeout=60).stdout
-    if 'webkit' in linked.lower() or 'gtk' in linked.lower():
-        fail(f'The entry build links the launcher window libraries; build it with -tags noui:\n{linked}')
+    # readelf only reads the ELF; ldd may run the binary's own loader.
+    dynamic = subprocess.run(['readelf', '-d', str(entry)], capture_output=True, text=True,
+                             check=True, timeout=60).stdout
+    linked = [name for name in re.findall(r'Shared library: \[([^\]]+)\]', dynamic)
+              if re.search(r'webkit|javascriptcore|gtk|gdk|soup', name)]
+    if linked:
+        fail(f'The entry build links the launcher window libraries ({", ".join(linked)}); '
+             'build it with -tags noui.')
     elf_or_fail(runtime, 'Runtime')
     gpu = args.gpu.resolve()
     elf_or_fail(gpu, 'GPU library')
