@@ -7,6 +7,6 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {"name": "The Order 1886 PC contributors"},
-  "info": {"companyName": "The Order 1886 PC contributors", "productName": "The Order 1886", "productVersion": "0.2.3", "copyright": "GPL-2.0-or-later; see bundled notices"}
+  "info": {"companyName": "The Order 1886 PC contributors", "productName": "The Order 1886", "productVersion": "0.2.4", "copyright": "GPL-2.0-or-later; see bundled notices"}
 }
 
