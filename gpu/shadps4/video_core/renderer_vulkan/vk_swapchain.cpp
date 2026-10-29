@@ -12,6 +12,7 @@
 #include "imgui/renderer/imgui_core.h"
 #include "sdl_window.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
+#include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_swapchain.h"
 
 namespace Vulkan {
@@ -82,6 +83,8 @@ void Swapchain::Create(u32 width_, u32 height_) {
     swapchain = chain;
 
     SetupImages();
+    // The new swapchain may have fewer images than the old one.
+    frame_index = 0;
     RefreshSemaphores();
 }
 
@@ -220,6 +223,9 @@ void Swapchain::UpdateVsync() {
         (Ps4Settings::Get().display_mode == Ps4Graphics::Fullscreen) == fullscreen) {
         return;
     }
+    // vkDeviceWaitIdle (here and in Destroy) needs every queue externally synchronized, and the
+    // command thread submits under this lock. Presenter::Present recreates under it too.
+    std::scoped_lock submit_lock{Scheduler::submit_mutex};
     if (const auto result = instance.GetDevice().waitIdle(); result != vk::Result::eSuccess) {
         LOG_WARNING(Render_Vulkan, "Failed to wait for the device before a present change: {}",
                     vk::to_string(result));
