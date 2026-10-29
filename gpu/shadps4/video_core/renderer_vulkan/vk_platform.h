@@ -22,6 +22,11 @@ constexpr u32 TargetVulkanApiVersion = VK_API_VERSION_1_3;
 
 vk::SurfaceKHR CreateSurface(vk::Instance instance, const Frontend::WindowSDL& emu_window);
 
+/// forbid_exclusive needs VK_EXT_full_screen_exclusive enabled; it is ignored off Windows.
+vk::ResultValue<vk::SwapchainKHR> CreateSwapchain(vk::Device device,
+                                                  vk::SwapchainCreateInfoKHR info,
+                                                  bool forbid_exclusive);
+
 vk::UniqueInstance CreateInstance(Frontend::WindowSystemType window_type, bool enable_validation,
                                   bool enable_crash_diagnostic);
 

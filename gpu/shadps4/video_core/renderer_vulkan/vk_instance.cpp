@@ -192,6 +192,16 @@ Instance::Instance(const Frontend::WindowSystemInfo& window_info, s32 physical_d
                VK_VERSION_MAJOR(TargetVulkanApiVersion), VK_VERSION_MINOR(TargetVulkanApiVersion),
                VK_VERSION_MAJOR(properties.apiVersion), VK_VERSION_MINOR(properties.apiVersion));
 
+    // VK_EXT_full_screen_exclusive needs VK_KHR_get_surface_capabilities2, which only a Win32
+    // window instance enables, and only when the loader offers it (vk_platform.cpp).
+    if (window_info.type == Frontend::WindowSystemType::Windows) {
+        const auto [result, offered] = vk::enumerateInstanceExtensionProperties();
+        full_screen_exclusive =
+            result == vk::Result::eSuccess && std::ranges::any_of(offered, [](const auto& e) {
+                return std::string_view{e.extensionName} ==
+                       VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME;
+            });
+    }
     CreateDevice();
     CollectPhysicalMemoryInfo();
     CollectImageFormatInfo();
@@ -445,6 +455,8 @@ bool Instance::CreateDevice() {
         compute_shader_derivatives_features =
             feature_chain.get<vk::PhysicalDeviceComputeShaderDerivativesFeaturesKHR>();
     }
+    // Spelled out: the extension's macros live in vulkan_win32.h, which only vk_platform.cpp sees.
+    full_screen_exclusive = full_screen_exclusive && add_extension("VK_EXT_full_screen_exclusive");
     shader_clock = add_extension(VK_KHR_SHADER_CLOCK_EXTENSION_NAME);
     if (shader_clock) {
         shader_clock_features = feature_chain.get<vk::PhysicalDeviceShaderClockFeaturesKHR>();

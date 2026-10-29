@@ -317,6 +317,11 @@ public:
         return IsFsr4Int8Supported() && mixed_float_dot_product;
     }
 
+    /// VK_EXT_full_screen_exclusive is enabled (Windows only).
+    bool IsFullScreenExclusiveSupported() const {
+        return full_screen_exclusive;
+    }
+
     /// VK_KHR_shader_clock is supported.
     bool IsShaderSubgroupClockSupported() const {
         return shader_clock && shader_clock_features.shaderSubgroupClock;
@@ -598,6 +603,7 @@ private:
     bool image_2d_view_of_3d{};
     bool image_view_min_lod{};
     bool shader_clock{};
+    bool full_screen_exclusive{};
     bool pipeline_executable_properties{}; // ORDER1886_WAVE_STATS=1 (vk_wave_stats.h)
     bool amd_shader_info{};                // with it, VK_AMD_shader_info when present
     bool compute_shader_derivatives{};
