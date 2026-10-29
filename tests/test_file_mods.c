@@ -58,6 +58,18 @@ int main(void) {
         p+=length;
     }
     assert(found && !do_close(dir));
+    /* Dumps mix case (ps4/GPU on disk, ps4/gpu in the game); lookups ignore it as on the PS4. */
+    char upper[512], cased[600];
+    snprintf(upper,sizeof(upper),"%s/game/ps4",root); assert(!mkdir(upper,0755));
+    snprintf(upper,sizeof(upper),"%s/game/ps4/GPU",root); assert(!mkdir(upper,0755));
+    snprintf(cased,sizeof(cased),"%s/Shader.bin",upper);
+    f=fopen(cased,"w"); assert(f); assert(fputs("gpu",f)>=0); assert(!fclose(f));
+    int folded=(int)do_open("/app0/ps4/gpu/shader.BIN",0,0); assert(folded>=3);
+    char folded_content[4]={0}; assert(do_read(folded,folded_content,3)==3 && !strcmp(folded_content,"gpu"));
+    assert(!do_close(folded));
+    assert(do_open("/app0/ps4/gpu/missing.bin",0,0)==-ENOENT);
+    assert(!unlink(cased) && !rmdir(upper));
+    snprintf(upper,sizeof(upper),"%s/game/ps4",root); assert(!rmdir(upper));
     int save=(int)do_open("/data/test-save",0x202,0644); assert(save>=3);
     assert(do_write(save,"save",4)==4 && !do_close(save));
     assert(!path_op("/data/test-save",2,0));

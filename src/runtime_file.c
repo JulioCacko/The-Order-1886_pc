@@ -106,6 +106,38 @@ static int translate_locked(const char *buffer,char *out,size_t size) {
     else if ((size_t)snprintf(out,size,"%s%s",m->host,buffer+best)>=size) result=ENAMETOOLONG;
     return result;
 }
+#ifndef _WIN32
+#include <strings.h>
+/* The PS4 file system and NTFS ignore case; ext4 and btrfs do not, and dumps mix it (the game
+ * opens ps4/gpu/..., a dump holds ps4/GPU/). When the exact host path is missing, each missing
+ * component is taken from its directory's listing, ignoring case. A match has the same length,
+ * so the path is fixed in place; the first component with no match ends it (a file to create). */
+/* ponytail: scans one directory per missing component on every miss; cache listings per
+ * directory if misses show up in profiles. */
+static void fold_case(char *path) {
+    struct stat s;
+    if (!stat(path,&s) || errno!=ENOENT) return;
+    for (char *p=path;*p;) {
+        while (*p=='/') ++p;
+        if (!*p) return;
+        char *end=p+strcspn(p,"/"), saved=*end;
+        *end=0;
+        if (lstat(path,&s)) {
+            DIR *d;
+            if (p==path) d=opendir(".");
+            else if (p-1==path) d=opendir("/");
+            else { p[-1]=0; d=opendir(path); p[-1]='/'; }
+            struct dirent *e;
+            int found=0;
+            while (d && !found && (e=readdir(d)))
+                if (!strcasecmp(e->d_name,p)) { memcpy(p,e->d_name,(size_t)(end-p)); found=1; }
+            if (d) closedir(d);
+            if (!found) { *end=saved; return; }
+        }
+        *end=saved; p=end;
+    }
+}
+#endif
 /* Resolve a guest path to a host path; returns 0 or a host errno. */
 static int translate(const char *guest,char *out,size_t size) {
     if (!guest || !*guest) return ENOENT;
@@ -118,6 +150,9 @@ static int translate(const char *guest,char *out,size_t size) {
     int result=translate_locked(buffer,out,size);
     pthread_mutex_unlock(&lock);
     if (result==ENOENT) fprintf(stderr,"Runtime: no mount for guest path %s\n",guest);
+#ifndef _WIN32
+    if (!result) fold_case(out);
+#endif
     return result;
 }
 static int host_flags(int flags) {
