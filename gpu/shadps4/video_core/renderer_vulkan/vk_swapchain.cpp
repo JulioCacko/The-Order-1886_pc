@@ -7,6 +7,7 @@
 #include "common/assert.h"
 #include "common/logging/log.h"
 #include "core/emulator_settings.h"
+#include "ps4_graphics.h"
 #include "ps4_settings.h"
 #include "imgui/renderer/imgui_core.h"
 #include "sdl_window.h"
@@ -72,7 +73,10 @@ void Swapchain::Create(u32 width_, u32 height_) {
         .oldSwapchain = nullptr,
     };
 
-    auto [swapchain_result, chain] = instance.GetDevice().createSwapchainKHR(swapchain_info);
+    // Windowed and Borderless forbid exclusive full-screen; Fullscreen leaves it to the driver.
+    fullscreen = Ps4Settings::Get().display_mode == Ps4Graphics::Fullscreen;
+    auto [swapchain_result, chain] = CreateSwapchain(
+        instance.GetDevice(), swapchain_info, instance.IsFullScreenExclusiveSupported() && !fullscreen);
     ASSERT_MSG(swapchain_result == vk::Result::eSuccess, "Failed to create swapchain: {}",
                vk::to_string(swapchain_result));
     swapchain = chain;
@@ -212,11 +216,12 @@ void Swapchain::FindPresentMode() {
 }
 
 void Swapchain::UpdateVsync() {
-    if (Ps4Settings::Get().vsync == vsync) {
+    if (Ps4Settings::Get().vsync == vsync &&
+        (Ps4Settings::Get().display_mode == Ps4Graphics::Fullscreen) == fullscreen) {
         return;
     }
     if (const auto result = instance.GetDevice().waitIdle(); result != vk::Result::eSuccess) {
-        LOG_WARNING(Render_Vulkan, "Failed to wait for the device before a VSync change: {}",
+        LOG_WARNING(Render_Vulkan, "Failed to wait for the device before a present change: {}",
                     vk::to_string(result));
     }
     FindPresentMode();

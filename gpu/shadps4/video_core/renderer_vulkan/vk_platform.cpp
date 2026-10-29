@@ -62,6 +62,23 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsCallback(
     return VK_FALSE;
 }
 
+vk::ResultValue<vk::SwapchainKHR> CreateSwapchain(vk::Device device,
+                                                  vk::SwapchainCreateInfoKHR info,
+                                                  bool forbid_exclusive) {
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+    // Without this the driver picks the full-screen method (VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT)
+    // and may take exclusive full-screen for a window that covers the display, so a borderless
+    // window behaved like Fullscreen (#121).
+    const vk::SurfaceFullScreenExclusiveInfoEXT exclusive = {
+        .fullScreenExclusive = vk::FullScreenExclusiveEXT::eDisallowed,
+    };
+    if (forbid_exclusive) {
+        info.pNext = &exclusive;
+    }
+#endif
+    return device.createSwapchainKHR(info);
+}
+
 vk::SurfaceKHR CreateSurface(vk::Instance instance, const Frontend::WindowSDL& emu_window) {
     const auto& window_info = emu_window.GetWindowInfo();
     vk::SurfaceKHR surface{};
@@ -177,6 +194,8 @@ std::vector<const char*> GetInstanceExtensions(Frontend::WindowSystemType window
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
     case Frontend::WindowSystemType::Windows:
         extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+        // Required by VK_EXT_full_screen_exclusive (CreateSwapchain).
+        extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
         break;
 #elif defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_WAYLAND_KHR)
     case Frontend::WindowSystemType::X11:

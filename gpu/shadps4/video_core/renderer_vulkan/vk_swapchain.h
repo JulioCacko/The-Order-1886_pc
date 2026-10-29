@@ -88,8 +88,8 @@ public:
 
     void SetHDR(bool hdr);
 
-    /// VSync from the in-game menu (Ps4Settings::vsync); recreates the swapchain when it
-    /// changed. Present thread only.
+    /// VSync and display mode from the in-game menu (Ps4Settings); recreates the swapchain when
+    /// either changed. Present thread only.
     void UpdateVsync();
 
     bool GetHDR() const {
@@ -124,6 +124,7 @@ private:
     vk::Format view_format;
     vk::PresentModeKHR present_mode;
     bool vsync = true; ///< the setting present_mode was chosen for
+    bool fullscreen = false; ///< Fullscreen display mode: the driver may go exclusive
     vk::Extent2D extent;
     vk::SurfaceTransformFlagBitsKHR transform;
     vk::CompositeAlphaFlagBitsKHR composite_alpha;
