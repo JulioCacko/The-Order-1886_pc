@@ -184,7 +184,7 @@ class ModOverlayTests(unittest.TestCase):
              patch.object(order1886, 'run_process', side_effect=finish):
             self.assertEqual(order1886.main(args), 0)
         prepare.assert_called_once_with(self.game, self.state / 'prepared', frame_rate=30, aspect_ratio='original',
-                                       patches=[], disabled_effects=[])
+                                       patches=[], disabled_effects=[], render_width=1920)
         report = json.loads((self.state / 'logs/last-run.json').read_text())
         self.assertEqual(report['game'], str(self.game))
         self.assertEqual(report['mounted_game'], str(calls[0]))

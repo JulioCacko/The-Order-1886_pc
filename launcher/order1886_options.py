@@ -48,6 +48,13 @@ field("display_mode", "Display mode", "graphics", "select", "borderless", "Windo
       [("windowed", "Windowed", ""), ("borderless", "Borderless", ""), ("fullscreen", "Fullscreen", "")])
 field("aspect_ratio", "Framing", "graphics", "select", "original", "Original preserves cinematic framing. The 16:9 patch is executable-specific and experimental.",
       [("original", "Original cinematic aspect", ""), ("16:9", "16:9 — experimental", "")])
+field("render_width", "Render resolution", "graphics", "select", 1920,
+      "The size the game itself renders at, with no upscaler: every screen-sized pass, from the G-buffer to tonemapping, runs at this width, and the height follows Framing (2.4:1 for Original, 16:9 for full screen). A prepared copy of the executable sets the size and grows the game's render-target memory to match; the original files stay unchanged. Above the original size Upscaling is set aside and the frame is presented 1:1, guest memory grows accordingly, and image quality, memory use and gameplay are experimental (docs/order1886-resolution.md).",
+      [(1920, "Original (1920 wide)", ""), (2560, "2560 wide — experimental", ""),
+       (3840, "3840 wide, native 4K — experimental", ""), (0, "Custom width — experimental", "")])
+field("custom_render_width", "Custom render width", "graphics", "number", 3200,
+      "Used when Render resolution is Custom: a multiple of 16 from 1280 to 4880 (4192 with 16:9 framing).",
+      minimum=1280, maximum=4880)
 field("presentation_filter", "Upscaling", "graphics", "select", "fsr1", "Choose Linear / no FSR for the original-resolution path. AMD FSR 3.1 or NVIDIA DLAA replaces the game's own temporal anti-aliasing at the game's render size, then FSR 1 scales the result to the output. DLAA needs an NVIDIA GeForce RTX GPU; on any other GPU the game's own anti-aliasing stays and the session log says why. Presentation scaling does not establish native internal resolution: the scene renders at the size the game chooses, and larger output is not native 4K (docs/order1886-resolution.md).",
       [("linear", "Linear / no FSR", ""), ("fsr1", "FSR 1", ""),
        ("fsr3", "AMD FSR 3.1 (native AA) + FSR 1", "" if sys.platform == "win32" else FSR3_LINUX),
