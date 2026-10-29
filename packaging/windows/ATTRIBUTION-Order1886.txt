@@ -24,6 +24,12 @@ commit 7822ee56c2169f15ecde5d80f39e96143a252464 (GPL-2.0-or-later):
 https://github.com/mateussmeneses/theorder1886-port
 The adaptation uses this project's own settings, session worker and runtime ABI.
 
+Renderer fixes come from TOport by Igor Augusto (GPL-2.0):
+memory-table SRW lock (a15cf8b), deferred readbacks (32efe96, e03c9e9),
+draw-pipe drain (888c546, 5534ce9), redraw depth bias (6bbcc57) and the
+diagnosis that HTILE reads see every tile as cleared (94e3c22, dfc66af):
+https://github.com/IgorAugustoHH/The-Order-1886-PC-Port
+
 The optional experimental timing recipe derives from illusion's published
 The Order 1886 patch in PS-Game-Patch, commit
 3ad781ad8748139d2ca5e6c3b018d0063b8aa1a3:

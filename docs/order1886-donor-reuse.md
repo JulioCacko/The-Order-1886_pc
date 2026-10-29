@@ -28,6 +28,7 @@ propagation is still needed to preserve NaN when that hardware bit is disabled.
   the donor's promoted deferred-buffer queue; CPU writes/unmaps clear page watches.
   Both modes still need matched scene/performance qualification. HTILE synthesis needs
   an optional-value guard for shader-written metadata and scene validation.
+  Original HTILE diagnosis: TOport `94e3c22`, `dfc66af`.
   Existing backing-write texture invalidation is already present locally.
 - Async pipeline restore prioritization depends on the donor's publication and
   queue state; import it with cache-pairing and scheduling tests, not in isolation.

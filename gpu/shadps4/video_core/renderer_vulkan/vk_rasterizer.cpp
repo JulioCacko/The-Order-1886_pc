@@ -3749,6 +3749,7 @@ void Rasterizer::UpdateDepthStencilState() const {
     // driver's compiles can differ by a few ulps, those fragments fail and are never shaded (The
     // Order: black flecks on faces in the lighting pass). A small bias toward the camera
     // (ORDER1886_REDRAW_DEPTH_BIAS units, 0 = off) lets them pass; these draws write no depth.
+    // Same rule, names and sign as TOport 6bbcc57 (BB_REDRAW_DEPTH_BIAS, GPL-2.0).
     static const float redraw_bias = [] {
         const char* env = std::getenv("ORDER1886_REDRAW_DEPTH_BIAS");
         return env ? float(std::atof(env)) : 16.f;
