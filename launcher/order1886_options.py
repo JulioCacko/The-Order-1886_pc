@@ -54,7 +54,7 @@ field("render_width", "Render resolution", "graphics", "select", 1920,
        (3840, "3840 wide, native 4K — experimental", ""), (0, "Custom width — experimental", "")])
 field("custom_render_width", "Custom render width", "graphics", "number", 3200,
       "Used when Render resolution is Custom: a multiple of 16 from 1280 to 4880 (4192 with 16:9 framing).",
-      minimum=1280, maximum=4880)
+      minimum=1280, maximum=4880, multiple=16)
 field("presentation_filter", "Upscaling", "graphics", "select", "fsr1", "Choose Linear / no FSR for the original-resolution path. AMD FSR 3.1 or NVIDIA DLAA replaces the game's own temporal anti-aliasing at the game's render size, then FSR 1 scales the result to the output. DLAA needs an NVIDIA GeForce RTX GPU; on any other GPU the game's own anti-aliasing stays and the session log says why. Presentation scaling does not establish native internal resolution: the scene renders at the size the game chooses, and larger output is not native 4K (docs/order1886-resolution.md).",
       [("linear", "Linear / no FSR", ""), ("fsr1", "FSR 1", ""),
        ("fsr3", "AMD FSR 3.1 (native AA) + FSR 1", "" if sys.platform == "win32" else FSR3_LINUX),

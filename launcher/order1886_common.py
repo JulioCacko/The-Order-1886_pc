@@ -259,6 +259,9 @@ def validate_launch_game(game: Path, values: dict) -> None:
     order1886.validate_input_settings(runtime, values)
     order1886.mods.validate_config(order1886.mods.resolve_root(values.get("mods_dir", ""), ROOT), values.get("mods_enabled", False),
                                   values.get("mod_order", []))
+    # Size and framing first, so a width the framing cannot reach says so rather than looking
+    # like an executable mismatch below.
+    order1886.resolution.recipe(render_width(values), values.get("aspect_ratio", "original"))
     game = (game if game.is_absolute() else ROOT / game).resolve()
     metadata = order1886.inspect_game(game)
     try:

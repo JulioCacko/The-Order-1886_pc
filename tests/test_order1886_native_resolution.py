@@ -85,5 +85,17 @@ class OriginalResolutionPathTests(unittest.TestCase):
         self.assertEqual(values['render_resolution'], '3840x2160')
 
 
+    def test_custom_widths_are_checked_when_saved_and_before_launch(self):
+        from launcher import order1886_common as common
+        from launcher.order1886_worker import validate_patch
+        validate_patch({'custom_render_width': 3200})
+        with self.assertRaisesRegex(ValueError, 'multiple of 16'):
+            validate_patch({'custom_render_width': 1281})
+        # 4880 fits Original framing but not 16:9; the launch check says so before the game is read.
+        with self.assertRaisesRegex(ValueError, 'too large for the 16:9 aspect'):
+            common.validate_launch_game(Path('no game here'), {'render_width': 0, 'custom_render_width': 4880,
+                                                               'aspect_ratio': '16:9'})
+
+
 if __name__ == '__main__':
     unittest.main()

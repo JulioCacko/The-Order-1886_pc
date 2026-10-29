@@ -50,6 +50,8 @@ def validate_patch(values):
         elif kind == "number":
             if type(value) is not int or not item["minimum"] <= value <= item["maximum"]:
                 raise ValueError(item["label"] + " is outside the supported range.")
+            if value % item.get("multiple", 1):
+                raise ValueError(f'{item["label"]} must be a multiple of {item["multiple"]}.')
         elif kind in ("directory", "file", "text"):
             if not isinstance(value, str) or len(value) > 4096 or any(c in value for c in ("\0", "\r", "\n")):
                 raise ValueError(item["label"] + " must be a valid path or text.")
