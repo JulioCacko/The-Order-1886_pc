@@ -268,6 +268,9 @@ separate from graphics and gameplay acceptance.
 [GPL-2.0-or-later](LICENSE). Loader/build infrastructure derives from
 [FelipePrado0/gow3_pc](https://github.com/FelipePrado0/gow3_pc); graphics/API work
 derives from [shadPS4](https://github.com/shadps4-emu/shadPS4).
+Renderer fixes (memory-table lock, deferred readbacks, draw pipe, redraw depth
+bias and the HTILE diagnosis) come from TOport,
+[IgorAugustoHH/The-Order-1886-PC-Port](https://github.com/IgorAugustoHH/The-Order-1886-PC-Port) (GPL-2.0).
 The five-page launcher structure is adapted from
 [mateussmeneses/theorder1886-port](https://github.com/mateussmeneses/theorder1886-port).
 README organization is inspired by [HayatoG/iss_pc](https://github.com/HayatoG/iss_pc).

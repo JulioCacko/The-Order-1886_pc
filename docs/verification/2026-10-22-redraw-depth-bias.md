@@ -29,6 +29,11 @@ test on, writes off, LESS_OR_EQUAL or GREATER_OR_EQUAL, no game polygon offset) 
 bias of 16 units toward the camera. These draws write no depth, so the depth buffer is unchanged.
 `ORDER1886_REDRAW_DEPTH_BIAS` sets the units; `0` turns it off.
 
+Credit: TOport `6bbcc57` (14 October 2026, `BB_REDRAW_DEPTH_BIAS`) shipped this fix first, with the
+same rule, the same names (`redraw_bias`, `redraw`) and the same sign choice
+([IgorAugustoHH/The-Order-1886-PC-Port](https://github.com/IgorAugustoHH/The-Order-1886-PC-Port),
+GPL-2.0).
+
 ## Evidence
 
 Clean build from `main` (79cb4d0) plus this change, chapter II "Evidence" cutscene, 12 window shots

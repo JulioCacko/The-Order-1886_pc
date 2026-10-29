@@ -1,6 +1,6 @@
 # Bounded HTILE metadata adaptation
 
-This follow-up adapts the uniform HTILE read idea from donor `3654b0622aaa7648ee07c8dd493d9b0300ef1b6f` without its unchecked optional-value dereference. The reviewed fix pass limits synthesis to one verified layer. It does not qualify shadow rendering or complete HTILE emulation, and remains isolated from published packages.
+This follow-up adapts the uniform HTILE read idea from [mateussmeneses/theorder1886-port](https://github.com/mateussmeneses/theorder1886-port) `3654b0622aaa7648ee07c8dd493d9b0300ef1b6f` (original diagnosis: TOport `94e3c22` and `dfc66af`, [IgorAugustoHH/The-Order-1886-PC-Port](https://github.com/IgorAugustoHH/The-Order-1886-PC-Port): HTILE read as a plain buffer sees every tile as cleared, since nothing writes HTILE when depth is drawn) without its unchecked optional-value dereference. The reviewed fix pass limits synthesis to one verified layer. It does not qualify shadow rendering or complete HTILE emulation, and remains isolated from published packages.
 
 The metadata registry records the owning image UID, type, layer count, stencil format and the byte extent observed at a metadata clear. Rebinding the same owner preserves state; replacing ownership or geometry resets derived words. An old image cannot erase its replacement's entry. Unmapping metadata bytes removes the entry even if the depth image lives elsewhere. Temporarily disabling metadata in a binding retains the association, as the underlying allocation still exists.
 
