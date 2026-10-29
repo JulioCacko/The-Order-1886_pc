@@ -7,7 +7,7 @@ This is a source comparison and launcher adaptation, not a gameplay certificatio
 | Reference | Revision inspected | Use here |
 | --- | --- | --- |
 | [mateussmeneses/theorder1886-port](https://github.com/mateussmeneses/theorder1886-port/tree/7822ee56c2169f15ecde5d80f39e96143a252464) | `7822ee56c2169f15ecde5d80f39e96143a252464` | Five-page Tk launcher structure and runtime comparison |
-| [IgorAugustoHH/The-Order-1886-PC-Port](https://github.com/IgorAugustoHH/The-Order-1886-PC-Port) (TOport) | `a15cf8b`, `32efe96`, `e03c9e9`, `888c546`, `5534ce9`, `6bbcc57`, `94e3c22`, `dfc66af` | Memory-table lock, deferred readbacks, draw pipe, redraw depth bias and HTILE diagnosis (GPL-2.0); see [TOport ports](verification/2026-10-21-toport-performance.md) |
+| [IgorAugustoHH/The-Order-1886-PC-Port](https://github.com/IgorAugustoHH/The-Order-1886-PC-Port) (TOport) | `a15cf8b`, `32efe96`, `e03c9e9`, `888c546`, `5534ce9`, `6bbcc57`, `94e3c22`, `dfc66af` | Memory-table lock, deferred readbacks, draw pipe, redraw depth bias and HTILE diagnosis (GPL-2.0); see [TOport ports](verification/2026-10-21-toport-performance.md) (`a15cf8b`–`5534ce9`), [redraw depth bias](verification/2026-10-22-redraw-depth-bias.md) (`6bbcc57`) and [HTILE metadata](verification/2026-10-19-htile-metadata.md) (`94e3c22`, `dfc66af`) |
 | [HayatoG/iss_pc](https://github.com/HayatoG/iss_pc/tree/1898d449a7edf506d12ef63445f8fc5432e60105) | `1898d449a7edf506d12ef63445f8fc5432e60105` | README presentation: centered identity, prominent status, captures, setup, launcher guide, troubleshooting and credits |
 
 The Order reference's root LICENSE is GPL-2.0; its launcher declares
