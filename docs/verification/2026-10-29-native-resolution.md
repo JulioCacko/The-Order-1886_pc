@@ -62,7 +62,7 @@ temporal provider, and the frame is presented 1:1 (`order1886.py`, `write_runtim
 - motion-blur tiles down to 120x50, and the light-tile grid at 240x100;
 - the presented buffer at 3840x2160 RGBA8.
 
-The only smaller image is the 1920x1080 window swapchain. No upscale pass runs. In the frame
+The only smaller full-frame image is the 1920x1080 window swapchain. No upscale pass runs. In the frame
 census of the save street, 17 screen-sized targets are 3840x1600, 13 are 1920x800, and no two
 targets that are live at the same time overlap. The one adjacent pair has the same spacing and
 the same disjoint lifetimes as at native size.

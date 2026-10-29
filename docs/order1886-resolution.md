@@ -68,10 +68,15 @@ every site byte-checked first, original files unchanged):
 
 The signed 32-bit immediates of those sites cap the width (4880 Original, 4192 16:9).
 
-Above the original size Upscaling is set aside: `presentation_filter=linear`, no temporal
-provider, the frame presented 1:1. `tests/test_order1886_native_resolution.py` fixes that
-contract and that no other setting can claim native 4K; `output_resolution` 3840×2160 is
-still an upscaled **output** of whatever the game rendered.
+At any render size other than the original (larger or smaller) Upscaling is set aside:
+`presentation_filter=linear`, no temporal provider. The game's own frame is the presented
+image, so at 3840 wide the 3840×2160 buffer (scene letterboxed in it with Original framing)
+reaches the presenter with no upscale pass. `tests/test_order1886_native_resolution.py`
+fixes that contract and that no other setting can claim native 4K.
+
+**Output resolution** is separate: it only scales the finished frame for presentation. At
+the original render size its 3840×2160 choice is still an upscaled **output** of the
+1920×800 scene.
 
 Evidence: `docs/verification/2026-10-29-native-resolution.md`.
 

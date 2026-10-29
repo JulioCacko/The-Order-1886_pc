@@ -205,7 +205,7 @@ For mouse look, open **Controls**: sensitivity and inverted Y persist. In the ga
 temporal resolve at its render size, then FSR 1 scales to the output (Windows, from the next preview). **NVIDIA DLAA (DLSS at native size) + FSR 1** does the same on GeForce RTX GPUs; DLSS quality modes, which render below the output size, wait for render-target scaling. XeSS and FSR 4 follow. The 4K/60 target is **3840×2160 output with upscaling acceptable**,
 preserved detail and sustained 60 FPS in gameplay. It has not passed. Separately, **Render resolution** makes the
 game itself render larger with no upscaler: 3840 wide is native 4K (3840×1600 scene, or 3840×2160 with 16:9 framing),
-at 30 FPS in the tested scenes on an RTX 3070. It is experimental ([evidence](docs/verification/2026-10-29-native-resolution.md)).
+at 30 FPS in gameplay on an RTX 3070, with drops to 27 FPS (67 ms frames) in the Chapter II Council cutscene. It is experimental ([evidence](docs/verification/2026-10-29-native-resolution.md)).
 
 **60 FPS, 90 FPS and Unlocked are experimental.** The 60 FPS recipe warns of possible
 QTE softlocks in Chapters 6 and 9, and gameplay timing above 60 FPS has not been measured.

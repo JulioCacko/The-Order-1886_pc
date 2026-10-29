@@ -24,8 +24,9 @@ path. Agreed 2026-10-29.
   - Renderer-side overrides are allowed only for what no game patch reaches; none was needed.
 - **Size.** The player picks a width, from presets or a custom value: a multiple of 16 from 1280 to
   4880 (4192 with 16:9). The signed 32-bit immediates of the stack and heap sites set that cap;
-  larger sizes need a code cave. The frame is width x width*9/16. The scene inside it follows the
-  aspect setting: width/2.4 for Original (3840x1600) and the full frame for 16:9 (3840x2160).
+  larger sizes need a code cave. The frame is width x (width*9/16 rounded to a multiple of 8). The scene
+  inside it follows the aspect setting: width/2.4 rounded for Original (3840x1600) and that
+  whole frame for 16:9 (3840x2160).
 - **Scope.** Every screen-sized pass scales, and half-res chains keep their ratio. Shadow maps get
   their own setting (original / 2x / 4x, default 2x above 1080p), in phase 2.
 - **Upscalers.** DLSS and FSR are set aside while the render size is not the original;
