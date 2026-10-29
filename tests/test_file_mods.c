@@ -72,6 +72,11 @@ int main(void) {
     snprintf(upper,sizeof(upper),"%s/game/ps4",root); assert(!rmdir(upper));
     int save=(int)do_open("/data/test-save",0x202,0644); assert(save>=3);
     assert(do_write(save,"save",4)==4 && !do_close(save));
+    /* A case-only rename takes the new case instead of folding back onto the source. */
+    char renamed[600]; struct stat renamed_info;
+    snprintf(renamed,sizeof(renamed),"%s/data/Test-Save",user);
+    assert(!do_rename("/data/test-save","/data/Test-Save") && !lstat(renamed,&renamed_info));
+    assert(!do_rename("/data/Test-Save","/data/test-save"));
     assert(!path_op("/data/test-save",2,0));
     assert(!unlink(link) && !unlink(other) && !unlink(source) && !unlink(replacement) && !rmdir(game));
     const char *dirs[]={"temp0","download0","data"};

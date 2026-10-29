@@ -111,15 +111,16 @@ static int translate_locked(const char *buffer,char *out,size_t size) {
 /* The PS4 file system and NTFS ignore case; ext4 and btrfs do not, and dumps mix it (the game
  * opens ps4/gpu/..., a dump holds ps4/GPU/). When the exact host path is missing, each missing
  * component is taken from its directory's listing, ignoring case. A match has the same length,
- * so the path is fixed in place; the first component with no match ends it (a file to create). */
+ * so the path is fixed in place; the first component with no match ends it (a file to create).
+ * A directory that cannot be listed returns its errno: guessing could create save beside Save. */
 /* ponytail: scans one directory per missing component on every miss; cache listings per
  * directory if misses show up in profiles. */
-static void fold_case(char *path) {
+static int fold_case(char *path) {
     struct stat s;
-    if (!stat(path,&s) || errno!=ENOENT) return;
+    if (!stat(path,&s) || errno!=ENOENT) return 0;
     for (char *p=path;*p;) {
         while (*p=='/') ++p;
-        if (!*p) return;
+        if (!*p) return 0;
         char *end=p+strcspn(p,"/"), saved=*end;
         *end=0;
         if (lstat(path,&s)) {
@@ -127,15 +128,19 @@ static void fold_case(char *path) {
             if (p==path) d=opendir(".");
             else if (p-1==path) d=opendir("/");
             else { p[-1]=0; d=opendir(path); p[-1]='/'; }
+            if (!d) { int error=errno; *end=saved; return error; }
             struct dirent *e;
             int found=0;
-            while (d && !found && (e=readdir(d)))
+            errno=0;
+            while (!found && (e=readdir(d)))
                 if (!strcasecmp(e->d_name,p)) { memcpy(p,e->d_name,(size_t)(end-p)); found=1; }
-            if (d) closedir(d);
-            if (!found) { *end=saved; return; }
+            int error=found ? 0 : errno;
+            closedir(d);
+            if (!found) { *end=saved; return error; }
         }
         *end=saved; p=end;
     }
+    return 0;
 }
 #endif
 /* Resolve a guest path to a host path; returns 0 or a host errno. */
@@ -151,7 +156,7 @@ static int translate(const char *guest,char *out,size_t size) {
     pthread_mutex_unlock(&lock);
     if (result==ENOENT) fprintf(stderr,"Runtime: no mount for guest path %s\n",guest);
 #ifndef _WIN32
-    if (!result) fold_case(out);
+    if (!result) result=fold_case(out);
 #endif
     return result;
 }
@@ -455,6 +460,10 @@ static int64_t do_rename(const char *from,const char *to) {
     /* POSIX rename replaces an existing target; the CRT's fails. */
     return MoveFileExA(a,b,MOVEFILE_REPLACE_EXISTING) ? 0 : -compat_errno_from_win32(GetLastError());
 #else
+    /* Folding keeps the name's length; the target keeps the case asked for (foo -> FOO renames). */
+    const char *name=strrchr(to,'/'); name=name ? name+1 : to;
+    size_t n=strlen(name), m=strlen(b);
+    if (n<=m) memcpy(b+m-n,name,n);
     return rename(a,b) ? -errno : 0;
 #endif
 }
