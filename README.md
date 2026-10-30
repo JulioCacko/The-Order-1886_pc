@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/images/preview9/hero.jpg" width="100%" alt="The Order: 1886 running on PC: the hotel lobby"></p>
+<p align="center"><img src="docs/images/v0.2.5/hero.jpg" width="100%" alt="The Order: 1886 running on PC at native 4K: Galahad on a London rooftop in Chapter I"></p>
 
 <h1 align="center">The Order: 1886 — PC</h1>
 
@@ -14,15 +14,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-go-windows.zip"><b>⬇ Windows package</b></a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-linux-x86_64.tar.gz"><b>⬇ Linux package</b></a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.4">Release notes</a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/order1886-go-windows.zip"><b>⬇ Windows package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/order1886-linux-x86_64.tar.gz"><b>⬇ Linux package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.5">Release notes</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
 </p>
 
-> **Development preview.** Gameplay runs from a player's save at about 53 FPS in the night courtyard on an RTX 3070 (60 FPS mode), and the hotel lobby fight averages 38 FPS with dips. Full progression, long-session stability, the Chapter 6/9 QTE timing and sustained 4K/60 are not accepted yet. See [Status](#status).
+> **Development preview.** Gameplay runs from a player's save at about 53 FPS in the night courtyard on an RTX 3070 (60 FPS mode), and the hotel lobby fight averages 38 FPS with dips. New in v0.2.5: the game can render natively at up to 4K with no upscaler, at 30 FPS on the same GPU. Full progression, long-session stability, the Chapter 6/9 QTE timing and sustained 4K/60 are not accepted yet. See [Status](#status).
 
 **The Order: 1886** for PlayStation 4, running on a PC through a dedicated
 compatibility runtime. The original x86-64 executable runs on the host CPU,
@@ -34,6 +34,25 @@ Only CUSA00076 has been run with a real dump; the others are accepted as experim
 
 > **No game files are included.** You need your own extracted copy. This is an
 > unofficial community project, not an official PC release.
+
+## Native 4K, no upscaler
+
+New in v0.2.5. Graphics → **Render resolution** makes the game itself draw every screen-sized pass at the chosen size; at 3840 wide that is 3840×1600 (or 3840×2160 with 16:9 framing), presented 1:1. RTX 3070, 30 FPS mode.
+
+<table>
+  <tr>
+    <td colspan="2"><img src="docs/images/v0.2.5/native-4k-rooftop-night.jpg" alt="Native 3840x1600: Galahad on a rooftop at night beside a crane, captured from the v0.2.5 package"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/v0.2.5/native-4k-even-watchful.jpg" alt="Chapter I, Even Watchful: the London skyline from a rooftop, rendered at 3840x1600"></td>
+    <td width="50%"><img src="docs/images/v0.2.5/native-4k-council.jpg" alt="Chapter II: the Council chamber cutscene, rendered at 3840x1600"></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/images/fixes/native-4k-ch1-even-watchful-compare.jpg" alt="Detail: the original 1920x800 scene shown at 2x beside the native 3840x1600 scene at 1:1"></td>
+  </tr>
+</table>
+
+The top image is the full 3840×1600 scene, taken from the v0.2.5 Windows package in a borderless window on a 3840×2160 display. The two below were rendered at 3840×1600 and captured from a 1920×1080 window. The bottom comparison is a 1:1 crop. Measured at 3840×1600: 30 FPS in the street and on the Chapter I rooftop, with drops to 27 FPS in the Chapter II Council cutscene. Shadow maps and MSAA keep their original sizes, and only update 1.02 is supported so far. [Evidence](docs/verification/2026-10-29-native-resolution.md).
 
 ## Gameplay on PC
 
@@ -85,6 +104,8 @@ How these were taken, with hashes and logs: [preview 9 release verification](doc
 
 ## What's new
 
+**v0.2.5 — 29 October 2026.** **Native resolution up to 4K with no upscaler** (#3, #128): Graphics → Render resolution offers Original, 2560, 3840 or a custom width, and the game draws every screen-sized pass at that size. **Borderless no longer turns into exclusive full-screen** on Windows (#121, #125). **Linux runs dumps with mixed-case folder names** (#124). TOport is credited for the renderer fixes ported from it (#112, #123). [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.5)
+
 **v0.2.4 — 28 October 2026.** The Linux package starts without WebKitGTK 4.1, for example on SteamOS (#114). `Play The Order 1886` starts the game directly with the saved settings, and `--game-dir` sets the game folder. `The Order 1886` opens the launcher window, which still needs WebKitGTK 4.1, and without it reports what is missing and plays the saved settings. Tested in an Arch Linux container on software Vulkan, not on a Steam Deck. Linux packages also find their runtime again. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.4)
 
 **v0.2.3 — 28 October 2026.** 60 FPS, 16:9 and the other experimental options work with update 1.02, and all six editions of the game are accepted (#113). Save import refuses an export without a title ID and imports mixed folders. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.3)
@@ -121,7 +142,7 @@ See [implementation and issue status](docs/order1886-issue-status.md).
 | Area | Current evidence | Remaining acceptance |
 | --- | --- | --- |
 | Boot and rendering | Title, menus, cinematics and gameplay in the courtyard and the hotel from copied saves | Full progression, checkpoint save/load across chapters |
-| Performance | About 53 FPS in the courtyard and 38 FPS in the hotel fight (RTX 3070, 60 FPS mode) | Sustained 60 in fights; 4K/60 ([#3](https://github.com/JulioCacko/The-Order-1886_pc/issues/3)) |
+| Performance | About 53 FPS in the courtyard and 38 FPS in the hotel fight (RTX 3070, 60 FPS mode). Native 3840×1600 at 30 FPS, dipping to 27 in the Chapter II Council cutscene (30 FPS mode) | Sustained 60 in fights; native 4K at 60, shadow maps and MSAA at 4K, base 1.00 ([#3](https://github.com/JulioCacko/The-Order-1886_pc/issues/3)) |
 | Launcher | Go launcher on Windows and Linux; graphics, timing and effect options reach the runtime | Broader DPI and language coverage |
 | Temporal providers | FSR 1 presentation; FSR 3.1 or NVIDIA DLAA (DLSS at native size) in place of the game's temporal resolve, selectable in the launcher on Windows (next preview) | Lower render sizes and DLSS quality modes, XeSS and FSR 4 ([#10](https://github.com/JulioCacko/The-Order-1886_pc/issues/10)–[#13](https://github.com/JulioCacko/The-Order-1886_pc/issues/13)) |
 | Linux | The package starts on Ubuntu 26.04 and reaches the title menu on software Vulkan | Gameplay on a Linux GPU driver |
@@ -131,13 +152,13 @@ See [current status](docs/STATUS.md) and the [4K/60 acceptance plan](docs/order1
 
 ## Download and start
 
-**Published download: v0.2.4 (October 28).** Windows and Linux x86-64 packages. Keep your `user` folder when upgrading.
+**Published download: v0.2.5 (October 29).** Windows and Linux x86-64 packages. Keep your `user` folder when upgrading.
 
-**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-go-windows.zip)** ·
-**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-linux-x86_64.tar.gz)** ·
-[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/QUICKSTART.txt) ·
-[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-go-windows.zip.sha256) ·
-[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-linux-x86_64.tar.gz.sha256)
+**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/order1886-go-windows.zip)** ·
+**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/order1886-linux-x86_64.tar.gz)** ·
+[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/QUICKSTART.txt) ·
+[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/order1886-go-windows.zip.sha256) ·
+[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/order1886-linux-x86_64.tar.gz.sha256)
 
 The packages include the launcher, the dedicated runtime and the libraries they need. No Python, MSYS2 or compiler is required. GitHub's "Source code" archives are for developers.
 
@@ -180,7 +201,7 @@ For a source checkout, open `Launch The Order 1886.cmd` or run the Go launcher y
 | Page | Available controls |
 | --- | --- |
 | **Home** | Play, the launch configuration and the game installation check |
-| **Graphics** | Display mode, framing, FSR 1/Linear, VSync, output resolution, sharpening, anisotropy and the four post effects |
+| **Graphics** | Display mode, framing, render resolution (native up to 4K), FSR 1/Linear, VSync, output resolution, sharpening, anisotropy and the four post effects |
 | **Performance** | 30/60/90 FPS and Unlocked, the presentation cap, the in-game menu and overlay items |
 | **Controls** | Mouse camera, sensitivity, inverted Y and keyboard bindings |
 | **Game & Content** | Game folder, game language, catalogued patches, saves, mods, desktop shortcut and Add to Steam |
