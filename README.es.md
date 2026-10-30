@@ -1,77 +1,117 @@
-# The Order: 1886 para PC — runtime experimental de compatibilidad con PS4
+<p align="center"><img src="docs/images/v0.2.5/hero.jpg" width="100%" alt="The Order: 1886 ejecutándose en PC en 4K nativo: Galahad en un tejado de Londres en el Capítulo I"></p>
 
-<p align="center"><img src="launcher/order1886/logo-horizontal.png" width="720" alt="Logotipo oficial de The Order: 1886"></p>
+# The Order: 1886 para PC — runtime experimental de compatibilidad con PS4
 
 [English](README.md) · [Português (Brasil)](README.pt-BR.md) · **Español**
 
-Proyecto comunitario para ejecutar el binario original de **The Order: 1886**, actualización 1.02 en cualquier edición PS4 (**CUSA00076**, probada; CUSA00035, CUSA00070, CUSA00100, CUSA00670 y CUSA00785, experimentales), mediante un launcher nativo de Windows y un runtime Vulkan. Reutiliza infraestructura de carga PS4 y trabajo de gráficos/APIs de [shadPS4](https://github.com/shadps4-emu/shadPS4).
+Proyecto comunitario que ejecuta el binario x86-64 original de **The Order: 1886** en PC. Las interfaces de sistema de PS4 se reimplementan y un [núcleo de vídeo derivado de shadPS4](https://github.com/shadps4-emu/shadPS4) traduce los comandos de GPU y los shaders a Vulkan. El objetivo es la actualización 1.02 en cualquier edición (**CUSA00076**, probada; CUSA00035, CUSA00070, CUSA00100, CUSA00670 y CUSA00785, experimentales), en Windows y Linux x86-64.
 
-**En desarrollo — 18 de octubre de 2026.** Se renderizan cinemáticas y se ha recorrido una ruta de calle, pero el rendimiento sigue siendo bajo. La progresión, los guardados por checkpoint, la estabilidad y 4K/60 todavía no están aceptados. La prueba del Capítulo 2 con copias de guardados llegó al timeout sin la aserción de 8.029 capas; quedan errores SRT y la issue #5 sigue abierta.
+> **Versión preliminar de desarrollo.** Desde una partida guardada del jugador, el patio nocturno funciona a unos 53 FPS en una RTX 3070 (modo 60 FPS) y el combate en el vestíbulo del hotel promedia 38 FPS con caídas. Novedad de la v0.2.5: el juego puede renderizar de forma nativa hasta 4K, sin escalador, a 30 FPS en la misma GPU. La progresión completa, la estabilidad en sesiones largas, el tiempo de los QTE de los capítulos 6 y 9 y 4K/60 sostenido todavía no están aceptados.
 
-![Launcher de The Order: 1886 para Windows con navegación lateral y barra de inicio permanente](docs/images/preview9/launcher-home.jpg)
+> **No se incluye ningún archivo del juego.** Necesitas tu propia copia extraída. Proyecto comunitario no oficial.
 
-*Captura real del launcher actual del 18 de octubre, 1240 × 800, con configuración aislada. No es gameplay; 30 FPS es la opción seleccionada.*
+## 4K nativo, sin escalador
 
-## Demostración en vídeo
+Novedad de la v0.2.5. En Graphics → **Render resolution**, el propio juego dibuja cada pasada del tamaño de la pantalla al tamaño elegido; con 3840 de ancho son 3840×1600 (o 3840×2160 con encuadre 16:9), presentados 1:1. RTX 3070, modo 30 FPS.
+
+<table>
+  <tr>
+    <td colspan="2"><img src="docs/images/v0.2.5/native-4k-rooftop-night.jpg" alt="3840x1600 nativo: Galahad en un tejado de noche junto a una grúa, capturado del paquete v0.2.5"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/v0.2.5/native-4k-even-watchful.jpg" alt="Capítulo I, Even Watchful: el horizonte de Londres desde un tejado, renderizado a 3840x1600"></td>
+    <td width="50%"><img src="docs/images/v0.2.5/native-4k-council.jpg" alt="Capítulo II: la escena del Consejo, renderizada a 3840x1600"></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/images/fixes/native-4k-ch1-even-watchful-compare.jpg" alt="Detalle: la escena original de 1920x800 ampliada 2x junto a la escena nativa de 3840x1600 a 1:1"></td>
+  </tr>
+</table>
+
+La imagen superior es la escena completa a 3840×1600, capturada del paquete de Windows v0.2.5 en una ventana sin bordes en una pantalla de 3840×2160. Las dos del medio se renderizaron a 3840×1600 y se capturaron desde una ventana de 1920×1080. La comparación inferior es un recorte 1:1. Medido a 3840×1600: 30 FPS en la calle y en el tejado del Capítulo I, con caídas a 27 FPS en la escena del Consejo del Capítulo II. Los mapas de sombras y el MSAA conservan sus tamaños originales, y por ahora solo se admite la actualización 1.02. [Evidencia](docs/verification/2026-10-29-native-resolution.md).
+
+## Jugabilidad en PC
+
+Capturado del paquete de Windows de la preview 9 en una RTX 3070 a 1920×1080, modo 60 FPS, recortado a la escena de 1920×800 que renderiza el juego.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/preview9/gameplay-lobby.jpg" alt="Galahad a cubierto en el vestíbulo del hotel"></td>
+    <td width="50%"><img src="docs/images/preview9/gameplay-reception.jpg" alt="Corriendo junto a la recepción del hotel"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/preview9/title-menu.jpg" alt="Menú de título de The Order: 1886"></td>
+    <td><img src="docs/images/preview9/gameplay-courtyard.jpg" alt="El patio nocturno fuera del hotel"></td>
+  </tr>
+</table>
+
+### Demostración en vídeo
 
 [![Mira The Order: 1886 ejecutándose en PC](https://i.ytimg.com/vi/wpNkwih0cxI/hqdefault.jpg)](https://youtu.be/wpNkwih0cxI)
 
-[**Mira la demostración en YouTube**](https://youtu.be/wpNkwih0cxI) — grabación del proyecto ejecutándose en PC, publicada por **Julio Cacko**. Haz clic en la miniatura para verla.
+[**Mira la demostración en YouTube**](https://youtu.be/wpNkwih0cxI), publicada por **Julio Cacko**.
 
 ## Descargar
 
-**Descarga publicada: v0.2.4, del 28 de octubre.** Paquetes para Windows y Linux x86-64, ambos compilados desde la revisión `a3c035c`. En Linux, `Play The Order 1886` ya arranca sin WebKitGTK 4.1 (por ejemplo, en SteamOS); la ventana del launcher todavía lo necesita. Conserva la carpeta `user` al actualizar.
+**Descarga publicada: v0.2.5, del 29 de octubre.** Paquetes para Windows y Linux x86-64. Conserva la carpeta `user` al actualizar.
 
-**[Descargar el paquete para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-go-windows.zip)** · **[Descargar el paquete para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/order1886-linux-x86_64.tar.gz)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.4) · [Guía de instalación](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.4/QUICKSTART.txt)
+**[Descargar el paquete para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/order1886-go-windows.zip)** · **[Descargar el paquete para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/order1886-linux-x86_64.tar.gz)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.5) · [Guía de instalación](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/QUICKSTART.txt)
 
-Extrae el ZIP completo y lee **QUICKSTART.txt**, incluido en el paquete. No requiere Python, MSYS2 ni compilador. Descarga `order1886-go-windows.zip`; los archivos “Source code” son para desarrolladores. El juego no está incluido: usa tu propio dump (cualquiera de las seis ediciones). Esta versión preliminar conserva las limitaciones de compatibilidad indicadas arriba.
+Los paquetes incluyen el launcher, el runtime dedicado y las bibliotecas necesarias. No hace falta Python, MSYS2 ni compilador. Los archivos “Source code” de GitHub son para desarrolladores.
 
-## Novedades en el código fuente — 18 de octubre
+**Windows**
 
-- Mouse look mediante el stick, sensibilidad e inversión Y; inicio directo con **Play The Order 1886.exe**, acceso directo y **Game → Add to Steam** (cierra Steam primero).
-- Copias de seguridad con orden numérico, mods `_data` reversibles con orden/conflictos, limpieza segura de caché y 13 idiomas de interfaz con fallback inglés. La validación visual de árabe/CJK sigue pendiente.
-- Correcciones de shaders NaN/atomics, copia de claves de pipelines, memoria y mutex; aceptación de dumps ELF x86-64 validados.
-- **340 pruebas Python en Windows sin omisiones; Linux: 340 ejecutadas, 21 omitidas; Windows: 41 checks nativos, Linux: subconjunto nativo aprobado; Windows 15 y Linux 10 checks portátiles.** [Evidencia](docs/verification/2026-10-18-preview4-release.md) · [Estado de issues](docs/order1886-issue-status.md).
+1. Extrae el ZIP completo en una carpeta con permiso de escritura. Mantén juntos los ejecutables y la carpeta `bin`.
+2. Lee **QUICKSTART.txt** y abre **The Order 1886.exe**.
+3. Elige la carpeta del juego extraído (cualquier nombre). Debe contener `eboot.bin`, `sce_sys`, `sce_module`, `_data` y `archivemap.bin`.
+4. Empieza con **30 FPS** o **60 FPS**, elige el modo de pantalla y pulsa **Play**.
 
-![Utilidades actuales: acceso directo, Steam y guardados](docs/images/preview9/launcher-game.jpg)
+**Linux x86-64**
 
-En el juego, **Esc** libera el cursor y **F6** alterna la captura. Configura el ratón en **Game → Controls** y guarda. Siguen pendientes la reasignación, cámara directa 1:1, selección independiente de texto/voces, logros en vivo y actualización automática. [Guía de entrada e inicio directo](docs/order1886-input.md).
+Extrae el `tar.gz` y ejecuta `The Order 1886`. Requiere un controlador Vulkan y glibc 2.39 o posterior. La ventana del launcher también necesita GTK 3 y WebKitGTK 4.1; sin ellos, `Play The Order 1886 --game-dir /ruta/del/juego` inicia el juego directamente (SteamOS y Steam: consulta `QUICKSTART.txt`). La jugabilidad con un controlador de GPU en Linux aún no se ha probado.
 
-En **Game**, selecciona una copia y pulsa **Play** para confirmar la restauración antes del inicio, o usa **Restore selected backup**. Se respalda el guardado actual primero; después elige Continue/Load en el juego. Las copias antiguas pueden carecer de Profile/progreso. En **Advanced**, el idioma guardado también se solicita al juego en el próximo inicio; requiere los assets de idioma instalados. Reinicia el launcher para traducir su interfaz.
+Los archivos originales del juego no se modifican. Las imágenes preparadas, la configuración, la caché, los registros, las partidas y las copias de seguridad quedan en la carpeta `user/order1886` de la instalación.
+
+## Novedades
+
+**v0.2.5 — 29 de octubre de 2026.** **Resolución nativa hasta 4K sin escalador** (#3, #128): Graphics → Render resolution ofrece Original, 2560, 3840 o un ancho personalizado, y el juego dibuja cada pasada del tamaño de la pantalla a ese tamaño. **Sin bordes ya no se convierte en pantalla completa exclusiva** en Windows (#121, #125). **Linux ejecuta volcados con carpetas que mezclan mayúsculas y minúsculas** (#124). TOport recibe crédito por las correcciones del renderizador portadas desde su proyecto (#112, #123). [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.5)
+
+**v0.2.4 — 28 de octubre de 2026.** El paquete de Linux arranca sin WebKitGTK 4.1, por ejemplo en SteamOS (#114); `Play The Order 1886` inicia el juego directamente y `--game-dir` define la carpeta del juego. [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.4)
+
+**v0.2.3 — 28 de octubre de 2026.** 60 FPS, 16:9 y las demás opciones experimentales funcionan con la actualización 1.02, y se aceptan las seis ediciones del juego (#113). [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.3)
 
 ## El launcher
 
-Estructura adaptada de [mateussmeneses/theorder1886-port](https://github.com/mateussmeneses/theorder1886-port), conservando nuestro backend y los guardados de CUSA00076. La presentación del README sigue la organización de [HayatoG/iss_pc](https://github.com/HayatoG/iss_pc).
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/preview9/launcher-home.jpg" alt="Página Home del launcher"></td>
+    <td width="50%"><img src="docs/images/preview9/launcher-graphics.jpg" alt="Página Graphics"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/preview9/launcher-game.jpg" alt="Página Game & Content"></td>
+    <td><img src="docs/images/preview9/launcher-system.jpg" alt="Página System"></td>
+  </tr>
+</table>
 
-| Página | Función |
+| Página | Controles |
 | --- | --- |
-| Home | Carpeta del juego, opciones rápidas y Play/Stop |
-| Graphics | Pantalla, relación de aspecto, FSR 1/Linear y VSync |
-| Performance | 30 FPS, 60/90 FPS y Unlocked experimentales, y overlay F9 |
-| Game | Archivos, accesos directos/Steam, guardados, mods de assets y ratón |
-| Advanced | Idioma del launcher, runtime, registros, caché y releases manuales |
+| **Home** | Play, la configuración de inicio y la comprobación de la instalación del juego |
+| **Graphics** | Modo de pantalla, encuadre, resolución de renderizado (nativa hasta 4K), FSR 1/Linear, VSync, resolución de salida, nitidez, anisotropía y los cuatro efectos de posprocesado |
+| **Performance** | 30/60/90 FPS y Unlocked, límite de presentación, menú del juego y elementos del overlay |
+| **Controls** | Cámara con el ratón, sensibilidad, Y invertido y teclas |
+| **Game & Content** | Carpeta del juego, idioma del juego, parches catalogados, partidas, mods, acceso directo y Add to Steam |
+| **Achievements** | Trofeos obtenidos, leídos de los datos del propio juego |
+| **System** | Runtime alternativo, grabación de rendimiento, idioma del launcher, actualizaciones, registros y caché |
 
-Usa **Save settings** para guardar las opciones. Iniciar desde una página de opciones también guarda los valores antes de abrir el juego. Restaurar requiere confirmación y crea una copia del guardado reemplazado; se bloquea durante una sesión. La ventana Tk que servía de launcher alternativo ya no existe: el launcher de Go es el único. Los mods de assets están disponibles; los parches ejecutables externos, funciones temporales y actualización automática siguen pendientes; consulta el [análisis de reutilización](docs/order1886-reference-reuse.md).
-
-## Iniciar
-
-Usa tu propia copia extraída de cualquiera de las seis ediciones con `eboot.bin`, `sce_sys` y `sce_module`. No se distribuyen ejecutables, dumps ni partidas guardadas del jugador. Los originales se conservan; las imágenes preparadas, configuración, cachés, registros, guardados y copias de seguridad se almacenan aparte.
-
-1. Extrae el paquete portátil completo en una carpeta con permisos de escritura.
-2. Abre **The Order 1886.exe** y selecciona **Game folder** en la barra inferior.
-3. Empieza con **30 FPS** y elige el modo de pantalla y FSR 1 o Linear.
-4. Usa **Play**, **Advanced → View session log** y **Stop session** para iniciar, revisar o detener la sesión.
-
-Desde el código fuente, ejecuta `Launch The Order 1886.cmd` o el launcher de Go compilado después de seguir las [instrucciones de compilación para Windows](docs/order1886-build.md). El paquete no requiere Python ni MSYS2. **Linux x86-64 vuelve a compilarse** como `tar.gz` portable con el launcher de Go, el runtime nativo y el worker de Python. No está cualificado: nada de ello ha ejecutado el juego, y la prueba automática cubre el paquete, no el juego. Requiere un driver con Vulkan. La ventana del launcher requiere además GTK 3 y WebKitGTK 4.1; sin ellos, `Play The Order 1886 --game-dir /ruta/al/juego` inicia el juego directamente (para SteamOS y Steam, consulta `QUICKSTART.txt`). Véase la [guía de compilación](docs/order1886-build.md).
+En el juego, **Esc** libera el cursor y **F6** alterna la captura. [Guía de entrada e inicio directo](docs/order1886-input.md). Estructura de páginas adaptada de [mateussmeneses/theorder1886-port](https://github.com/mateussmeneses/theorder1886-port).
 
 ## Estado y rendimiento
 
-El launcher ofrece Ventana/Sin bordes/Pantalla completa, VSync y overlay de rendimiento (F9). **60 FPS, 90 FPS y Unlocked son opcionales y experimentales**: falta verificar contenido sensible al tiempo, incluidos los capítulos 6 y 9. El objetivo es salida 3840 × 2160 con reescalado permitido y 60 FPS sostenidos durante gameplay; aún no se ha alcanzado.
+**60 FPS, 90 FPS y Unlocked son experimentales.** La receta de 60 FPS advierte de posibles bloqueos en los QTE de los capítulos 6 y 9. En una pantalla de 60 Hz, VSync limita cualquier tasa a 60. El objetivo 4K/60 (salida 3840×2160, escalado permitido, 60 FPS sostenidos en juego) aún no se ha alcanzado; el renderizado nativo en 4K llega a 30 FPS.
 
-Consulta el [informe completo del estado actual, en inglés](docs/STATUS.md), la [evidencia del runtime](docs/order1886-runtime-status.md) y el [plan 4K/60](docs/order1886-4k60-verification.md). Un bloqueo anterior del PC requirió reinicio manual; la causa sigue siendo desconocida. Las pruebas de CPU y del launcher no demuestran estabilidad ni jugabilidad.
+Consulta el [estado actual completo, en inglés](docs/STATUS.md) y el [plan 4K/60](docs/order1886-4k60-verification.md).
 
-## Problemas y licencia
+## Problemas, créditos y licencia
 
-Abre **Advanced → Open log folder**. Al [informar de un problema](https://github.com/JulioCacko/The-Order-1886_pc/issues), incluye los registros y `last-run.json` correspondientes de `user/order1886/logs`, SHA256 del runtime, metadatos del juego y GPU/controlador. Elimina datos privados; no adjuntes archivos del juego ni partidas guardadas.
+Abre **System → Open logs**. Al [informar de un problema](https://github.com/JulioCacko/The-Order-1886_pc/issues), incluye `last-run.json`, el registro de sesión correspondiente, el SHA256 del runtime, los metadatos del juego, la GPU/controlador y los pasos para reproducirlo. Elimina las rutas personales; no subas archivos del juego ni partidas.
 
-[GPL-2.0-or-later](LICENSE). Infraestructura reutilizada de [FelipePrado0/gow3_pc](https://github.com/FelipePrado0/gow3_pc) y [shadPS4](https://github.com/shadps4-emu/shadPS4), conservando atribución y licencias. Las correcciones del renderizador (bloqueo de la tabla de memoria, lecturas diferidas, draw pipe, bias de profundidad en los redibujados y el diagnóstico del HTILE) provienen de TOport, [IgorAugustoHH/The-Order-1886-PC-Port](https://github.com/IgorAugustoHH/The-Order-1886-PC-Port) (GPL-2.0). The Order utiliza otro motor; los parches y el rendimiento de otro título no demuestran compatibilidad. Sin afiliación ni respaldo de Ready at Dawn o Sony.
+[GPL-2.0-or-later](LICENSE). Infraestructura de carga y compilación derivada de [FelipePrado0/gow3_pc](https://github.com/FelipePrado0/gow3_pc); trabajo de gráficos y APIs derivado de [shadPS4](https://github.com/shadps4-emu/shadPS4). Las correcciones del renderizador (bloqueo de la tabla de memoria, lecturas diferidas, draw pipe, sesgo de profundidad en los redibujados y el diagnóstico de HTILE) proceden de TOport, [IgorAugustoHH/The-Order-1886-PC-Port](https://github.com/IgorAugustoHH/The-Order-1886-PC-Port) (GPL-2.0). Organización del README inspirada en [HayatoG/iss_pc](https://github.com/HayatoG/iss_pc). The Order: 1886 pertenece a sus respectivos titulares, incluidos Sony Computer Entertainment y Ready at Dawn; este proyecto no está afiliado ni respaldado por ellos.
