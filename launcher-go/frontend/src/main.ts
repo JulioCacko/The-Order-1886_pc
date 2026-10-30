@@ -11,7 +11,7 @@ import wails from '../../wails.json';
 
 type Choice = {value:string|number; label:string; available:boolean; reason:string};
 type Field = {key:string;label:string;page:string;kind:string;default:unknown;description:string;
-  available:boolean;reason:string;minimum?:number;maximum?:number;choices?:Choice[];
+  available:boolean;reason:string;minimum?:number;maximum?:number;multiple?:number;choices?:Choice[];
   input_kind?:string;buttons?:{id:string;label:string;default:string[]}[]};
 type Snapshot = {trophies:{id:number;unlocked_at:number}[];trophy_error:string;settings:Record<string,any>;fields:Field[];pages:{id:string;title:string}[];
   trophy_catalog?:TrophyArtwork[];trophy_catalog_error?:string;
@@ -108,7 +108,7 @@ function control(field:Field) {
    }).join('')}</fieldset>`;
   }
   if(field.kind==='order') return `<textarea ${label}${disabled} rows="3" spellcheck="false">${escape((value as string[]).join('\n'))}</textarea>`;
-  if(field.kind==='number') return `<input type="number" ${label}${disabled} value="${escape(value)}" min="${field.minimum}" max="${field.maximum}" step="1">`;
+  if(field.kind==='number') return `<input type="number" ${label}${disabled} value="${escape(value)}" min="${field.minimum}" max="${field.maximum}" step="${field.multiple ?? 1}">`;
   if(field.kind==='secret') return `<input type="password" ${label}${disabled} value="${escape(value)}" autocomplete="off" spellcheck="false">`;
   return `<div class="path-input"><input type="text" ${label}${disabled} value="${escape(value)}" autocomplete="off" spellcheck="false">${['directory','file'].includes(field.kind)?`<button data-browse="${field.key}"${disabled} aria-label="${escape(t('Browse')+' '+t(field.label))}">${escape(t('Browse'))}</button>`:''}</div>`;
 }

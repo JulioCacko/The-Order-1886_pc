@@ -84,6 +84,7 @@ def main():
     parser.add_argument('--presentation-filter', choices=list(order.PRESENTATION_FILTERS), default='fsr1')
     parser.add_argument('--frame-rate', type=int, choices=order.timing.RATES, default=30)
     parser.add_argument('--aspect-ratio', choices=['original', '16:9'], default='original')
+    parser.add_argument('--render-width', type=order.resolution.validate_width, default=order.resolution.NATIVE_WIDTH)
     parser.add_argument('--frame-trace', action=argparse.BooleanOptionalAction, default=True,
                         help='record guest flips and summarize distinct render-work intervals')
     parser.add_argument('--show-fps', action='store_true')
@@ -122,7 +123,8 @@ def main():
         parser.error('Build the dedicated Order runtime first')
     settings = {'display_mode': args.display_mode, 'vsync': True,
                 'show_fps': args.show_fps, 'presentation_filter': args.presentation_filter,
-                'frame_rate': args.frame_rate, 'aspect_ratio': args.aspect_ratio}
+                'frame_rate': args.frame_rate, 'aspect_ratio': args.aspect_ratio,
+                'render_width': args.render_width}
     if args.upscaler:
         settings['presentation_filter'] = args.upscaler  # exactly what the launcher writes for Play
     for item in args.setting:
@@ -139,7 +141,8 @@ def main():
     user.mkdir(parents=True, exist_ok=True)
     with order.session_lock(user):
         prepared = order.prepare_game(game, user / 'prepared', frame_rate=args.frame_rate,
-                                      aspect_ratio=args.aspect_ratio, disabled_effects=disabled_effects)
+                                      aspect_ratio=args.aspect_ratio, disabled_effects=disabled_effects,
+                                      render_width=args.render_width)
         order.write_runtime_config(user, settings)
         order.save_backup.backup(user)
         output.mkdir(parents=True)
@@ -197,6 +200,7 @@ def main():
                   'frame_rate_profile': prepared.get('frame_rate_profile'),
                   'display_profile': prepared.get('display_profile'),
                   'post_effects_profile': prepared.get('post_effects_profile'),
+                  'resolution_profile': prepared.get('resolution_profile'),
                   'internal_resolution': 'native',
                   'guest_frame_trace': None,
                   'frame_capture_identities': [], 'command': command,

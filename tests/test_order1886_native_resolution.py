@@ -56,10 +56,12 @@ class OriginalResolutionPathTests(unittest.TestCase):
         self.assertEqual(values['output_res'], '2560x1440')
         self.assertEqual(values['render_resolution'], 'native')
 
-    def test_the_launcher_does_not_configure_a_four_k_internal_render(self):
-        # A selectable 4K choice must say it is an upscaled output, and a description may only
-        # mention 4K to deny it, so a "native 4K" claim cannot be smuggled in as a toggle.
+    def test_only_render_resolution_offers_a_native_four_k(self):
+        # Render resolution is the one setting that changes what the game draws; any other 4K
+        # choice must say it is an upscaled output, so it cannot pass for native 4K.
         for item in options.FIELDS:
+            if item['key'] in ('render_width', 'custom_render_width'):
+                continue
             for choice in item.get('choices', []):
                 text = choice['label'].lower()
                 if ('3840' in text or '4k' in text) and choice['available']:
@@ -68,9 +70,31 @@ class OriginalResolutionPathTests(unittest.TestCase):
                 text = (item['label'] + ' ' + item['description']).lower()
                 if '3840' in text or '4k' in text:
                     self.assertTrue('not native 4k' in text or 'not ' in text, item['key'])
+        native = next(c for c in field('render_width')['choices'] if c['value'] == 3840)
+        self.assertIn('native 4k', native['label'].lower())
         values = runtime_settings({'presentation_filter': 'linear'})
         self.assertNotIn('internal_width', values)
         self.assertNotIn('output_resolution', values)
+
+    def test_native_four_k_is_drawn_by_the_game_and_presented_one_to_one(self):
+        values = runtime_settings({'presentation_filter': 'dlss', 'render_width': 3840})
+        self.assertEqual(values['render_resolution'], '3840x1600')
+        self.assertEqual(values['presentation_filter'], 'linear')
+        self.assertNotIn('upscaler', values)
+        values = runtime_settings({'render_width': 3840, 'aspect_ratio': '16:9'})
+        self.assertEqual(values['render_resolution'], '3840x2160')
+
+
+    def test_custom_widths_are_checked_when_saved_and_before_launch(self):
+        from launcher import order1886_common as common
+        from launcher.order1886_worker import validate_patch
+        validate_patch({'custom_render_width': 3200})
+        with self.assertRaisesRegex(ValueError, 'multiple of 16'):
+            validate_patch({'custom_render_width': 1281})
+        # 4880 fits Original framing but not 16:9; the launch check says so before the game is read.
+        with self.assertRaisesRegex(ValueError, 'too large for the 16:9 aspect'):
+            common.validate_launch_game(Path('no game here'), {'render_width': 0, 'custom_render_width': 4880,
+                                                               'aspect_ratio': '16:9'})
 
 
 if __name__ == '__main__':

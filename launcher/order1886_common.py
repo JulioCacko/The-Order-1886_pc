@@ -55,6 +55,12 @@ def save_settings(path: Path, values: dict) -> None:
     temporary.replace(path)
 
 
+def render_width(values: dict) -> int:
+    """The width the game renders at: a preset, or the custom width when the preset is 0."""
+    width = values.get("render_width", 1920)
+    return values.get("custom_render_width", 3200) if width == 0 else width
+
+
 def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                     stop_file: Path | None = None) -> list[str]:
     from order1886 import SYSTEM_LANGUAGES, inputs
@@ -69,6 +75,7 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                  "--presentation-filter", values.get("presentation_filter", "fsr1"),
                  "--frame-rate", str(values.get("frame_rate", 30)),
                 "--aspect-ratio", values.get("aspect_ratio", "original"),
+                "--render-width", str(render_width(values)),
                 "--mouse-look", str(int(values.get("mouse_look", True))),
                 "--mouse-sensitivity", str(values.get("mouse_sensitivity", 100)),
                 "--mouse-invert-y", str(int(values.get("mouse_invert_y", False))),
@@ -206,6 +213,8 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         "performance_capture": saved.get("performance_capture", False),
         "frame_rate": saved.get("frame_rate", 30),
         "aspect_ratio": saved.get("aspect_ratio", "original"),
+        "render_width": saved.get("render_width", 1920),
+        "custom_render_width": saved.get("custom_render_width", 3200),
         "mouse_look": bool(saved.get("mouse_look", True)),
         "mouse_sensitivity": saved.get("mouse_sensitivity", 100),
         "mouse_invert_y": bool(saved.get("mouse_invert_y", False)),
@@ -250,11 +259,16 @@ def validate_launch_game(game: Path, values: dict) -> None:
     order1886.validate_input_settings(runtime, values)
     order1886.mods.validate_config(order1886.mods.resolve_root(values.get("mods_dir", ""), ROOT), values.get("mods_enabled", False),
                                   values.get("mod_order", []))
+    # Size and framing first, so a width the framing cannot reach says so rather than looking
+    # like an executable mismatch below.
+    order1886.resolution.recipe(render_width(values), values.get("aspect_ratio", "original"))
     game = (game if game.is_absolute() else ROOT / game).resolve()
     metadata = order1886.inspect_game(game)
     try:
         order1886.timing.validate_source(game / "eboot.bin", values.get("frame_rate", 30), metadata)
         order1886.display.validate_source(game / "eboot.bin", values.get("aspect_ratio", "original"), metadata)
+        order1886.resolution.validate_source(game / "eboot.bin", render_width(values), metadata,
+                                             values.get("aspect_ratio", "original"))
         order1886.post_effects.validate_source(
             game / "eboot.bin", [key for key in order1886.post_effects.EFFECTS if values.get(key, True) is False],
             metadata)

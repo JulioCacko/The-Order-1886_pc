@@ -32,6 +32,7 @@ import link_modules
 import save_backup
 import order1886_frame_rate as timing
 import order1886_display as display
+import order1886_resolution as resolution
 import order1886_post_effects as post_effects
 import order1886_mods as mods
 import order1886_input as inputs
@@ -175,7 +176,8 @@ def write_json(path, value):
     temporary.replace(path)
 
 
-def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=(), disabled_effects=()):
+def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=(), disabled_effects=(),
+                 render_width=resolution.NATIVE_WIDTH):
     game, out = Path(game).resolve(), Path(out).resolve()
     metadata = inspect_game(game)
     # Prevent accidental writes to the extracted game, even with custom CLI arguments.
@@ -186,9 +188,10 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=(), 
     profile = timing.validate_source(game / 'eboot.bin', frame_rate, metadata)
     display_profile = display.validate_source(game / 'eboot.bin', aspect_ratio, metadata)
     effects_profile = post_effects.validate_source(game / 'eboot.bin', disabled_effects, metadata)
+    resolution_profile = resolution.validate_source(game / 'eboot.bin', render_width, metadata, aspect_ratio)
     fingerprint = {name: sha256(game / name) for name in REQUIRED_FILES}
     for name in ('prepare.py', 'link_modules.py', 'link_libc.py', 'order1886_frame_rate.py', 'order1886_display.py',
-                 'order1886_post_effects.py', 'order1886_editions.py'):
+                 'order1886_post_effects.py', 'order1886_editions.py', 'order1886_resolution.py'):
         fingerprint['tool/' + name] = sha256(SCRIPTS / name)
     fingerprint.update(frame_rate=profile['engine_fps'], host_fps_limit=profile['host_fps_limit'],
                        frame_rate_recipe_sha256=profile['recipe_sha256'], runtime_abi=RUNTIME_ABI,
@@ -196,6 +199,7 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=(), 
                        display_recipe_sha256=display_profile['recipe_sha256'],
                        disabled_effects=effects_profile['disabled'],
                        post_effects_recipe_sha256=effects_profile['recipe_sha256'],
+                       resolution_recipe_sha256=resolution_profile['recipe_sha256'],
                        patches=patch_catalogue.patch_fingerprint(selected_patches))
     manifest = out / 'prepared.json'
     try:
@@ -207,7 +211,9 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=(), 
             and image.is_file() and previous.get('image_sha256') == sha256(image)
             and (frame_rate == 30 or previous.get('frame_rate_profile', {}).get('applied') is True)
             and (aspect_ratio == 'original' or previous.get('display_profile', {}).get('applied') is True)
-            and (not effects_profile['disabled'] or previous.get('post_effects_profile', {}).get('applied') is True)):
+            and (not effects_profile['disabled'] or previous.get('post_effects_profile', {}).get('applied') is True)
+            and (render_width == resolution.NATIVE_WIDTH
+                 or previous.get('resolution_profile', {}).get('applied') is True)):
         emit_status('Prepared image verified; reusing cached image.', fallback=out.parent / 'logs/backend.log')
         return previous
     out.mkdir(parents=True, exist_ok=True)
@@ -217,6 +223,7 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=(), 
     profile = timing.apply_prepared(out / 'boot.bin', profile)
     display_profile = display.apply_prepared(out / 'boot.bin', display_profile)
     effects_profile = post_effects.apply_prepared(out / 'boot.bin', effects_profile)
+    resolution_profile = resolution.apply_prepared(out / 'boot.bin', resolution_profile)
     # Catalogued recipes edit the derived image, never the guest executable; the fingerprint
     # already binds that image to the eboot.bin hash it was produced from.
     applied_patches = patch_catalogue.apply_to_prepared(out / 'boot.bin', selected_patches, metadata)
@@ -225,6 +232,7 @@ def prepare_game(game, out, frame_rate=30, aspect_ratio='original', patches=(), 
               'frame_rate_profile': profile,
               'display_profile': display_profile,
               'post_effects_profile': effects_profile,
+              'resolution_profile': resolution_profile,
               'catalogue_patches': applied_patches,
               'image_sha256': sha256(image), 'status': 'prepared; gameplay unverified'}
     write_json(manifest, result)
@@ -411,6 +419,10 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
         'ORDER1886_SETTINGS_MENU': '1' if in_game_menu else '0',
         'ORDER1886_STREAM_MEMORY': 'cached', 'PYTHONIOENCODING': 'utf-8',
     })
+    render_width = resolution.validate_width(settings.get('render_width', resolution.NATIVE_WIDTH))
+    if render_width != resolution.NATIVE_WIDTH:
+        # The render-target stack and the GPU heap that holds it grow with the frame.
+        env['ORDER1886_DMEM_MB'] = str(resolution.dmem_mb(render_width, settings.get('aspect_ratio', 'original')))
     if profile['fps_limit'] is not None:
         env['ORDER1886_FPS_LIMIT'] = str(profile['fps_limit'])
     env['ORDER1886_VBLANK_HZ'] = str(profile['vblank_hz'])
@@ -548,6 +560,12 @@ def write_runtime_config(user, settings):
     upscaler = presentation_filter if presentation_filter in TEMPORAL_PROVIDERS else None
     if upscaler:
         presentation_filter = 'fsr1'
+    # A render size the game draws itself is presented 1:1: no temporal provider, no FSR.
+    render_width = resolution.validate_width(settings.get('render_width', resolution.NATIVE_WIDTH))
+    render_resolution = 'native'
+    if render_width != resolution.NATIVE_WIDTH:
+        presentation_filter, upscaler = 'linear', None
+        render_resolution = '{}x{}'.format(*resolution.scene_size(render_width, settings.get('aspect_ratio', 'original')))
     frame_rate = timing.validate_frame_rate(settings.get('frame_rate', 30))
     profile = timing_profile(settings)
     graphics = graphics_settings(settings)
@@ -555,7 +573,7 @@ def write_runtime_config(user, settings):
     values = {'display_mode': mode, 'vsync': int(bool(settings.get('vsync', True))),
               'show_fps': int(bool(settings.get('show_fps', False))),
               'fps_limit': profile['fps_limit'] if profile['fps_limit'] is not None else 0,
-              'render_resolution': 'native', 'presentation_filter': presentation_filter,
+              'render_resolution': render_resolution, 'presentation_filter': presentation_filter,
               **({'upscaler': upscaler} if upscaler else {}),
               'output_res': graphics['output_resolution'],
               'rcas': int(graphics['sharpness'] > 0), 'rcas_strength': graphics['sharpness'],
@@ -709,6 +727,8 @@ def argument_parser():
                         help='Presentation frame cap: throttles the present thread only, never the engine rate')
     parser.add_argument('--aspect-ratio', choices=['original', '16:9'], default='original',
                         help='Experimental full-screen 16:9 or original cinematic aspect; requires restart')
+    parser.add_argument('--render-width', type=resolution.validate_width, default=resolution.NATIVE_WIDTH,
+                        help='Experimental render width (multiple of 16, 1280-4880, 4192 with 16:9); 1920 is the original size')
     parser.add_argument('--vsync', type=int, choices=[0, 1], default=1)
     parser.add_argument('--readbacks', choices=['relaxed', 'selective', 'precise'], default='relaxed',
                         help='GPU buffer readback policy; selective/precise are experimental and can add CPU waits')
@@ -810,13 +830,19 @@ def main(argv=None):
                 emit_status(timing.recipe(args.frame_rate)['warning'], fallback=diagnostic_log)
             if args.aspect_ratio == '16:9':
                 emit_status(display.WARNING, fallback=diagnostic_log)
+            if args.render_width != resolution.NATIVE_WIDTH:
+                emit_status(resolution.WARNING, fallback=diagnostic_log)
             selected = [name.strip() for name in str(args.patches).split(',') if name.strip()]
             disabled_effects = [name.strip() for name in str(args.disable_effects).split(',') if name.strip()]
             if disabled_effects:
                 emit_status(post_effects.WARNING, fallback=diagnostic_log)
             prepared = prepare_game(game, user / 'prepared', frame_rate=args.frame_rate,
                                     aspect_ratio=args.aspect_ratio, patches=selected,
-                                    disabled_effects=disabled_effects)
+                                    disabled_effects=disabled_effects, render_width=args.render_width)
+            if args.render_width != resolution.NATIVE_WIDTH and not (
+                    prepared.get('resolution_profile', {}).get('applied') is True
+                    and prepared['resolution_profile'].get('recipe_sha256') == resolution.recipe_sha256(args.render_width, args.aspect_ratio)):
+                raise ValueError('A non-original render size requires a verified prepared resolution recipe')
             if disabled_effects and not (prepared.get('post_effects_profile', {}).get('applied') is True
                     and prepared['post_effects_profile'].get('recipe_sha256') == post_effects.recipe_sha256(disabled_effects)):
                 raise ValueError('Turning post effects off requires a verified prepared post-effect recipe')
@@ -882,7 +908,8 @@ def main(argv=None):
                                     'performance_capture': bool(args.performance_capture),
                                     'frame_rate': args.frame_rate,
                                     'fps_limit': timing_values['fps_limit'],
-                                    'aspect_ratio': args.aspect_ratio, 'system_language': args.system_language,
+                                    'aspect_ratio': args.aspect_ratio, 'render_width': args.render_width,
+                                    'system_language': args.system_language,
                                     **graphics_settings(vars(args))}}
             write_json(logs / 'last-run.json', report)
             emit_status(f'Log: {log}', fallback=diagnostic_log)

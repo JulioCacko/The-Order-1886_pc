@@ -1,9 +1,12 @@
 # The Order: 1886 PC — development status
 
-Updated **21 October 2026**. Preview 9 implementation: `b19c604`. Gameplay runs at about 53 FPS in the night courtyard on an RTX 3070, the launcher's graphics options reach the runtime, and the Linux package bundles its libraries ([verification](verification/2026-10-21-preview9-release.md)).
+Updated **21 October 2026**; native resolution added **29 October 2026**. Preview 9 implementation: `b19c604`. Gameplay runs at about 53 FPS in the night courtyard on an RTX 3070, the launcher's graphics options reach the runtime, and the Linux package bundles its libraries ([verification](verification/2026-10-21-preview9-release.md)).
 Cinematics render and a street route has been exercised, but performance remains
-slow. Campaign progression, gameplay checkpoint save/load, long-session stability,
-native 4K and sustained 4K/60 remain unaccepted.
+slow. Campaign progression, gameplay checkpoint save/load, long-session stability
+and sustained 4K/60 remain unaccepted. Native 4K rendering (Graphics → Render resolution)
+holds 30 FPS in gameplay on an RTX 3070, with drops to 27 FPS (67 ms frames) in the Chapter II
+Council cutscene, and is experimental
+([evidence](verification/2026-10-29-native-resolution.md)).
 
 ## Implemented and locally checked
 
@@ -89,7 +92,7 @@ The donor readback/HTILE patch needs CPU-write cancellation, unmap/remap cleanup
 overlapping-watch handling, overflow-safe reads and guarded metadata values before
 reuse. Saturation still assumes DX10_CLAMP; shader control propagation remains open.
 
-Temporal providers, native 4K, higher-FPS/QTE behavior, independent game text/voice,
+Temporal providers, 4K/60, higher-FPS/QTE behavior, independent game text/voice,
 official trophy metadata/live UI, automatic updates and wider vendor coverage are
 not accepted. The update 1.02/fullscreen report [#23](https://github.com/JulioCacko/The-Order-1886_pc/issues/23)
 has no matching reproduced crash proof. A prior full-PC freeze remains unexplained.

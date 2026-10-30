@@ -211,7 +211,8 @@ class OrderBackendTests(unittest.TestCase):
                 self.assertEqual(order1886.main(['--game-dir', str(self.game), '--state-dir', str(self.user),
                                                  '--prepare-only', '--frame-rate', '60']), expected)
                 prepare.assert_called_once_with(self.game.resolve(), self.user.resolve() / 'prepared',
-                                                frame_rate=60, aspect_ratio='original', patches=[], disabled_effects=[])
+                                                frame_rate=60, aspect_ratio='original', patches=[], disabled_effects=[],
+                                                render_width=1920)
 
     def test_frame_rate_60_unknown_hash_does_not_change_existing_cache(self):
         out = self.user / 'prepared'
@@ -232,7 +233,8 @@ class OrderBackendTests(unittest.TestCase):
                 self.assertEqual(order1886.main(['--game-dir', str(self.game), '--state-dir', str(self.user),
                                                  '--prepare-only', '--aspect-ratio', '16:9']), expected)
                 prepare.assert_called_once_with(self.game.resolve(), self.user.resolve() / 'prepared',
-                                                frame_rate=30, aspect_ratio='16:9', patches=[], disabled_effects=[])
+                                                frame_rate=30, aspect_ratio='16:9', patches=[], disabled_effects=[],
+                                                render_width=1920)
 
     def test_frame_rate_cache_30_60_30_rebuilds_and_preserves_source(self):
         import shutil
