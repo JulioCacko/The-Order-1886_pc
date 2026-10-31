@@ -180,10 +180,9 @@ def pack(game, output):
                                     height=image.height, source=source.as_posix(), static=static, **info))
                 thumbs.append(image)
     # 1:1 references for redrawing by hand or with an image model: same framing, enlarged to
-    # 512 px on the longest side, on the dark grey the game draws prompts over.
+    # 512 px on the longest side, on the dark grey the game draws prompts over. Every bitmap
+    # gets one, since a reviewer may turn a keep into a face or label.
     for entry, image in zip(entries, thumbs):
-        if entry['role'] == 'keep':
-            continue
         scale = 512 / max(image.size)
         big = image.resize((round(image.width * scale), round(image.height * scale)), Image.LANCZOS)
         reference = Image.new('RGBA', big.size, (42, 42, 42, 255))
@@ -446,7 +445,7 @@ def build(game, set_name, mods, plan=None, art=None, bindings=None, log=print):
     labels = labels_for(set_name, bindings)
     planned = {e['key']: e for e in json.loads(Path(plan).read_text())['bitmaps']} if plan else {}
     folder = Path(mods) / SETS[set_name]
-    total = 0
+    total, outputs = 0, {}
     for name, blob, data, found in glyph_bitmaps(game, oodle):
         payload = data
         for offset, movie, items in sorted(found, key=lambda f: -f[0]):
@@ -466,10 +465,16 @@ def build(game, set_name, mods, plan=None, art=None, bindings=None, log=print):
                 payload = place(payload, offset, rebuild_swf(payload[offset:], replacements))
                 total += len(replacements)
                 log(f'{name} @{offset:#x}: {len(replacements)} bitmaps')
-        if payload is not data:
-            target = folder / ui.NAMESPACE / name
+        outputs[name] = repack(blob, data, payload) if payload is not data else None
+    # Every slot and size check has passed: only now touch the folder the launcher reads.
+    # A resource the plan no longer changes loses an earlier build's copy.
+    for name, content in outputs.items():
+        target = folder / ui.NAMESPACE / name
+        if content is None:
+            target.unlink(missing_ok=True)
+        else:
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(repack(blob, data, payload))
+            target.write_bytes(content)
     return folder, total
 
 
