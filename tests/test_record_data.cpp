@@ -11,7 +11,7 @@
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 
 extern "C" {
-std::uint64_t runtime_disabled_optimizations = SpartanToggle::RecordPrefetch;
+std::uint64_t runtime_disabled_optimizations = Ps4Toggle::RecordPrefetch;
 }
 
 template <typename T>
