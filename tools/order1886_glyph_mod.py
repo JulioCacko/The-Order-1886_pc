@@ -95,12 +95,12 @@ def suggest_role(info, static, glyph):
     """face: a whole button icon; label: the button's text or mark drawn over a blank body;
     keep: rings, wipes, masks, fail splats, blank bodies and glows. A heuristic: review the
     contact sheet and edit plan.json (the guide shows each role)."""
+    if static and not info['flat']:  # the only bitmap of a ButtonIcon symbol is the icon itself
+        return 'face'
     if glyph in MARKS and info['box'] and 0.15 <= info['area'] <= 0.55 and info['fill'] < 0.45:
         return 'label'  # an X, O, square or triangle drawn alone (white, or black when inverted)
     if info['flat']:
         return 'keep'
-    if static:  # the only bitmap of a ButtonIcon symbol is the icon itself
-        return 'face'
     if info['area'] <= 0.16 and info['detail'] >= 30:
         return 'label'
     if info['fill'] >= 0.15 and info['detail'] >= 30 and info['dark'] >= 0.15:
@@ -324,18 +324,20 @@ def draw_face(token, set_name, label, size=256):
     return image
 
 
-def fitted(art, original, info):
-    """Art scaled into the original's opaque box, in its polarity and softness."""
-    from PIL import Image, ImageFilter, ImageOps
+def fitted(art, original, info, role='face'):
+    """Art scaled into the original's opaque box, in its softness. Faces keep the art's own
+    tones (the game's "Invert" icons are still light bodies); a dark mark gets the label's
+    bright strokes in dark ink, so a halo around the letters does not turn into a box."""
+    from PIL import Image, ImageFilter
     out = Image.new('RGBA', original.size, (0, 0, 0, 0))
     x0, y0, x1, y1 = info['box']
     art = art.convert('RGBA')
     art = art.crop(art.getchannel('A').getbbox() or (0, 0, art.width, art.height))
     scale = min((x1 - x0) / art.width, (y1 - y0) / art.height)
     art = art.resize((max(1, round(art.width * scale)), max(1, round(art.height * scale))), Image.LANCZOS)
-    if info['inverted']:
-        r, g, b, a = art.split()
-        art = Image.merge('RGBA', (*ImageOps.invert(Image.merge('RGB', (r, g, b))).split(), a))
+    if role == 'label' and info['inverted']:
+        strokes = Image.composite(art.convert('L'), Image.new('L', art.size), art.getchannel('A'))
+        art = Image.merge('RGBA', (*Image.new('RGB', art.size, INK[:3]).split(), strokes))
     out.alpha_composite(art, ((x0 + x1 - art.width) // 2, (y0 + y1 - art.height) // 2))
     if info['soft']:
         out = out.filter(ImageFilter.GaussianBlur(max(1, original.width / 24)))
@@ -351,19 +353,42 @@ def replacement(entry, original, set_name, labels, art):
             return Image.open(exact).convert('RGBA').resize(original.size, Image.LANCZOS)
         generic = Path(art) / set_name / f'{entry["glyph"]}{"" if entry["role"] == "face" else "_label"}.png'
         if generic.is_file():
-            return fitted(Image.open(generic), original, entry)
+            return fitted(Image.open(generic), original, entry, entry['role'])
     label = labels[entry['glyph']]
     drawn = draw_face(entry['glyph'], set_name, label) if entry['role'] == 'face' else draw_label(label)
-    return fitted(drawn, original, entry)
+    return fitted(drawn, original, entry, entry['role'])
 
 
 def lossless2(cid, image):
-    rgba = image.convert('RGBA').tobytes()
+    """DefineBitsLossless2 payload: 8-bit palette (format 3) or premultiplied ARGB (format 5),
+    whichever is smaller. Monochrome prompt art fits a palette without visible loss, and
+    package slots are tight."""
+    from PIL import Image
+    image = image.convert('RGBA')
+    rgba = image.tobytes()
     pixels = bytearray(len(rgba))
-    for i in range(0, len(rgba), 4):  # premultiplied ARGB
+    for i in range(0, len(rgba), 4):
         r, g, b, a = rgba[i:i + 4]
         pixels[i:i + 4] = bytes((a, r * a // 255, g * a // 255, b * a // 255))
-    return struct.pack('<HBHH', cid, 5, image.width, image.height) + zlib.compress(bytes(pixels), 9)
+    best = struct.pack('<HBHH', cid, 5, image.width, image.height) + zlib.compress(bytes(pixels), 9)
+    indexed = image.quantize(256, method=Image.Quantize.FASTOCTREE)
+    count = len(indexed.getpalette(rawmode='RGBA')) // 4
+    table = bytearray()
+    for r, g, b, a in zip(*[iter(indexed.getpalette(rawmode='RGBA'))] * 4):
+        table += bytes((r * a // 255, g * a // 255, b * a // 255, a))  # premultiplied RGBA
+    stride = (image.width + 3) & ~3
+    rows = indexed.tobytes()
+    data = b''.join(rows[y * image.width:(y + 1) * image.width].ljust(stride, b'\x00')
+                    for y in range(image.height))
+    palette = struct.pack('<HBHHB', cid, 3, image.width, image.height, count - 1) +         zlib.compress(bytes(table) + data, 9)
+    if len(palette) >= len(best):
+        return best
+    # Quantising RGBA can fold transparent pixels into an opaque colour: keep the palette only
+    # when its alpha still matches the art.
+    decoded = ui.decode_bitmap(dict(tag='DefineBitsLossless2', data=palette, format=3,
+                                    width=image.width, height=image.height))
+    drift = max(abs(a - b) for a, b in zip(decoded.getchannel('A').tobytes(), image.getchannel('A').tobytes()))
+    return palette if drift <= 48 else best
 
 
 # --- SWF and container rebuild ------------------------------------------------------------
@@ -429,9 +454,12 @@ def build(game, set_name, mods, plan=None, art=None, bindings=None, log=print):
             for key, cid, glyph, static, image, info in items:
                 entry = dict(info, key=key, glyph=glyph, role=suggest_role(info, static, glyph))
                 entry.update({k: planned[key][k] for k in ('glyph', 'role') if key in planned})
-                if entry['glyph'] not in TOKENS or entry['role'] not in ('face', 'label', 'keep'):
+                if entry['role'] not in ('face', 'label', 'keep') or (
+                        entry['role'] != 'keep' and entry['glyph'] not in TOKENS):
                     raise SystemExit(f'plan.json: {key} has glyph {entry["glyph"]!r} and role '
                                      f'{entry["role"]!r}; use a glyph from the list and face, label or keep')
+                if set_name == 'xbox' and entry['glyph'].startswith('dpad'):
+                    continue  # the PS4 and Xbox D-pads are the same: keep the game's own art
                 if entry['role'] in ('face', 'label') and info['box']:
                     replacements[cid] = lossless2(cid, replacement(entry, image, set_name, labels, art))
             if replacements:
