@@ -258,23 +258,22 @@ static void set_host_name(const char *name) {
     if (MultiByteToWideChar(CP_UTF8,0,name,-1,wide,32)) SetThreadDescription(GetCurrentThread(),wide);
 #endif
 }
-/* Host priorities (technique from SpartanPort 4b843a7dd1, #134). The four "Task Kernel" job
- * threads poll their queues and yield (guest 0x20a950/0x8a7380); at normal priority they keep
- * every core of a 6-thread CPU busy and the GPU command thread and audio wait for a slice.
- * Below normal they still take every idle cycle. Threads the game creates with a high PS4
- * priority (below 400: the AK:: sound threads at 256) run above normal so audio output keeps
- * up. The game's own scePthreadSetprio stays recorded only. */
+/* Host priorities (technique from SpartanPort 4b843a7dd1, #134). Threads the game creates with a
+ * high PS4 priority (below 400: the AK:: sound threads at 256) run above normal so audio output
+ * keeps up when cores are scarce. The game's own scePthreadSetprio stays recorded only.
+ * The four "Task Kernel" threads stay normal: they poll their queues and yield (guest
+ * 0x20a950/0x8a7380) but also run the game's jobs. Below normal (SpartanPort lowers its job
+ * workers) halved the frame rate on 4 hardware threads, 10.6 to 4.6 FPS
+ * (docs/verification/2026-10-31-thread-priorities.md). */
 enum { HIGH_GUEST_PRIO = 400 };
 static void set_host_priority(const char *name,int guest_prio) {
-    int lower=!strncmp(name,"Task Kernel",11);
-    if (!lower && guest_prio>=HIGH_GUEST_PRIO) return;
+    if (guest_prio>=HIGH_GUEST_PRIO) return;
 #ifdef _WIN32
-    if (!SetThreadPriority(GetCurrentThread(),lower ? THREAD_PRIORITY_BELOW_NORMAL : THREAD_PRIORITY_ABOVE_NORMAL))
+    if (!SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_ABOVE_NORMAL))
         printf("Runtime: cannot change the priority of '%s' (%lu)\n",name,GetLastError());
 #else
     /* Raising needs CAP_SYS_NICE; without it the thread keeps the normal priority. */
-    if (setpriority(PRIO_PROCESS,(id_t)syscall(SYS_gettid),lower ? 5 : -5) && lower)
-        printf("Runtime: cannot change the priority of '%s' (%d)\n",name,errno);
+    (void)setpriority(PRIO_PROCESS,(id_t)syscall(SYS_gettid),-5);
 #endif
 }
 #ifdef _WIN32
@@ -398,7 +397,7 @@ static ABI int32_t thread_rename(GuestThread *t,const char *name) {
     if (!find_thread(t)) return ERR(3);
     if (!name) return ERR(22);
     snprintf(t->name,sizeof(t->name),"%s",name);
-    if (t==current) { set_host_name(t->name); set_host_priority(t->name,t->attr.prio); }
+    if (t==current) set_host_name(t->name);
     return 0;
 }
 static ABI int32_t thread_equal(GuestThread *a,GuestThread *b) { return a==b; }

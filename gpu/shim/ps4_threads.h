@@ -55,7 +55,7 @@ inline void MakeBackground() {
 
 /// One failed poll of a condition another thread sets (#134). Short waits stay a spin; a long
 /// one gives up the core, then sleeps 100 µs per poll, instead of a std::this_thread::yield()
-/// loop that keeps a core busy (on 6 threads it took them from the guest's job threads).
+/// loop that keeps a core busy for as long as the wait lasts.
 /// Start `spins` at 0 for each wait, and again whenever the waiter made progress.
 inline void Backoff(unsigned& spins) {
     constexpr unsigned PauseSpins = 64, YieldSpins = 256;

@@ -173,7 +173,7 @@ void Liverpool::Process(std::stop_token stoken) {
                 submit_cv.notify_all();
             }
             // Only when no queue gets anywhere does this thread back off: the guest or another
-            // thread writes the value later, and the spin kept a whole core busy (#134).
+            // thread writes the value later, and spinning until then holds a core (#134).
             if (g_wait_stalled) {
                 Ps4Threads::Backoff(stalled_spins);
             } else {
