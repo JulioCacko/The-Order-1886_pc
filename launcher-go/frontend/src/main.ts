@@ -110,7 +110,7 @@ function control(field:Field) {
   if(field.kind==='order') return `<textarea ${label}${disabled} rows="3" spellcheck="false">${escape((value as string[]).join('\n'))}</textarea>`;
   if(field.kind==='number') return `<input type="number" ${label}${disabled} value="${escape(value)}" min="${field.minimum}" max="${field.maximum}" step="${field.multiple ?? 1}">`;
   if(field.kind==='secret') return `<input type="password" ${label}${disabled} value="${escape(value)}" autocomplete="off" spellcheck="false">`;
-  return `<div class="path-input"><input type="text" ${label}${disabled} value="${escape(value)}" autocomplete="off" spellcheck="false">${['directory','file'].includes(field.kind)?`<button data-browse="${field.key}"${disabled} aria-label="${escape(t('Browse')+' '+t(field.label))}">${escape(t('Browse'))}</button>`:''}</div>`;
+  return `<div class="path-input"><input type="text" ${label}${disabled} value="${escape(value)}" autocomplete="off" spellcheck="false">${['directory','file'].includes(field.kind)?`<button data-browse="${field.key}"${disabled} aria-label="${escape(t('Browse')+' '+t(field.label))}">${escape(t('Browse'))}</button>`:''}${field.key==='runtime'&&value?`<button data-clear="runtime"${disabled}>${escape(t('Use installation runtime'))}</button>`:''}</div>`;
 }
 function fieldRow(field:Field) {
  return `<div class="setting-row ${field.kind==='bindings'?'binding-row ':''}${!field.available?'unavailable':''}" data-field-row="${field.key}">
@@ -266,6 +266,7 @@ function bind() {
   try{const field=snapshot.fields.find(f=>f.key===button.dataset.browse)!;const path=await bridge().Browse(field.kind);if(path) await save(field.key,path);}
   catch(error){flash(String(error),true);}
  });
+ document.querySelectorAll<HTMLButtonElement>('[data-clear]').forEach(button=>button.onclick=()=>void save(button.dataset.clear!,''));
  document.querySelectorAll<HTMLButtonElement>('[data-link]').forEach(button=>button.onclick=()=>void bridge().OpenLink(button.dataset.link!).catch(error=>flash(String(error),true)));
  document.querySelectorAll<HTMLButtonElement>('[data-location]').forEach(button=>button.onclick=()=>void bridge().OpenLocation(button.dataset.location!).catch(error=>flash(String(error),true)));
  document.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button=>button.onclick=()=>void action(button.dataset.action!));

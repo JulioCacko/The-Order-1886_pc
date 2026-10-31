@@ -207,3 +207,32 @@ class WorkerTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class RuntimeSettingTests(unittest.TestCase):
+    """#127: a wrong Runtime executable pick is refused when saved, not at Play."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.bin = Path(self.temp.name) / 'bin'
+        self.bin.mkdir()
+        self.runtime = self.bin / 'order1886-runtime.exe'
+        self.runtime.write_bytes(b'runtime')
+        (self.bin / 'order1886-worker.exe').write_bytes(b'worker')
+        build = {'runtime_sha256': worker.order1886.sha256(self.runtime),
+                 'game_profile': 'order1886', 'runtime_abi': worker.order1886.RUNTIME_ABI}
+        (self.bin / 'runtime-build.json').write_text(json.dumps(build), encoding='utf-8')
+
+    def test_verified_runtime_and_empty_value_are_accepted(self):
+        worker.validate_patch({'runtime': str(self.runtime)})
+        worker.validate_patch({'runtime': ''})
+
+    def test_worker_is_refused_with_a_reason(self):
+        with self.assertRaisesRegex(ValueError, "helper program"):
+            worker.validate_patch({'runtime': str(self.bin / 'order1886-worker.exe')})
+
+    def test_runtime_without_its_build_record_is_refused(self):
+        (self.bin / 'runtime-build.json').unlink()
+        with self.assertRaisesRegex(ValueError, 'runtime-build.json is missing'):
+            worker.validate_patch({'runtime': str(self.runtime)})

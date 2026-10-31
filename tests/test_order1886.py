@@ -114,7 +114,7 @@ class OrderBackendTests(unittest.TestCase):
                      'ORDER1886_PATCHES': 'obsolete-patches.bin', 'UNRELATED_APP_SETTING': '1',
                      'ORDER1886_UNKNOWN': 'stale', 'ORDER1886_UPSCALER': 'fsr31',
                      'ORDER1886_PREP_WORKERS': '8',
-                     'ORDER1886_DIAG_RESOURCE_SHARPS': '1',
+                     'ORDER1886_DIAG_RESOURCE_SHARPS': '1', 'ORDER1886_FATAL_DUMP': '1',
                      'ORDER1886_USER_DIR': 'obsolete-save-directory'}
         before = dict(inherited)
         runtime = self.base / 'runtime binaries' / 'probe.exe'
@@ -124,6 +124,7 @@ class OrderBackendTests(unittest.TestCase):
         self.assertEqual(env['UNRELATED_APP_SETTING'], '1')
         self.assertNotIn('ORDER1886_UNKNOWN', env)
         self.assertEqual(env['ORDER1886_DIAG_RESOURCE_SHARPS'], '1')
+        self.assertEqual(env['ORDER1886_FATAL_DUMP'], '1')
         self.assertEqual(env['ORDER1886_GAME_PROFILE'], 'order1886')
         self.assertEqual(env['ORDER1886_USER_DIR'], str(self.user.resolve()))
         self.assertEqual(env['ORDER1886_GPU_USER_DIR'], str(self.user.resolve() / 'gpu' / order1886.SHADER_CACHE_ABI))
@@ -424,11 +425,11 @@ class OrderBackendTests(unittest.TestCase):
     def test_explicit_runtime_rejects_stale_or_unidentified_build(self):
         runtime = self.base / 'old-runtime.exe'
         runtime.write_bytes(b'old')
-        with self.assertRaisesRegex(ValueError, 'dedicated Order runtime'):
+        with self.assertRaisesRegex(ValueError, 'not a verified Order runtime'):
             order1886.find_runtime(runtime)
         order1886.write_json(runtime.with_name('runtime-build.json'), {
             'runtime_sha256': order1886.sha256(runtime), 'game_profile': 'order1886'})
-        with self.assertRaisesRegex(ValueError, 'dedicated Order runtime'):
+        with self.assertRaisesRegex(ValueError, 'not a verified Order runtime'):
             order1886.find_runtime(runtime)
 
     def test_stop_request_reaps_child_and_records_forced_cleanup(self):
