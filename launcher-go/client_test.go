@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -129,5 +130,34 @@ func TestWorkerDeathReleasesCloseVeto(t *testing.T) {
 	app.mu.Unlock()
 	if busy || closing {
 		t.Fatal("worker death left the window trapped or silently closing")
+	}
+}
+
+func TestOpenLocationOpensFolderDirectly(t *testing.T) {
+	root := t.TempDir()
+	app := &App{root: root, state: filepath.Join(root, "user")}
+	var opened []string
+	previous := openFolder
+	openFolder = func(path string) error { opened = append(opened, path); return nil }
+	defer func() { openFolder = previous }()
+	if err := app.OpenLocation("installation"); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.OpenLocation("saves"); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.OpenLocation("logs"); err == nil {
+		t.Fatal("missing logs folder reported as opened")
+	}
+	want := []string{root, filepath.Join(root, "user", "savedata")}
+	if len(opened) != 2 || opened[0] != want[0] || opened[1] != want[1] {
+		t.Fatalf("opened %v, want %v", opened, want)
+	}
+}
+
+func TestFolderOpenCommandTakesPlainPath(t *testing.T) {
+	command := folderOpenCommand(`C:\Games\The Order 1886`)
+	if got := command.Args[len(command.Args)-1]; got != `C:\Games\The Order 1886` {
+		t.Fatalf("folder argument %q", got)
 	}
 }

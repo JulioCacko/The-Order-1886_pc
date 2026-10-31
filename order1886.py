@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import functools
 import hashlib
 import json
 import math
@@ -156,9 +157,17 @@ def sha256(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+@functools.lru_cache(maxsize=4)
+def _runtime_sha256(path, size, mtime_ns, file_id):
+    return sha256(path)
+
+
 def runtime_identity(runtime):
     runtime = Path(runtime).resolve()
-    digest = sha256(runtime)
+    # The launcher polls state.get, which identifies the 129 MB runtime each time;
+    # rehash only when the file is replaced or rewritten.
+    status = runtime.stat()
+    digest = _runtime_sha256(str(runtime), status.st_size, status.st_mtime_ns, status.st_ino)
     try:
         build = json.loads(runtime.with_name('runtime-build.json').read_text(encoding='utf-8'))
         if not isinstance(build, dict) or build.get('runtime_sha256') != digest:

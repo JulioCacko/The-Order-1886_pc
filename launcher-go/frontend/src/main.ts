@@ -312,14 +312,19 @@ async function action(name:string) {
    } finally {setStarting(false);}
   }
   if(name==='update.check') {
-   notice=t('Checking for updates…');noticeError=false;render();
-   await refreshUpdate();void bridge().UpdateCheck().then(()=>refreshUpdate()).then(()=>render()).catch(error=>flash(String(error),true));
+   notice=t('Checking for updates…');noticeError=false;
+   if(update) update={...update,state:'checking',error:''};
+   render();
+   // The result is shown in the updates section; the footer only covers the wait.
+   void bridge().UpdateCheck().then(()=>refreshUpdate()).then(()=>{notice='';render();}).catch(error=>flash(String(error),true));
    return;
   }
   if(name==='update.download') {
-   notice=t('Downloading the update…');noticeError=false;render();
-   await refreshUpdate();
-   void bridge().UpdateDownload().then(()=>refreshUpdate()).then(()=>render()).catch(error=>flash(String(error),true));
+   notice=t('Downloading the update…');noticeError=false;
+   // Mark the download as running now so the progress poller starts with it.
+   if(update) update={...update,state:'downloading',downloaded:0,error:''};
+   render();
+   void bridge().UpdateDownload().then(()=>refreshUpdate()).then(()=>{notice='';render();}).catch(error=>flash(String(error),true));
    return;
   }
   if(name==='update.cancel') {

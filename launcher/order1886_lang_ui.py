@@ -158,6 +158,8 @@ UI_KEYS = [
     "No session output yet.",
     "No session yet",
     "No update checked yet",
+    "Use installation runtime",
+    "Up to date",
     "Off",
     "Off by default and unqualified for performance, stability and visuals. Before an upload the runtime checks a clean image's flags without taking the mutex it shares with the guest fault handlers; turning this on takes that mutex for every check. Uploads and image contents are otherwise unchanged, and the extra locking costs GPU-thread time. It is here to isolate a suspected race, not to change the picture. A runtime honours it only when its build declares the live switch file.",
     "Off by default and unqualified for performance, stability and visuals. The runtime normally records Vulkan commands on its own recording thread and hands them over; turning this on records each command on the thread that submits it, so no work moves between threads. It does not change what the game draws. A runtime honours it only when its build declares the live switch file.",

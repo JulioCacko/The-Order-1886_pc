@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -227,38 +228,81 @@ func (app *App) UpdateCheck() UpdateStatus {
 		app.updateMu.Unlock()
 		return app.updateStatus()
 	}
+	state := "available"
+	if installedIsCurrent(app.root, release) {
+		state = "current"
+	}
 	app.updateMu.Lock()
 	app.release = release
 	app.update.Version = release.Tag
 	app.update.Error = ""
-	app.update.State = "available"
+	app.update.State = state
 	app.updateMu.Unlock()
 	return app.updateStatus()
 }
 
+// installedIsCurrent reports that the installed package is the release or newer.
+// Packages carry no version number, only the source revision and build time.
+func installedIsCurrent(installation string, release updates.Release) bool {
+	body, err := os.ReadFile(filepath.Join(installation, "package-manifest.json"))
+	if err != nil {
+		return false
+	}
+	var manifest struct {
+		SourceRevision string    `json:"source_revision"`
+		Built          time.Time `json:"built_utc"`
+	}
+	// PowerShell writes the manifest with a BOM.
+	if json.Unmarshal(bytes.TrimPrefix(body, []byte{0xef, 0xbb, 0xbf}), &manifest) != nil {
+		return false
+	}
+	if manifest.SourceRevision != "" && manifest.SourceRevision == release.Identity.SourceRevision {
+		return true
+	}
+	return !manifest.Built.IsZero() && !release.Published.IsZero() && release.Published.Before(manifest.Built)
+}
+
+const downloadStall = time.Minute
+
+var errDownloadStalled = errors.New("the download stalled: no data for a minute; check the connection and try again")
+
 // UpdateDownload fetches and verifies the release into a private stage.
 func (app *App) UpdateDownload() UpdateStatus {
+	app.mu.Lock()
+	busy := app.busy
+	app.mu.Unlock()
 	app.updateMu.Lock()
 	release := app.release
-	app.updateMu.Unlock()
-	if release.Tag == "" {
-		app.updateMu.Lock()
+	refusal := ""
+	switch {
+	case app.update.State == "downloading":
+		// A second click must not race the first download for the same file.
+		app.updateMu.Unlock()
+		return app.updateStatus()
+	case busy:
+		refusal = "stop the running session before downloading an update"
+	case release.Tag == "":
+		refusal = "check for an update before downloading it"
+	case app.update.State == "current":
+		refusal = "this version is already installed"
+	}
+	if refusal != "" {
 		app.update.State = "failed"
-		app.update.Error = "check for an update before downloading it"
+		app.update.Error = refusal
 		app.updateMu.Unlock()
 		return app.updateStatus()
 	}
-	app.updateMu.Lock()
 	app.update.State = "downloading"
 	app.update.Total = release.Identity.Size
 	app.update.Downloaded = 0
 	app.update.Error = ""
+	callCtx, cancel := context.WithCancelCause(context.Background())
+	app.cancelUpdate = func() { cancel(context.Canceled) }
 	app.updateMu.Unlock()
-	callCtx, cancel := context.WithCancel(context.Background())
-	app.updateMu.Lock()
-	app.cancelUpdate = cancel
-	app.updateMu.Unlock()
-	defer cancel()
+	defer cancel(nil)
+	// The download has no overall deadline; it fails when no data arrives for a minute.
+	stalled := time.AfterFunc(downloadStall, func() { cancel(errDownloadStalled) })
+	defer stalled.Stop()
 	directory := filepath.Join(app.state, "updates")
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return app.failUpdate(err)
@@ -266,14 +310,19 @@ func (app *App) UpdateDownload() UpdateStatus {
 	archive := filepath.Join(directory, sanitizeTag(release.Tag)+".zip")
 	_ = os.Remove(archive)
 	if err := updates.DownloadRelease(callCtx, release, archive, func(done, total int64) {
+		stalled.Reset(downloadStall)
 		app.updateMu.Lock()
 		app.update.Downloaded = done
 		app.update.Total = total
 		app.updateMu.Unlock()
 	}); err != nil {
 		_ = os.Remove(archive)
+		if cause := context.Cause(callCtx); errors.Is(cause, errDownloadStalled) {
+			err = cause
+		}
 		return app.failUpdate(err)
 	}
+	stalled.Stop()
 	stage := filepath.Join(directory, sanitizeTag(release.Tag)+"-"+strconv.FormatInt(time.Now().UnixNano(), 36))
 	identity := release.Identity
 	manifest, err := updates.StageArchive(callCtx, archive, stage, identity)

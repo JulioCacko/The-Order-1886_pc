@@ -44,7 +44,12 @@ type Release struct {
 }
 
 func releaseClient(base *http.Client) *http.Client {
-	client := http.Client{Timeout: 10 * time.Minute}
+	// No whole-body deadline: a slow but moving download must finish. Stalls are
+	// bounded by the header timeouts here and by the caller's idle watchdog.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSHandshakeTimeout = 15 * time.Second
+	transport.ResponseHeaderTimeout = 15 * time.Second
+	client := http.Client{Transport: transport}
 	if base != nil {
 		client = *base
 	}

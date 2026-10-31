@@ -33,6 +33,7 @@ export function updateHeadline(status: UpdateStatus | null, t: (value: string) =
   if (status.recovery_pending) return t('Restoring the previous version');  switch (status.state) {
     case 'checking': return t('Checking for updates…');
     case 'available': return `${t('Update available')}: ${status.version}`;
+    case 'current': return `${t('Up to date')}: ${status.version}`;
     case 'downloading': return `${t('Downloading')} ${percent(status)}%`;
     case 'staged': return `${t('Ready to install')}: ${status.version}`;
     case 'failed': return t('Update failed');
@@ -42,7 +43,9 @@ export function updateHeadline(status: UpdateStatus | null, t: (value: string) =
 
 export function updateSection(status: UpdateStatus | null, t: (value: string) => string,
                                escape: (value: unknown) => string, disabled: boolean) {
-  const busy = disabled || status === null;
+  // A check or download in flight owns the update state until it reports back.
+  const inFlight = status?.state === 'checking' || status?.state === 'downloading';
+  const busy = disabled || status === null || inFlight;
   const blocked = status?.recovery_blocked ?? false;
   const recoverable = blocked || (status?.recovery_pending ?? false);
   const rollbackable = status?.rollback_available ?? false;

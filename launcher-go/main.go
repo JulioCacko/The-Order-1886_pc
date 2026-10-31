@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -231,11 +230,18 @@ func (app *App) OpenLocation(kind string) error {
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("location is not available yet: %w", err)
 	}
-	slash := filepath.ToSlash(path)
-	if !strings.HasPrefix(slash, "/") {
-		slash = "/" + slash
+	return openFolder(path)
+}
+
+// Wails' BrowserOpenURL refuses file:// URLs and only logs it, so folders
+// go straight to the desktop's file manager.
+var openFolder = func(path string) error {
+	command := folderOpenCommand(path)
+	if err := command.Start(); err != nil {
+		return fmt.Errorf("could not open %s: %w", path, err)
 	}
-	desktop.BrowserOpenURL(app.ctx, (&url.URL{Scheme: "file", Path: slash}).String())
+	// Explorer exits 1 even when it opened the window; only reap it.
+	go command.Wait()
 	return nil
 }
 

@@ -78,3 +78,18 @@ test('every mutating action is disabled while a session or save is busy', () => 
   // A link to the release page changes nothing, so it stays available.
   assert.match(section, /<button data-link="releases">/);
 });
+
+test('an installed release reads as up to date and offers no download', () => {
+  const section = updateSection({...base, state: 'current', version: 'v0.2.6'}, t, escape, false);
+  assert.match(section, /Up to date: v0\.2\.6/);
+  assert.doesNotMatch(section, /data-action="update\.download"/);
+});
+
+test('check and download stay disabled while either is running', () => {
+  for (const state of ['checking', 'downloading']) {
+    const section = updateSection({...base, state}, t, escape, false);
+    assert.match(section, /<button data-action="update\.check" disabled>/);
+  }
+  const downloading = updateSection({...base, state: 'downloading'}, t, escape, false);
+  assert.doesNotMatch(downloading, /data-action="update\.cancel" disabled/);
+});
