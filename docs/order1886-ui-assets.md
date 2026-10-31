@@ -144,26 +144,37 @@ Not glyphs, recorded so they are not mistaken for missing coverage:
      accepts it, so no Oodle compressor is needed. An unmodified package wrapped this way
      booted cleanly.
 
-## Proposed patch layout
+## Glyph mods
+
+`tools/order1886_glyph_mod.py` builds the mods; `docs/order1886-glyph-art-guide.md` covers
+the art workflow (including prompts for an image model). The output:
 
 ```text
 mods/
   Glyphs - Xbox/                 _data/... (c2d79…, baceeaafdf99323d, ec5e1979…, d107aa37…)
-  Glyphs - Keyboard and mouse/   same resources, generated
+  Glyphs - Keyboard and mouse/   same resources, built from the player's keyboard bindings
 ```
 
-- Ship a generator, not assets. It reads the player's dump with this tool, swaps glyph
-  bitmaps from a glyph set of original or permissively licensed PNGs (one per glyph token
-  above, plus the Controls diagrams), and writes the mod folders.
-- Xbox mapping: cross→A, circle→B, square→X, triangle→Y, l1/r1→LB/RB, l2/r2→LT/RT,
-  l3/r3→LS/RS click, sticks→sticks, options→Menu, touchpad→View.
-- Keyboard and mouse glyphs depend on the player's bindings (`--keyboard-bindings`,
-  `docs/order1886-input.md`). The launcher should regenerate that mod into the state
-  folder whenever bindings change. Mouse buttons and the sticks (WASD/mouse) get fixed art.
-  This also addresses the prompt half of #4.
-- Launcher option "Button prompts: PlayStation / Xbox / Keyboard and mouse": it enables the
-  matching generated mod at the end of the mod order, so it wins conflicts on those
-  resources. PlayStation means no glyph mod.
+- **No assets shipped.** The tool reads the player's dump and draws its own monochrome
+  stand-in art. It uses the player's art (per glyph, or an exact redraw per bitmap) where
+  provided.
+- **Plan.** Each glyph bitmap gets a role: `face` (whole icon), `label` (text or mark drawn
+  over a blank body) or `keep` (rings, wipes, glows, masks, fail splats). The suggestions
+  come from image statistics and RAD's class names. Both are imperfect, so `pack` writes an
+  editable `plan.json` and a contact sheet.
+- **Mapping.** Xbox: cross→A, circle→B, square→X, triangle→Y, l1/r1→LB/RB, l2/r2→LT/RT,
+  l3/r3→LS/RS click, options→Menu, touchpad→View. Keyboard: the runtime defaults (Space,
+  Left Shift, E, Q, 1, 3, right/left mouse for L2/R2, Z, C, Enter, Tab, IJKL, WASD and mouse),
+  overridden by `--keyboard-bindings`.
+- **Install.** Enable one of the folders in the launcher's Advanced mods list.
+- **Not built yet.** A launcher option ("Button prompts: PlayStation / Xbox / Keyboard and
+  mouse") that regenerates the keyboard mod when bindings change. It would also cover the
+  prompt half of #4.
+
+In game, the default Xbox build shows "PRESS Ⓐ" on the title and "Ⓐ SELECT Ⓑ BACK" in the
+menu footer (frame dumps from the runtime). All edited movies fit their slots. The repacked
+level packages stay close to their original size because unchanged chunks keep their Oodle
+data.
 
 ## Layout data for removing the letterbox
 
@@ -190,6 +201,6 @@ python tools/order1886_ui_extract.py "PATH/TO/CUSA00076" --output "..." --scan-a
 ```
 
 The default run decodes the 9 known resources (about 860 MB of payload, a few minutes on
-one core). `--scan-all` decodes about 16 GB of payload across `--jobs` processes. The output holds `manifest.json` and, for each movie, `movie.swf`
-(uncompressed, opens in JPEXS) and `bitmaps/<id>.png`. The tool refuses an output folder
+one core). `--scan-all` decodes about 16 GB of payload across `--jobs` processes. The
+output holds `manifest.json` and, for each movie, `movie.swf` (uncompressed, opens in JPEXS) and `bitmaps/<id>.png`. The tool refuses an output folder
 inside the repository or the game folder and never writes to either.

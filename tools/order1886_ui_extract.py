@@ -315,27 +315,78 @@ def swf_body(swf):
     return zlib.decompressobj().decompress(swf[8:], length - 8)
 
 
-def bitmap_fills(data, pos, version):
-    count = data[pos]
+def fill_style(data, pos, version, ids):
+    kind = data[pos]
     pos += 1
-    if count == 0xff and version >= 2:
-        count = struct.unpack_from('<H', data, pos)[0]
-        pos += 2
-    ids = []
-    for _ in range(count):
-        kind = data[pos]
+    if kind == 0:
+        return pos + (4 if version >= 3 else 3)
+    if kind in (0x10, 0x12, 0x13):
+        pos = read_matrix(data, pos)[1]
+        return pos + 1 + (data[pos] & 15) * (5 if version >= 3 else 4) + (2 if kind == 0x13 else 0)
+    if 0x40 <= kind <= 0x43:
+        ids.append(struct.unpack_from('<H', data, pos)[0])
+        return read_matrix(data, pos + 2)[1]
+    raise ValueError(f'unknown fill style {kind:#x}')
+
+
+def style_arrays(data, pos, version, ids):
+    """Skip a FILLSTYLEARRAY and LINESTYLEARRAY, collecting bitmap fill ids."""
+    for lines in (False, True):
+        count = data[pos]
         pos += 1
-        if kind == 0:
-            pos += 4 if version >= 3 else 3
-        elif kind in (0x10, 0x12, 0x13):
-            pos = read_matrix(data, pos)[1]
-            pos += 1 + (data[pos] & 15) * (5 if version >= 3 else 4) + (2 if kind == 0x13 else 0)
-        elif 0x40 <= kind <= 0x43:
-            ids.append(struct.unpack_from('<H', data, pos)[0])
-            pos = read_matrix(data, pos + 2)[1]
-        else:
-            break
+        if count == 0xff and version >= 2:
+            count = struct.unpack_from('<H', data, pos)[0]
+            pos += 2
+        for _ in range(count):
+            if not lines:
+                pos = fill_style(data, pos, version, ids)
+            elif version == 4:  # LINESTYLE2: width, flags, [miter], fill style or RGBA
+                flags = data[pos + 2]
+                pos += 4 + (2 if (flags >> 4) & 3 == 2 else 0)
+                pos = fill_style(data, pos, version, ids) if flags & 0x08 else pos + 4
+            else:
+                pos += 2 + (4 if version >= 3 else 3)
+    return pos
+
+
+def bitmap_fills(data, pos, version):
+    """Bitmap ids a shape fills with, including styles introduced mid-shape (StateNewStyles)."""
+    ids = []
+    try:
+        records(data, style_arrays(data, pos, version, ids), version, ids)
+    except (IndexError, struct.error, ValueError):
+        pass  # keep the fills found before a truncated or unknown record
     return ids
+
+
+def records(data, pos, version, ids):
+    b = Bits(data, pos)
+    fill_bits, line_bits = b.u(4), b.u(4)
+    while True:
+        if b.u(1):  # edge record
+            straight, n = b.u(1), b.u(4) + 2
+            if straight:
+                if b.u(1):
+                    b.u(n), b.u(n)
+                else:
+                    b.u(1), b.u(n)
+            else:
+                for _ in range(4):
+                    b.u(n)
+            continue
+        flags = b.u(5)
+        if not flags:
+            return
+        if flags & 1:
+            n = b.u(5)
+            b.u(n), b.u(n)
+        for flag, bits in ((2, fill_bits), (4, fill_bits), (8, line_bits)):
+            if flags & flag:
+                b.u(bits)
+        if flags & 16:
+            pos = style_arrays(data, b.end(), version, ids)
+            b = Bits(data, pos)
+            fill_bits, line_bits = b.u(4), b.u(4)
 
 
 def placements(data):
@@ -397,7 +448,7 @@ def parse_swf(swf):
                 q = read_rect(tag, q)[1] + 1
             try:
                 fills = bitmap_fills(tag, q, {2: 1, 22: 2, 32: 3, 83: 4}[code])
-            except (IndexError, struct.error):
+            except (IndexError, struct.error, ValueError):
                 fills = []
             movie['shapes'][cid] = dict(bitmaps=fills, bounds=[v / 20 for v in bounds])
         elif code == 39:
@@ -422,8 +473,8 @@ def bitmaps_under(movie, cid, seen=None):
     seen.add(cid)
     if cid in movie['bitmaps']:
         return {cid}
-    if cid in movie['shapes']:
-        return set(movie['shapes'][cid]['bitmaps'])
+    if cid in movie['shapes']:  # 0xffff and other missing ids mean "no bitmap"
+        return {b for b in movie['shapes'][cid]['bitmaps'] if b in movie['bitmaps']}
     found = set()
     for item in movie['sprites'].get(cid, []):
         found |= bitmaps_under(movie, item['character'], seen)
@@ -470,8 +521,9 @@ def decode_bitmap(bitmap):
 
 # DualShock 4 glyphs by the button token in RAD's class names: ButtonIcon<Size><Style><Token>
 # (rad.widgets.buttons.*) and the QTE build-in/out clips Button_<Token>_... (Interact_fla.*).
-# In ButtonIcon names LS/RS are the sticks ("L"/"R") and LA/RA the clicks ("L3"/"R3"), as the
-# bitmaps show; LSF/LSB are left stick forward/back.
+# In the small ButtonIcon set LS/RS are the sticks ("L"/"R") and LA/RA the clicks ("L3"/"R3"),
+# as the bitmaps show; LSF/LSB are left stick forward/back. RAD's names are not consistent
+# (large LS/RS icons also carry the L3/R3 text), so the art pack's plan.json is reviewable.
 GLYPH_TOKENS = {
     'Cross': 'cross', 'X': 'cross', 'Circle': 'circle', 'Square': 'square', 'Triangle': 'triangle',
     'ShoulderLeft': 'l1', 'ShoulderL1': 'l1', 'L1': 'l1', 'ShoulderRight': 'r1', 'ShoulderR1': 'r1',
@@ -480,8 +532,9 @@ GLYPH_TOKENS = {
     'Click_R3': 'r3', 'ClickR3': 'r3', 'LS': 'left_stick', 'Analog_LS': 'left_stick',
     'AnalogL': 'left_stick', 'LSF': 'left_stick_forward', 'LSB': 'left_stick_back',
     'RS': 'right_stick', 'Analog_RS': 'right_stick', 'Up': 'dpad_up', 'Down': 'dpad_down',
-    'Left': 'dpad_left', 'Right': 'dpad_right', 'InvertLeft': 'dpad_left',
-    'InvertRight': 'dpad_right', 'DPADUD': 'dpad_up_down', 'DPADLR': 'dpad_left_right',
+    'Left': 'dpad_left', 'Right': 'dpad_right', 'InvertLeft': 'l1',  # draws "L1"
+    'InvertRight': 'r1',  # draws "R1"
+    'DPADUD': 'dpad_up_down', 'DPADLR': 'dpad_left_right',
     'Touchpad': 'touchpad', 'Option': 'options', 'Swap': 'cross_circle_swap'}
 GLYPH_PATTERNS = [
     re.compile(r'ButtonIcon(?:Small|Large|32)(?:Normal|Invert|Solid)?(?P<t>[A-Za-z0-9]+)$'),
