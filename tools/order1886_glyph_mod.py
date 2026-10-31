@@ -13,7 +13,7 @@ source), PACK/art/<set>/<glyph>.png or <glyph>_label.png, or art drawn here; the
 MODS/"Glyphs - Xbox" (or "... Keyboard and mouse") for Advanced > Mods. No game asset is
 stored in the repository; PACK and MODS must be outside it and outside GAME_DIR.
 
-Replacements keep every character id and bitmap size. Movies inside packages must fit their
+Pillow 10.1 or newer draws the labels. Replacements keep every character id and bitmap size. Movies inside packages must fit their
 slot, and packages stay COMPRESS: changed 256 KiB chunks are stored uncompressed, the rest
 keep their original Oodle data (docs/order1886-ui-assets.md).
 """
@@ -429,6 +429,9 @@ def build(game, set_name, mods, plan=None, art=None, bindings=None, log=print):
             for key, cid, glyph, static, image, info in items:
                 entry = dict(info, key=key, glyph=glyph, role=suggest_role(info, static, glyph))
                 entry.update({k: planned[key][k] for k in ('glyph', 'role') if key in planned})
+                if entry['glyph'] not in TOKENS or entry['role'] not in ('face', 'label', 'keep'):
+                    raise SystemExit(f'plan.json: {key} has glyph {entry["glyph"]!r} and role '
+                                     f'{entry["role"]!r}; use a glyph from the list and face, label or keep')
                 if entry['role'] in ('face', 'label') and info['box']:
                     replacements[cid] = lossless2(cid, replacement(entry, image, set_name, labels, art))
             if replacements:

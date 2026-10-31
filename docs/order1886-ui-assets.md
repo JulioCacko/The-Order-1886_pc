@@ -198,7 +198,7 @@ display size or scale mode the executable sets. Neither is changed here.
 ## Running the tool
 
 ```bash
-python -m pip install unicorn Pillow
+python -m pip install unicorn "Pillow>=10.1"
 python tools/order1886_ui_extract.py "PATH/TO/CUSA00076" --output "PATH/OUTSIDE/REPO/ui"
 python tools/order1886_ui_extract.py "PATH/TO/CUSA00076" --output "..." --scan-all --jobs 8
 ```

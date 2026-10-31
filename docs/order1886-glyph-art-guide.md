@@ -10,7 +10,7 @@ Background on formats and injection: `docs/order1886-ui-assets.md`.
 ## 1. Make the art request pack
 
 ```bash
-python -m pip install unicorn Pillow
+python -m pip install unicorn "Pillow>=10.1"
 python tools/order1886_glyph_mod.py pack "PATH/TO/CUSA00076" --output "PATH/OUTSIDE/REPO/glyph-pack"
 ```
 
