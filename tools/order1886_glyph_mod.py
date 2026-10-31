@@ -20,6 +20,7 @@ keep their original Oodle data (docs/order1886-ui-assets.md).
 import argparse
 import json
 import math
+import os
 import struct
 import sys
 import zlib
@@ -467,14 +468,26 @@ def build(game, set_name, mods, plan=None, art=None, bindings=None, log=print):
                 log(f'{name} @{offset:#x}: {len(replacements)} bitmaps')
         outputs[name] = repack(blob, data, payload) if payload is not data else None
     # Every slot and size check has passed: only now touch the folder the launcher reads.
-    # A resource the plan no longer changes loses an earlier build's copy.
+    # All files are written beside their targets first and renamed into place once every
+    # write succeeded; a resource the plan no longer changes loses an earlier build's copy.
+    staged = []
+    try:
+        for name, content in outputs.items():
+            if content is not None:
+                temp = (folder / ui.NAMESPACE / name).with_suffix('.tmp')
+                temp.parent.mkdir(parents=True, exist_ok=True)
+                staged.append(temp)
+                temp.write_bytes(content)
+    except OSError:
+        for temp in staged:
+            temp.unlink(missing_ok=True)
+        raise
     for name, content in outputs.items():
         target = folder / ui.NAMESPACE / name
         if content is None:
             target.unlink(missing_ok=True)
         else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(content)
+            os.replace(target.with_suffix('.tmp'), target)
     return folder, total
 
 
