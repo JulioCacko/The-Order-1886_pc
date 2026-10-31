@@ -211,11 +211,13 @@ def _cleanup(root, keep=None):
     (root / 'active.tmp').unlink(missing_ok=True)
 
 
-def build_overlay(game, state, root='', enabled=False, order=None):
+def build_overlay(game, state, root='', enabled=False, order=None, extra=()):
     """Build under the caller's Order session_lock; publish only a complete generation.
 
     The backend owns the lock through preparation, this call, and runtime exit.
-    Read-only UI discovery/planning never creates or removes an overlay.
+    Read-only UI discovery/planning never creates or removes an overlay. extra holds
+    (path relative to the game, generated file) pairs the backend owns, such as the selected
+    button prompts; they are applied after the enabled mods and so take priority.
     """
     game, state = safe_path(game), safe_path(state)
     if state == game or game in state.parents:
@@ -224,15 +226,18 @@ def build_overlay(game, state, root='', enabled=False, order=None):
     if game == destination or game in destination.parents or destination in game.parents:
         raise ValueError('The game folder must not overlap managed mod overlay storage.')
     replacements, _ = plan(game, root, enabled, [] if order is None else order)
+    mod_files_present = bool(replacements)
+    replacements = replacements + [(Path(relative), safe_path(source)) for relative, source in extra]
     if not replacements:
         owned = _owned_root(state)
         if owned:
             _cleanup(owned)
         return game
-    mod_root = safe_path(root)
-    if (destination == mod_root or destination in mod_root.parents or mod_root in destination.parents
-            or mod_root == game or game in mod_root.parents or mod_root in game.parents):
-        raise ValueError('Game, mods, and overlay folders must not contain one another.')
+    if mod_files_present:
+        mod_root = safe_path(root)
+        if (destination == mod_root or destination in mod_root.parents or mod_root in destination.parents
+                or mod_root == game or game in mod_root.parents or mod_root in game.parents):
+            raise ValueError('Game, mods, and overlay folders must not contain one another.')
     owned = _owned_root(state, create=True)
     for previous in owned.iterdir():
         if GENERATION.fullmatch(previous.name):

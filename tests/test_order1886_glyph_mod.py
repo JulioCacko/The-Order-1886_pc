@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT / 'scripts'))
 sys.path.insert(0, str(ROOT / 'tests'))
 import order1886_glyph_mod as glyphs  # noqa: E402
 import order1886_ui_extract as ui  # noqa: E402

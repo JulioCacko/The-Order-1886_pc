@@ -7,7 +7,7 @@ import unittest
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT / 'scripts'))
 import order1886_ui_extract as ui  # noqa: E402
 
 

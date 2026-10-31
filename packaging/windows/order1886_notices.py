@@ -29,10 +29,10 @@ def cpython_licenses():
 
 
 # Shipped with the frozen worker on every platform: the bootloader and its hook data.
-SHIPPED = ("pyinstaller", "pyinstaller-hooks-contrib")
-# Used only by the Windows icon converter at packaging time, so its notice is collected when the
-# package is installed but is not a reason to fail the Linux build, where Pillow is not present.
-OPTIONAL = ("pillow",)
+# Pillow, numpy and Unicorn build the Button prompts artwork from the player's game files.
+SHIPPED = ("pyinstaller", "pyinstaller-hooks-contrib", "pillow", "numpy", "unicorn")
+# Collected when installed, never required. Pillow moved to SHIPPED with the Button prompts option.
+OPTIONAL = ()
 
 
 def collect(destination: Path):

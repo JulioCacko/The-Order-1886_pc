@@ -38,6 +38,7 @@ import order1886_mods as mods
 import order1886_input as inputs
 import order1886_patches as patch_catalogue
 import order1886_editions as editions
+import order1886_prompts as prompts
 
 TITLE_ID = editions.VERIFIED_TITLE_ID  # the default folder name; every edition is accepted
 RUNTIME_ABI = 'order1886-native-1'
@@ -755,6 +756,9 @@ def argument_parser():
     parser.add_argument('--mods-dir', default='', help='Folder containing explicitly selected asset mod folders')
     parser.add_argument('--mods-enabled', type=int, choices=[0, 1], default=0)
     parser.add_argument('--mods-order', default='[]', help='JSON list of enabled mod folder names; later entries win')
+    parser.add_argument('--button-prompts', choices=prompts.SETS, default='playstation',
+                        help="Button prompt artwork: the game's own, Xbox, or keyboard and mouse "
+                             "(built from your game files on first use; keyboard applies its key layout)")
     parser.add_argument('--disable-effects', default='',
                         help='Comma-separated post effects to turn off in the prepared image ('
                              + ', '.join(post_effects.EFFECTS) + '); empty keeps them all')
@@ -788,6 +792,10 @@ def main(argv=None):
             mapping = json.loads(getattr(args, kind + '_bindings'))
             inputs.validate(mapping, kind)
             setattr(args, kind + '_bindings', mapping)
+        if args.button_prompts == 'keyboard':
+            # The keyboard prompts draw these keys, so the game must use the same layout.
+            args.keyboard_bindings = prompts.keyboard_bindings()
+            inputs.validate(args.keyboard_bindings, 'keyboard')
         args.mods_dir = str(mods.resolve_root(args.mods_dir, ROOT))
         game, user = mods.safe_path(args.game_dir), mods.safe_path(args.state_dir)
         mods.safe_path(user / 'session.lock')
@@ -875,12 +883,16 @@ def main(argv=None):
             logs = user / 'logs'
             logs.mkdir(exist_ok=True)
             log = logs / f'{stamp}-{mode}.log'
+            prompt_files = [] if args.check_imports else prompts.prepare(
+                game, user, args.button_prompts, log=lambda line: emit_status(line, fallback=diagnostic_log))
             mounted_game = mods.build_overlay(game, user, args.mods_dir,
-                                             bool(args.mods_enabled) and not args.check_imports, mod_order)
+                                             bool(args.mods_enabled) and not args.check_imports, mod_order,
+                                             extra=prompt_files)
             command = build_command(runtime, user / 'prepared/boot-linked.bin', mounted_game, user, args.check_imports)
             timing_values = timing_profile(vars(args))
             report = {'mode': mode, 'started_utc': stamp, **runtime_identity(runtime),
                       'game': str(game), 'mounted_game': str(mounted_game),
+                      'button_prompts': args.button_prompts,
                       'mods': {'enabled': bool(args.mods_enabled) and not args.check_imports,
                                'folder': args.mods_dir, 'order': mod_order},
                       'title_id': metadata['TITLE_ID'], 'image_sha256': prepared['image_sha256'],

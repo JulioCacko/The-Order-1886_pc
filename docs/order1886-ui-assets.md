@@ -147,9 +147,16 @@ Not glyphs, recorded so they are not mistaken for missing coverage:
      accepts it, so no Oodle compressor is needed. An unmodified package wrapped this way
      booted cleanly.
 
+## Button prompts option
+
+Players choose PlayStation, Xbox or Keyboard and mouse under **Controls > Button prompts**
+(`docs/order1886-button-prompts.md`). The backend builds the selected set from the player's own
+dump with `scripts/order1886_prompts.py`, caches it and mounts it through the overlay after any
+mods. The tools below remain for custom art.
+
 ## Glyph mods
 
-`tools/order1886_glyph_mod.py` builds the mods; `docs/order1886-glyph-art-guide.md` covers
+`scripts/order1886_glyph_mod.py` (CLI: `tools/order1886_glyph_mod.py`) builds the mods; `docs/order1886-glyph-art-guide.md` covers
 the art workflow (including prompts for an image model). The output:
 
 ```text

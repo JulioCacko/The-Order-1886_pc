@@ -28,6 +28,7 @@ PLUMBING = {
     'mouse_look': ('--mouse-look', 0, 1, 'value'),
     'mouse_sensitivity': ('--mouse-sensitivity', 250, 100, 'value'),
     'mouse_invert_y': ('--mouse-invert-y', 1, 0, 'value'),
+    'button_prompts': ('--button-prompts', 'xbox', 'playstation', 'value'),
     'htile_unqualified': ('--htile', True, False, 'switch'),
     'in_game_menu': ('--in-game-menu', True, False, 'switch'),
     'synchronous_recording': ('--synchronous-recording', True, False, 'switch'),
