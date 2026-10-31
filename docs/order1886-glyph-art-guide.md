@@ -19,6 +19,7 @@ The pack holds:
 | File | Purpose |
 |---|---|
 | `sources/<key>.png` | Every controller-glyph bitmap from the four UI resources, at its real size. `<key>` is `<App>-<movie offset>-<bitmap id>`, for example `InteractApp-34c664-1033`. |
+| `reference/<key>.png` | Each planned (face or label) bitmap enlarged 1:1 to 512 px on the game's dark grey. Start a manual or image-model redraw from this. |
 | `contact-sheet.png` | Every bitmap with its key, suggested role and glyph. Green means face, blue means label, grey means keep. |
 | `plan.json` | One entry per bitmap. `glyph` and `role` are editable, and `build` follows them. |
 | `GPT-PROMPTS.md` | The exact image list for both routes below, with sources and return file names. |

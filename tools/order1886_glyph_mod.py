@@ -179,6 +179,18 @@ def pack(game, output):
                                     resource=name, offset=offset, id=cid, width=image.width,
                                     height=image.height, source=source.as_posix(), static=static, **info))
                 thumbs.append(image)
+    # 1:1 references for redrawing by hand or with an image model: same framing, enlarged to
+    # 512 px on the longest side, on the dark grey the game draws prompts over.
+    for entry, image in zip(entries, thumbs):
+        if entry['role'] == 'keep':
+            continue
+        scale = 512 / max(image.size)
+        big = image.resize((round(image.width * scale), round(image.height * scale)), Image.LANCZOS)
+        reference = Image.new('RGBA', big.size, (42, 42, 42, 255))
+        reference.alpha_composite(big)
+        path = output / 'reference' / f'{entry["key"]}.png'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        reference.convert('RGB').save(path)
     (output / 'plan.json').write_text(json.dumps(dict(
         note='Edit "glyph" (one of: ' + ', '.join(TOKENS) + ') and "role" (face, label or keep) '
              'per bitmap; build follows this file.', bitmaps=entries), indent=1))
@@ -222,12 +234,13 @@ def prompts(entries):
         lines.append(f'| {PLAYSTATION[token]} | {xbox[token] or "D-pad"} | {keyboard[token]} | {files} | {refs} |')
     lines += [
         '', '## Route B: redraw each source exactly (best match)', '',
-        'Attach the source PNG and ask for the same image, same size, same transparency, with only',
-        'the PlayStation marking changed (prompt B in the guide). Save as',
-        '`art/<set>/bitmaps/<key>.png`; these are used as they are.', '',
-        '| Key | Source | Size | Role | Shows | Xbox | Keyboard |', '|---|---|---|---|---|---|---|']
+        'Start from `reference/<key>.png` (the source enlarged 1:1 on dark grey) and change only the',
+        'PlayStation marking (prompt B in the guide). Keep the framing and aspect ratio and give the',
+        'result a transparent background. Save it as `art/<set>/bitmaps/<key>.png`: build scales it',
+        'back to the source size exactly.', '',
+        '| Key | Reference | Size | Role | Shows | Xbox | Keyboard |', '|---|---|---|---|---|---|---|']
     for e in used:
-        lines.append(f'| `{e["key"]}` | `{e["source"]}` | {e["width"]}x{e["height"]} | {e["role"]} | '
+        lines.append(f'| `{e["key"]}` | `reference/{e["key"]}.png` | {e["width"]}x{e["height"]} | {e["role"]} | '
                      f'{PLAYSTATION[e["glyph"]]} | {xbox[e["glyph"]] or "D-pad"} | {keyboard[e["glyph"]]} |')
     return '\n'.join(lines) + '\n'
 
