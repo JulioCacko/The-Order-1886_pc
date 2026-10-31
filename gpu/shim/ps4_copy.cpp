@@ -76,7 +76,7 @@ public:
 
     void WaitAll() {
         // The waiting thread helps instead of only spinning.
-        while (true) {
+        for (unsigned spins = 0;;) {
             Task task;
             {
                 std::scoped_lock lk{mutex};
@@ -90,8 +90,9 @@ public:
             }
             if (task.run) {
                 RunAsync(task);
+                spins = 0;
             } else {
-                std::this_thread::yield();
+                Ps4Threads::Backoff(spins);
             }
         }
     }
@@ -108,8 +109,8 @@ public:
         cv.notify_all();
         Work(*job);
         // Workers only call the task for indices below count, all done before this returns.
-        while (job->done.load(std::memory_order_acquire) < count) {
-            std::this_thread::yield();
+        for (unsigned spins = 0; job->done.load(std::memory_order_acquire) < count;) {
+            Ps4Threads::Backoff(spins);
         }
         std::scoped_lock lk{mutex};
         if (current == job) {

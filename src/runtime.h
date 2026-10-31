@@ -39,6 +39,8 @@ void runtime_set_procparam(void *param);
 void **runtime_application_heap_api(void);
 uintptr_t runtime_thread_resolve(const char *name);
 void runtime_thread_report(void);
+/* Counts a guest sched_yield (zero_sleep 0) or a zero-length sleep (1) for the report (#134). */
+void runtime_thread_count_yield(int zero_sleep);
 int runtime_thread_priority(void);
 void runtime_set_main_tls(const void *data, uint64_t filesz, uint64_t memsz, uint64_t align);
 void runtime_thread_attach_main(void);

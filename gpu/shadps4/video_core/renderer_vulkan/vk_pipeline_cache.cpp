@@ -406,7 +406,9 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
         }
         capture_compiler = std::make_unique<AsyncCompiler>(capture_count, capture_count, [](unsigned index) {
             Common::SetCurrentThreadName(("ps4:ShaderCapture" + std::to_string(index)).c_str());
-            Common::SetCurrentThreadPriority(Common::ThreadPriority::High);
+            // Normal, not above: above normal, these (half the hardware threads) preempt the GPU
+            // command thread and the game's threads whenever shaders compile (#134).
+            Common::SetCurrentThreadPriority(Common::ThreadPriority::Normal);
         });
         compiler = std::make_unique<AsyncCompiler>(count, 64, [](unsigned index) {
             Common::SetCurrentThreadName(("ps4:ShaderCompile" + std::to_string(index)).c_str());
