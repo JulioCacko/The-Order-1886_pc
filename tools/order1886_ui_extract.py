@@ -9,7 +9,8 @@ The UI is Flash: Iggy loads SWF movies straight from `_data`. Movies sit inside 
 that are either stored raw or wrapped in a `COMPRESS` container (u64 raw size, u64 size, then
 one legacy Oodle LZH/LZHLW stream or a table of independently coded 256 KiB chunks). Legacy
 Oodle has no free decoder, so the game's own OodleLZ_Decompress is run from the user's
-eboot.bin under Unicorn (`pip install unicorn`); only code bytes verified below are executed.
+eboot.bin under Unicorn (`pip install unicorn`; PNG output needs Pillow); only code bytes
+verified below are executed.
 
 Per movie the output holds movie.swf (uncompressed, for JPEXS and similar), every bitmap as
 PNG, and manifest.json entries with the stage size, every exported/AS3 symbol, the bitmaps
@@ -91,11 +92,11 @@ class Oodle:
         import prepare
         import link_libc
         try:
-            from unicorn import Uc, UC_ARCH_X86, UC_MODE_64, UC_HOOK_CODE
+            from unicorn import Uc, UcError, UC_ARCH_X86, UC_MODE_64, UC_HOOK_CODE
             from unicorn import x86_const as x
         except ImportError:
             raise SystemExit('Decoding COMPRESS resources needs Unicorn: python -m pip install unicorn')
-        self.x = x
+        self.x, self.fault = x, UcError
         elf, _, ph, _, _ = prepare.parse_self(prepare.read_self(eboot))
         start, end = OODLE_REGION
         if hashlib.sha256(_image(elf, ph, start, end - start)).hexdigest() != OODLE_SHA256:
@@ -192,7 +193,10 @@ class Oodle:
                            (x.UC_X86_REG_RSI, len(data)), (x.UC_X86_REG_RDX, target),
                            (x.UC_X86_REG_RCX, raw_size), (x.UC_X86_REG_R8, 0), (x.UC_X86_REG_R9, 0)):
             mu.reg_write(reg, value)
-        mu.emu_start(DECOMPRESS, self.ret)
+        try:
+            mu.emu_start(DECOMPRESS, self.ret)
+        except self.fault as error:  # a corrupt or unsupported stream faults the decoder
+            raise ValueError(f'Oodle stream failed to decode: {error}') from error
         if self.failed or mu.reg_read(x.UC_X86_REG_RAX) != raw_size:
             raise ValueError('Oodle stream failed to decode')
         return bytes(mu.mem_read(target, raw_size))
@@ -390,7 +394,8 @@ def records(data, pos, version, ids):
 
 
 def placements(data):
-    """PlaceObject2/3 records of a timeline: depth, character, name, matrix (first frame wins)."""
+    """Every character-bearing PlaceObject2/3 record of a timeline, across all frames:
+    depth, character, name and matrix."""
     out = []
     for code, tag in data:
         if code not in (26, 70):
@@ -559,6 +564,10 @@ def glyph_of(names):
 
 
 def extract_movie(swf, folder):
+    try:
+        import PIL.Image  # noqa: F401  (stop here, not with an error on every bitmap)
+    except ImportError:
+        raise SystemExit('Writing bitmaps needs Pillow: python -m pip install Pillow')
     movie = parse_swf(swf)
     folder.mkdir(parents=True, exist_ok=True)
     body = swf_body(swf)

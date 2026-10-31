@@ -129,7 +129,10 @@ Not glyphs, recorded so they are not mistaken for missing coverage:
    different size rescales the glyph unless the fill matrix changes with it.
    `DefineBitsLossless2` stores premultiplied ARGB.
 2. Rebuild the SWF (CWS).
-   - In the standalone menu resource (`c2d79…`), the movie is the whole file and may grow.
+   - The standalone menu resource (`c2d79…`) is a `u32` SWF size followed by the SWF at
+     offset `0x4`. The extractor's `movie.swf` is that movie normalised (uncompressed, no
+     prefix), not the resource. A replacement writes the new size into the prefix and the
+     rebuilt SWF at `0x4`, and may grow (`place()` in `tools/order1886_glyph_mod.py`).
    - In packages, the movie must fit its slot. The `u32` slot size and the offsets of the
      following resources stay unchanged, and the rest of the slot is zero-padded. Glyphs with
      simple flat colours fit easily (the tint test saved space in every movie). Detailed
@@ -195,7 +198,7 @@ display size or scale mode the executable sets. Neither is changed here.
 ## Running the tool
 
 ```bash
-python -m pip install unicorn
+python -m pip install unicorn Pillow
 python tools/order1886_ui_extract.py "PATH/TO/CUSA00076" --output "PATH/OUTSIDE/REPO/ui"
 python tools/order1886_ui_extract.py "PATH/TO/CUSA00076" --output "..." --scan-all --jobs 8
 ```
