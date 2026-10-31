@@ -47,7 +47,7 @@ single byte held for the title, main menu and pause menu together. The page tree
 
 ![Pause > Settings](menu-input/pause-settings.jpg)
 
-![Pause menu legend](menu-input/pause-legend.png)
+![Pause menu legend](menu-input/pause-legend.jpg)
 
 ## Checks
 
