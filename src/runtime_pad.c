@@ -5,7 +5,8 @@
  *   WASD left stick, arrow keys right stick, Space Cross, LShift Circle,
  *   E Square, Q Triangle, 1 L1, 3 R1, R L2, F R2, Z L3, C R3,
  *   Enter Options, Tab left touchpad, Backspace right touchpad,
- *   IJKL d-pad (I up, K down, J left, L right). */
+ *   IJKL d-pad (I up, K down, J left, L right).
+ * Mouse: left click R2, right click L2. In The Order's menus left click is Cross and Esc Circle. */
 #define _GNU_SOURCE
 #include "runtime.h"
 #include "gpu/ps4gpu.h"
@@ -270,6 +271,52 @@ static void load_button_maps(void) {
     if (pad || keys) printf("Runtime: pad map: %d gamepad and %d keyboard buttons remapped\n",pad,keys);
 }
 
+/* The Order 1.02 (CUSA00076) only: whether a menu has the focus. The game keeps its UI pages in a
+ * tree under the UI object (Game singleton -> UI list -> root page); each page's newest child is
+ * the one in front. In gameplay the front leaf is the GamePlayerPage (the HUD) or the
+ * PhotoModePage; any other leaf is a menu: title, main menu, pause, settings, death, hints.
+ * Image offsets and type hashes from the 1.02 eboot (docs/order1886-button-prompts.md). */
+enum { ORDER_GAME=0x16ab8b0, ORDER_UI_VTABLE=0x1640420, ORDER_PAGE_HASH=0x149c5e8 };
+#define ORDER_GAME_PLAYER_PAGE UINT64_C(0xcacf46d896d1adfd)
+#define ORDER_PHOTO_MODE_PAGE UINT64_C(0x6b59bba1beb131ed)
+static const unsigned char *order_image;
+void runtime_pad_attach_order(const unsigned char *image, size_t size) {
+    uint64_t hash;
+    if (size<ORDER_GAME+8) return;
+    memcpy(&hash,image+ORDER_PAGE_HASH,8);
+    if (hash!=ORDER_GAME_PLAYER_PAGE || memcmp(image+ORDER_PAGE_HASH+8,"lPrEfIxCR7GamePlayerPage",25)) return;
+    order_image=image;
+    ps4gpu_escape_is_game_key();
+    puts("Runtime: menu input: left click selects and Esc goes back while a menu is open");
+}
+static bool guest_u64(uint64_t address, uint64_t *value) {
+    if (!address || !runtime_memory_is_mapped((uintptr_t)address,8)) return false;
+    memcpy(value,(const void *)(uintptr_t)address,8);
+    return true;
+}
+static bool order_menu_open(void) {
+    uint64_t game, list, count, ui, vtable, page, children, n, hash;
+    if (!order_image) return false;
+    memcpy(&game,order_image+ORDER_GAME,8);
+    if (!game || !guest_u64(game+0x348,&list) || !guest_u64(game+0x370,&count) || !count || count>16 ||
+        !guest_u64(list+8*(count-1),&ui) || !guest_u64(ui,&vtable) ||
+        vtable!=(uintptr_t)order_image+ORDER_UI_VTABLE || !guest_u64(ui+0x48,&page)) return false;
+    for (int depth=0;depth<16;++depth) {
+        if (!guest_u64(page+0xc8,&n) || n>64) return false;
+        if (!n) break;
+        if (!guest_u64(page+0xa0,&children) || !guest_u64(children+8*(n-1),&page)) return false;
+    }
+    if (!guest_u64(page+0x28,&hash)) return false;
+    return hash!=ORDER_GAME_PLAYER_PAGE && hash!=ORDER_PHOTO_MODE_PAGE;
+}
+/* A held key keeps the meaning it had when pressed: the Esc that opens the pause menu does not
+ * close it again, and the click that resumes the game does not fire. */
+static bool menu_route(bool down, bool *held, bool *in_menu, bool menu) {
+    if (down && !*held) *in_menu=menu;
+    *held=down;
+    return down && *in_menu;
+}
+
 static void key_axis(uint8_t *axis, bool negative, bool positive) {
     if (negative || positive) *axis=(uint8_t)(128-(negative ? 128 : 0)+(positive ? 127 : 0));
 }
@@ -309,7 +356,14 @@ static void sample_host(PadData *d) {
     /* The keyboard works with or without a gamepad: its buttons add to the pad's, and a stick
      * follows the keys only while one of them is held. */
     if (!k) return;
-    for (size_t i=0;i<key_map.count;++i) if (k[key_map.entries[i].source]) d->buttons|=key_map.entries[i].ps;
+    static bool esc_held, esc_menu, click_held, click_menu, menu_was_open;
+    const bool menu=order_menu_open();
+    if (menu!=menu_was_open) { printf("Runtime: menu input %s\n",menu ? "on" : "off"); menu_was_open=menu; }
+    const bool back=menu_route(k[SDL_SCANCODE_ESCAPE],&esc_held,&esc_menu,menu);
+    if (back) d->buttons|=BTN_CIRCLE;
+    for (size_t i=0;i<key_map.count;++i)
+        if (k[key_map.entries[i].source] && !(back && key_map.entries[i].source==SDL_SCANCODE_ESCAPE))
+            d->buttons|=key_map.entries[i].ps;
     if (d->buttons & BTN_L2) d->l2=255;
     if (d->buttons & BTN_R2) d->r2=255;
     key_axis(&d->left_x,k[SDL_SCANCODE_A],k[SDL_SCANCODE_D]);
@@ -321,7 +375,8 @@ static void sample_host(PadData *d) {
     ps4gpu_mouse_sample(mouse_axes,&mouse_buttons);
     if (abs((int)mouse_axes[0]-128)>abs((int)d->right_x-128)) d->right_x=mouse_axes[0];
     if (abs((int)mouse_axes[1]-128)>abs((int)d->right_y-128)) d->right_y=mouse_axes[1];
-    if (mouse_buttons & 1) { d->buttons|=BTN_R2; d->r2=255; }
+    if (menu_route(mouse_buttons & 4,&click_held,&click_menu,menu)) d->buttons|=BTN_CROSS;
+    else if (mouse_buttons & 1) { d->buttons|=BTN_R2; d->r2=255; }
     if (mouse_buttons & 2) { d->buttons|=BTN_L2; d->l2=255; }
 }
 

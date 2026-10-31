@@ -90,6 +90,14 @@ class CompositionTests(unittest.TestCase):
         self.assertIsNotNone(drawn.getchannel('A').getbbox())
         backing = prompts.keyboard(entry(key='MenuApp-4-288', id=288), source)
         self.assertIsNone(backing.getchannel('A').getbbox())
+        # Menus select with a left click and go back with Esc (the runtime's menu routing).
+        menu_cross = entry(key='MenuApp-4-104', id=104)
+        self.assertEqual(prompts.keyboard(menu_cross, source).tobytes(),
+                         prompts.placed(menu_cross, prompts.master('mouse-left'), 'mouse-left').tobytes())
+        self.assertNotEqual(prompts.keyboard(menu_cross, source).tobytes(), drawn.tobytes())
+        menu_circle = entry(key='MenuApp-4-107', id=107, glyph='circle')
+        self.assertEqual(prompts.keyboard(menu_circle, source).tobytes(),
+                         prompts.placed(menu_circle, prompts.keycap('ESC'), 'keycap').tobytes())
         for glyph in ('r2', 'l2', 'left_stick', 'right_stick', 'dpad_up_down', 'options'):
             with self.subTest(glyph=glyph):
                 self.assertEqual(prompts.keyboard(entry(glyph=glyph, static=False), source).size, source.size)

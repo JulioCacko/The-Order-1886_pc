@@ -14,7 +14,8 @@ Council cutscene, and is experimental
 - Five-page Windows launcher with shared settings, keyboard navigation, scrolling,
   persistent Play/Stop, 13 UI language choices and English fallback.
 - Configurable mouse-to-stick camera input, sensitivity and inverted Y. Focus loss,
-  host UI and text entry release capture; Esc releases it and F6 toggles it.
+  host UI and text entry release capture; F6 toggles it. In menus left click selects and
+  Esc goes back (Esc no longer releases capture on the 1.02 executable).
 - `Play The Order 1886.exe` shares settings, preflight, preparation, session locking,
   backups and logs with launcher Play. Desktop shortcuts are idempotent; first-run
   or invalid settings return to setup.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <mutex>
@@ -14,6 +15,7 @@ constexpr bool WantsCapture(bool enabled, bool released, bool blocked,
 struct Sample {
     std::uint8_t x{128}, y{128};
     std::uint32_t buttons{}; // bit 0: left mouse button; bit 1: right
+    std::uint32_t clicks{};  // the same buttons with the cursor released too (menus select)
 };
 
 // SDL events and capture belong to the window thread. Guest pad reads only copy
@@ -36,6 +38,8 @@ public:
     }
     void Button(std::uint32_t mask, bool down) {
         std::scoped_lock lock{mutex};
+        if (down) sample.clicks |= mask;
+        else sample.clicks &= ~mask;
         if (!captured) return;
         if (down) sample.buttons |= mask;
         else sample.buttons &= ~mask;
@@ -74,4 +78,7 @@ private:
     Ps4Mouse::Sample sample{};
 };
 inline Input input;
+// Set when the game reads Esc as a button (The Order's menus): Esc then leaves the capture
+// alone and only F6 releases the cursor.
+inline std::atomic<bool> escape_is_game_key{false};
 } // namespace Ps4Mouse

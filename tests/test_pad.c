@@ -23,6 +23,8 @@ static bool SDLCALL record_rumble(void *userdata, uint16_t low, uint16_t high) {
     rumble_high=high;
     return true;
 }
+void ps4gpu_escape_is_game_key(void) {}
+int runtime_memory_is_mapped(uintptr_t address, uint64_t size) { (void)size; return address>=4096; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;
@@ -190,11 +192,62 @@ int main(void) {
     data=read_pad();
     assert(data.right_x==128 && data.buttons==0 && data.l2==0 && data.r2==0);
     mouse_axes[0]=128; mouse_buttons=0; capture=0;
+
     SDL_CloseJoystick(joystick);
     if (gamepad) SDL_CloseGamepad(gamepad);
     gamepad=NULL;
     assert(SDL_DetachVirtualJoystick(id));
+
+    /* The Order's UI page tree: Game -> UI list -> UI -> root page -> front leaf. */
+    unsigned char *image=calloc(1,ORDER_GAME+8);
+    uint64_t game[0x80]={0}, list[1], ui[0x10]={0}, root[0x20]={0}, children[1], leaf[0x20]={0};
+    const uint64_t player_page=ORDER_GAME_PLAYER_PAGE, game_ptr=(uintptr_t)game;
+    assert(image);
+    runtime_pad_attach_order(image,ORDER_GAME+8); /* another build: no menu input */
+    assert(!order_image);
+    memcpy(image+ORDER_PAGE_HASH,&player_page,8);
+    memcpy(image+ORDER_PAGE_HASH+8,"lPrEfIxCR7GamePlayerPage",25);
+    memcpy(image+ORDER_GAME,&game_ptr,8);
+    game[0x348/8]=(uintptr_t)list; game[0x370/8]=1; list[0]=(uintptr_t)ui;
+    ui[0]=(uintptr_t)image+ORDER_UI_VTABLE; ui[0x48/8]=(uintptr_t)root;
+    root[0xa0/8]=(uintptr_t)children; root[0xc8/8]=1; children[0]=(uintptr_t)leaf;
+    leaf[0x28/8]=ORDER_GAME_PLAYER_PAGE;
+    runtime_pad_attach_order(image,ORDER_GAME+8);
+    assert(order_image==image && !order_menu_open());
+    read_pad(); /* ends the hold after the overlay capture and gamepad above */
+    mouse_buttons=1|4; /* gameplay: left click fires */
+    data=read_pad();
+    assert((data.buttons & (BTN_R2|BTN_CROSS))==BTN_R2);
+    mouse_buttons=4; /* released cursor in gameplay: nothing */
+    read_pad(); mouse_buttons=0; read_pad(); mouse_buttons=4;
+    data=read_pad();
+    assert(!(data.buttons & (BTN_R2|BTN_CROSS)));
+    mouse_buttons=0;
+    leaf[0x28/8]=UINT64_C(0x6408ae4908e40599); /* PausePage */
+    assert(order_menu_open());
+    read_pad();
+    mouse_buttons=4; /* a menu: left click selects, captured or not */
+    data=read_pad();
+    assert((data.buttons & (BTN_R2|BTN_CROSS))==BTN_CROSS);
+    leaf[0x28/8]=ORDER_GAME_PLAYER_PAGE; /* the menu closed under a held click: still Cross */
+    mouse_buttons=1|4;
+    data=read_pad();
+    assert((data.buttons & (BTN_R2|BTN_CROSS))==BTN_CROSS);
+    mouse_buttons=0; read_pad(); mouse_buttons=1|4;
+    data=read_pad();
+    assert((data.buttons & (BTN_R2|BTN_CROSS))==BTN_R2);
+    mouse_buttons=0; read_pad();
+    root[0xc8/8]=0; /* main menu: the root's leaf is a menu page */
+    leaf[0x28/8]=ORDER_GAME_PLAYER_PAGE;
+    assert(order_menu_open());
+    root[0xc8/8]=1; ui[0]=0; /* not the UI object: no menu */
+    assert(!order_menu_open());
+    bool held=false, in_menu=false; /* Esc that opened the pause menu stays Options */
+    assert(!menu_route(true,&held,&in_menu,false) && !menu_route(true,&held,&in_menu,true));
+    assert(!menu_route(false,&held,&in_menu,true) && menu_route(true,&held,&in_menu,true));
+    order_image=NULL;
+    free(image);
     SDL_Quit();
     unlink(path);
-    puts("PASS: pad ABI, direct left/right clicks, unchanged shoulder input, SDL touch coordinates, overlay capture");
+    puts("PASS: pad ABI, direct left/right clicks, unchanged shoulder input, SDL touch coordinates, overlay capture, menu clicks and Esc");
 }

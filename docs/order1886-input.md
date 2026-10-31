@@ -10,15 +10,18 @@ Open **Game > Controls** in the launcher. Mouse look defaults to enabled. Adjust
 
 - Mouse movement supplies the PS4 right stick. Left mouse supplies R2 (fire), and
   right mouse supplies L2 (aim), while the cursor is captured.
-- **Esc** releases the cursor. **F6** captures or releases it again.
+- In the game's menus left mouse selects (Cross) and **Esc** goes back (Circle), with
+  the cursor captured or not ([button prompts](order1886-button-prompts.md#in-menus)).
+- **F6** captures or releases the cursor. On the 1.02 executable Esc goes to the game
+  (back in menus) and leaves the cursor captured; on another build Esc releases it.
 - Losing window focus, opening host UI, and entering text release capture and
   discard pending movement. Returning to the game restores capture unless you
-  released it with Esc/F6.
+  released it with F6 (or Esc on another build).
 - Controllers and keyboard input remain available. The stronger camera-axis
   input wins; adding a mouse does not disconnect or remap the controller.
 - WASD controls movement, arrow keys control the camera, I/J/K/L control the
   d-pad, and Enter supplies Options. The GUI's Escape-to-Home shortcut applies
-  to the launcher; in the game window Esc releases the mouse.
+  to the launcher; in the game window Esc goes back in menus.
 
 The CLI also accepts `--mouse-look 0|1`, `--mouse-sensitivity 10..500`, and
 `--mouse-invert-y 0|1`. Values reach the same `runtime.ini` settings as the GUI.
