@@ -61,6 +61,11 @@ def collect(destination: Path):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(distribution.locate_file(file), target)
             count += 1
+        fallback = Path(__file__).with_name(f"notice-{name}.txt")
+        if not count and fallback.is_file():  # a wheel that ships no licence file of its own
+            (destination / name).mkdir(parents=True, exist_ok=True)
+            shutil.copy2(fallback, destination / name / "NOTICE.txt")
+            count = 1
         if not count:
             raise RuntimeError(f"No license notice found for {name}")
     base = Path(sys.base_prefix)

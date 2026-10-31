@@ -1,0 +1,10 @@
+Unicorn CPU emulator framework 2.1.4
+https://www.unicorn-engine.org/  -  source: https://github.com/unicorn-engine/unicorn/tree/2.1.4
+
+The worker uses Unicorn to run the game's own Oodle decoder from the player's executable when it
+builds the Button prompts artwork. The PyPI wheel ships no licence file of its own.
+
+- The Unicorn engine (the bundled libunicorn shared library) is licensed under the GNU General
+  Public License, version 2. Its full text is in this package's LICENSE file; the engine's source
+  code is available from the repository and tag above.
+- The Python bindings are licensed under the BSD license (see the repository's bindings/python).
