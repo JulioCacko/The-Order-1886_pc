@@ -8,6 +8,7 @@
 #endif
 #include <time.h>
 #include "ps4_copy.h"
+#include "ps4_threads.h"
 #include "ps4_toggles.h"
 #include <cstdio>
 #include <boost/preprocessor/stringize.hpp>
@@ -108,6 +109,10 @@ void Liverpool::ProcessCommands() {
     }
 }
 
+// The submit resumed last yielded in a WaitRegMem it had already polled, with nothing done in
+// between. Only the GPU command thread touches it.
+static bool g_wait_stalled;
+
 void Liverpool::Process(std::stop_token stoken) {
     Common::SetCurrentThreadName("shadPS4:GpuCommandProcessor");
 #ifndef _WIN32
@@ -141,7 +146,11 @@ void Liverpool::Process(std::stop_token stoken) {
 
         curr_qid = -1;
 
+        unsigned stalled_spins = 0;
         while (num_submits || num_commands) {
+            if (num_commands) {
+                stalled_spins = 0;
+            }
             ProcessCommands();
 
             curr_qid = (curr_qid + 1) % num_mapped_queues;
@@ -156,6 +165,7 @@ void Liverpool::Process(std::stop_token stoken) {
                 }
                 task = queue.submits.front();
             }
+            g_wait_stalled = false;
             task.resume();
 
             if (task.done()) {
@@ -167,6 +177,13 @@ void Liverpool::Process(std::stop_token stoken) {
                 --num_submits;
                 std::scoped_lock lock2{submit_mutex};
                 submit_cv.notify_all();
+            }
+            // Only when no queue gets anywhere does this thread back off: the guest or another
+            // thread writes the value later, and spinning until then holds a core (#134).
+            if (g_wait_stalled) {
+                Ps4Threads::Backoff(stalled_spins);
+            } else {
+                stalled_spins = 0;
             }
         }
 
@@ -1284,11 +1301,14 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 }
                 // Else the value may come from a fence that thread has yet to write: let it
                 // catch up before yielding to other queues.
+                bool polled = false;
                 while (!wait_reg_mem->Test(regs.reg_array)) {
                     if (rasterizer && !rasterizer->DrawPipeIdle()) {
                         rasterizer->DrainDrawPipe(static_cast<u32>(opcode));
                         continue;
                     }
+                    g_wait_stalled = polled;
+                    polled = true;
                     YIELD_GFX();
                 }
                 break;
@@ -1639,7 +1659,8 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
         case PM4ItOpcode::WaitRegMem: {
             const auto* wait_reg_mem = reinterpret_cast<const PM4CmdWaitRegMem*>(header);
             ASSERT(wait_reg_mem->engine.Value() == PM4CmdWaitRegMem::Engine::Me);
-            while (!wait_reg_mem->Test(regs.reg_array)) {
+            for (bool polled = false; !wait_reg_mem->Test(regs.reg_array); polled = true) {
+                g_wait_stalled = polled;
                 YIELD_ASC(vqid);
             }
             break;

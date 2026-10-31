@@ -247,10 +247,10 @@ void Scheduler::WaitDeferredSignals() {
     }
     Ps4Stats::WaitTimer timer{Ps4Stats::host_copies_wait_ns};
     KickRecording(true);
-    while (deferred_signals_done->load(std::memory_order_acquire) < issued) {
+    for (unsigned spins = 0; deferred_signals_done->load(std::memory_order_acquire) < issued;) {
         // Helps the copy threads the signals wait for.
         Ps4Copy::WaitAsync();
-        std::this_thread::yield();
+        Ps4Threads::Backoff(spins);
     }
 }
 
@@ -259,8 +259,9 @@ void Scheduler::WaitHostCopies() {
         Ps4Stats::WaitTimer timer{Ps4Stats::host_copies_wait_ns};
         Ps4Stats::host_copy_waits.fetch_add(1, std::memory_order_relaxed);
         KickRecording(true);
-        while (host_copies_done.load(std::memory_order_acquire) < host_copies_issued) {
-            std::this_thread::yield();
+        for (unsigned spins = 0;
+             host_copies_done.load(std::memory_order_acquire) < host_copies_issued;) {
+            Ps4Threads::Backoff(spins);
         }
     }
     Ps4Stats::WaitTimer timer{Ps4Stats::copy_threads_wait_ns};
