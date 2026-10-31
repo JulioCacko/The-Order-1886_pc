@@ -356,7 +356,7 @@ static ABI __attribute__((noreturn)) void thread_exit(void *value) {
     /* No host unwinder: guest frames have no registered FDEs. */
     exit_longjmp(t);
 }
-static ABI int32_t thread_yield(void) { runtime_thread_count_yield(0); sched_yield(); return 0; }
+static ABI int32_t thread_yield(void) { runtime_thread_yield(); return 0; }
 /* Scheduler parameters are recorded on the guest thread and never enforced; this file's header
  * has always said so. Semantics follow upstream shadPS4 (kernel/threads/pthread.cpp):
  * posix_pthread_getschedparam/posix_pthread_setschedparam — a valid thread with valid outputs
@@ -446,9 +446,45 @@ uintptr_t runtime_thread_resolve(const char *name) {
     return 0;
 }
 /* ---- CPU time per host thread (technique from SpartanPort 4b843a7dd1, #134) ---- */
-static uint64_t guest_yields, guest_zero_sleeps;
-void runtime_thread_count_yield(int zero_sleep) {
-    __atomic_fetch_add(zero_sleep ? &guest_zero_sleeps : &guest_yields,1,__ATOMIC_RELAXED);
+static uint64_t guest_yields, guest_yield_sleeps, guest_zero_sleeps;
+void runtime_thread_count_zero_sleep(void) { __atomic_fetch_add(&guest_zero_sleeps,1,__ATOMIC_RELAXED); }
+/* Guest spin-waits (#134). A Task Kernel thread waits for a job group by running queued jobs
+ * and, when none is left, scanning the queues again (wait loops at 0x20e3d0 and four like it);
+ * after 1801 empty scans, about 40 us, the game's backoff callback at 0x8a7380 calls
+ * scePthreadYield. Nothing in the loop blocks, so every waiting thread holds a core: 2.7 cores
+ * of a 6-thread CPU in a quiet scene. A thread that yields again within YIELD_GAP_NS of its
+ * last yield found no work in between; from the YIELD_STREAK-th such yield in a row (about
+ * 2.5 ms of waiting) it sleeps instead of yielding. Windows ends the sleep after about 0.6 ms,
+ * whatever shorter time is asked; waking after 0.7 ms of waiting (a streak of 16) cost frame
+ * rate; after 2.5 ms a clean paired run matched (docs/verification/2026-10-31-thread-priorities.md). */
+enum { YIELD_STREAK = 64 };
+#define YIELD_GAP_NS 200000u
+#define YIELD_SLEEP_NS 100000u
+static uint64_t monotonic_ns(void) {
+    struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t);
+    return (uint64_t)t.tv_sec*1000000000u+(uint64_t)t.tv_nsec;
+}
+static uint64_t guest_yield_sleep_ns;
+void runtime_thread_yield(void) {
+    static _Thread_local uint64_t last_yield;
+    static _Thread_local unsigned streak;
+    __atomic_fetch_add(&guest_yields,1,__ATOMIC_RELAXED);
+    uint64_t now=monotonic_ns();
+    streak=now-last_yield<YIELD_GAP_NS ? streak+1 : 0;
+    if (streak<YIELD_STREAK) {
+        sched_yield();
+        last_yield=monotonic_ns();
+        return;
+    }
+#ifdef _WIN32
+    compat_sleep_ns(YIELD_SLEEP_NS);
+#else
+    struct timespec t={0,YIELD_SLEEP_NS};
+    nanosleep(&t,NULL);
+#endif
+    last_yield=monotonic_ns();
+    __atomic_fetch_add(&guest_yield_sleeps,1,__ATOMIC_RELAXED);
+    __atomic_fetch_add(&guest_yield_sleep_ns,last_yield-now,__ATOMIC_RELAXED);
 }
 static struct timespec session_start;
 __attribute__((constructor)) static void mark_session_start(void) { clock_gettime(CLOCK_MONOTONIC,&session_start); }
@@ -533,8 +569,10 @@ static void cpu_report(void) {
            wall,n,total/1000.0,wall>0 && hw>0 ? total/10.0/wall/(double)hw : 0.0,hw);
     for (size_t i=0;i<n && i<CPU_REPORT_SHOWN;++i)
         printf("Runtime:   %-24s %9.0f ms (%5.1f%% of one thread)\n",list[i].name,list[i].ms,wall>0 ? list[i].ms/10.0/wall : 0.0);
-    printf("Runtime: yields guest=%llu, zero sleeps=%llu\n",
-           (unsigned long long)__atomic_load_n(&guest_yields,__ATOMIC_RELAXED),
+    uint64_t sleeps=__atomic_load_n(&guest_yield_sleeps,__ATOMIC_RELAXED);
+    printf("Runtime: yields guest=%llu (slept %llu, %.0f us each), zero sleeps=%llu\n",
+           (unsigned long long)__atomic_load_n(&guest_yields,__ATOMIC_RELAXED),(unsigned long long)sleeps,
+           sleeps ? (double)__atomic_load_n(&guest_yield_sleep_ns,__ATOMIC_RELAXED)/1e3/(double)sleeps : 0.0,
            (unsigned long long)__atomic_load_n(&guest_zero_sleeps,__ATOMIC_RELAXED));
 }
 void runtime_thread_report(void) {
