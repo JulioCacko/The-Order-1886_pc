@@ -186,6 +186,9 @@ enum class BufferType : u8 {
     ReadConst,
 };
 
+/// Invalid ReadConst pointers logged so far; later ones bind the null buffer silently.
+inline std::atomic<u32> invalid_readconst_reports{0};
+
 constexpr bool FitsReadConstStorageRange(u64 size, u64 adjust, u64 limit) {
     // Buffer offsets occupy one byte in PushData and U32 aliases use DWORD offsets.
     return size >= sizeof(u32) && (size & 3) == 0 && (adjust & 3) == 0 && adjust < 256 &&
@@ -216,7 +219,13 @@ struct BufferResource {
             }
             const auto words = std::bit_cast<std::array<u32, 4>>(buffer);
             const u64 address = u64(words[0]) | (u64(words[1]) << 32);
+            // The game leaves 0xffffffff in unused pointer slots. GCN reads of an address no VM
+            // maps return zero, as do the SRT walker's patched loads, so the pointer becomes
+            // the null buffer instead of ending the session (#133).
             if (address >= 0x100'0000'0000ULL) {
+                if (invalid_readconst_reports.fetch_add(1, std::memory_order_relaxed) >= 16) {
+                    return {};
+                }
                 if constexpr (requires { info.pgm_hash; info.hw_stage; }) {
                     LOG_ERROR(Render_Recompiler,
                               "Invalid ReadConst pointer: shader={:#018x} stage={} resource={} "
@@ -239,8 +248,8 @@ struct BufferResource {
                               "ReadConst source snapshot: info={} user_data={} flat_data={}",
                               fmt::ptr(&info), info.UserData(), info.FlatUserData());
                 }
+                return {};
             }
-            ASSERT_MSG(address < 0x100'0000'0000ULL, "ReadConst pointer outside GPU address space");
             // This is an address/request carrier, not a decoded hardware V# or format.
             // BindBuffers resolves the actual VMA extent before obtaining GPU storage.
             buffer = {};

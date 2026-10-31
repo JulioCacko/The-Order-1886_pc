@@ -224,8 +224,8 @@ int main(int argc, char**) {
         info.pgm_hash = 0x804aeead;
         info.words[0] = 0xdeadbeef;
         info.words[1] = 0xa5a50100;
-        resource.GetSharp(info);
-        return 99; // An invalid pointer must still assert, never become a null buffer.
+        // An invalid pointer reads zero like an unmapped GCN address: the null buffer (#133).
+        return resource.GetSharp(info).base_address == 0 ? 0 : 99;
     }
     info.words[0] = 0x123400;
     info.words[1] = 0x10;
@@ -365,7 +365,7 @@ int main() {
             subprocess.run([str(exe)], check=True, env=environment)
             rejected = subprocess.run([str(exe), 'invalid-pointer'], env=environment,
                                       capture_output=True, text=True)
-            self.assertEqual(rejected.returncode, 86, rejected.stdout + rejected.stderr)
+            self.assertEqual(rejected.returncode, 0, rejected.stdout + rejected.stderr)
             for expected in ('Invalid ReadConst pointer: shader=0x00000000804aeead stage=cpu',
                              'raw=deadbeef a5a50100', 'address=0xa5a50100deadbeef',
                              'requested_bytes=4194368', 'flat_size=8', 'load_mask=0x3',
