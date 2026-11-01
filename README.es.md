@@ -52,9 +52,9 @@ Capturado del paquete de Windows de la preview 9 en una RTX 3070 a 1920×1080, m
 
 ## Descargar
 
-**Descarga publicada: v0.2.5, del 29 de octubre.** Paquetes para Windows y Linux x86-64. Conserva la carpeta `user` al actualizar.
+**Descarga publicada: v0.2.6, del 1 de noviembre.** Paquetes para Windows y Linux x86-64. Conserva la carpeta `user` al actualizar.
 
-**[Descargar el paquete para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/order1886-go-windows.zip)** · **[Descargar el paquete para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/order1886-linux-x86_64.tar.gz)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.5) · [Guía de instalación](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.5/QUICKSTART.txt)
+**[Descargar el paquete para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/order1886-go-windows.zip)** · **[Descargar el paquete para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/order1886-linux-x86_64.tar.gz)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.6) · [Guía de instalación](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/QUICKSTART.txt)
 
 Los paquetes incluyen el launcher, el runtime dedicado y las bibliotecas necesarias. No hace falta Python, MSYS2 ni compilador. Los archivos “Source code” de GitHub son para desarrolladores.
 
@@ -73,6 +73,8 @@ Los archivos originales del juego no se modifican. Las imágenes preparadas, la 
 
 ## Novedades
 
+**v0.2.6 — 1 de noviembre de 2026.** **Los botones de carpetas y la búsqueda de actualizaciones del launcher funcionan** (#131): Open installation, logs y player data abren la carpeta, y una versión ya instalada indica **Up to date**. **Un Runtime executable incorrecto se rechaza al elegirlo**, y una ventana del juego cerrada aparece como motivo del fin de la sesión (#127). **Menos paradas de la biblioteca GPU (exit 23)**: los punteros de shader no válidos leen cero como en la PS4, y siete correcciones de cierres vienen de SpartanPort (#133, sin confirmar contra el informe). **Primeros cambios de uso de CPU para procesadores de 6 hilos**, con un informe de CPU por hilo en el registro de arranque (#134, sin bajada medida todavía). [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.6)
+
 **v0.2.5 — 29 de octubre de 2026.** **Resolución nativa hasta 4K sin escalador** (#3, #128): Graphics → Render resolution ofrece Original, 2560, 3840 o un ancho personalizado, y el juego dibuja cada pasada del tamaño de la pantalla a ese tamaño. **Sin bordes ya no se convierte en pantalla completa exclusiva** en Windows (#121, #125). **Linux ejecuta volcados con carpetas que mezclan mayúsculas y minúsculas** (#124). TOport recibe crédito por las correcciones del renderizador portadas desde su proyecto (#112, #123). [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.5)
 
 **v0.2.4 — 28 de octubre de 2026.** El paquete de Linux arranca sin WebKitGTK 4.1, por ejemplo en SteamOS (#114); `Play The Order 1886` inicia el juego directamente y `--game-dir` define la carpeta del juego. [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.4)
@@ -83,7 +85,7 @@ Los archivos originales del juego no se modifican. Las imágenes preparadas, la 
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/preview9/launcher-home.jpg" alt="Página Home del launcher"></td>
+    <td width="50%"><img src="docs/images/v0.2.6/launcher-home.jpg" alt="Página Home del launcher, v0.2.6"></td>
     <td width="50%"><img src="docs/images/preview9/launcher-graphics.jpg" alt="Página Graphics"></td>
   </tr>
   <tr>
