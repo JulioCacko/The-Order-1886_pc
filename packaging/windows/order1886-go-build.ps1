@@ -171,6 +171,12 @@ foreach ($name in @('prepare.py','link_modules.py','link_libc.py','save_backup.p
 Copy-Item -LiteralPath "$projectRoot/scripts/button_prompts" -Destination $scriptData -Recurse
 & $buildPython -m PyInstaller --noconfirm --clean --console --onedir --log-level WARN --name order1886-worker --paths $projectRoot --hidden-import numpy --collect-submodules PIL --collect-all unicorn --add-data "$scriptData;scripts" --distpath "$stage/worker-dist" --workpath "$stage/worker-build" --specpath $stage "$projectRoot/launcher/order1886_worker.py"
 if ($LASTEXITCODE) { throw 'Worker build failed.' }
+# PyInstaller's bootloader is built with Control Flow Guard, and Unicorn's JIT (the Oodle decoder
+# behind Xbox/keyboard button prompts) calls generated code CFG never registered: the worker died
+# in Uc.mem_map with an access violation, exit 127. The worker runs no untrusted code; turn CFG off.
+$workerExe = "$stage/worker-dist/order1886-worker/order1886-worker.exe"
+& $buildPython -c "import pefile,sys; p=pefile.PE(sys.argv[1]); p.OPTIONAL_HEADER.DllCharacteristics &= ~0x4000; p.OPTIONAL_HEADER.CheckSum = p.generate_checksum(); data = p.write(); p.close(); open(sys.argv[1], 'wb').write(data)" $workerExe
+if ($LASTEXITCODE) { throw 'Could not turn Control Flow Guard off for the worker.' }
 foreach ($entry in Get-ChildItem -LiteralPath "$stage/worker-dist/order1886-worker") {
     Copy-Item -LiteralPath $entry.FullName -Destination (Join-Path $destination 'bin') -Recurse -Force
 }
