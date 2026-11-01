@@ -92,6 +92,16 @@
    "keyboard": "face"
   },
   {
+   "key": "CinemeleeApp-515fcb4-36",
+   "resource": "primary/3861c21fc34b7612/v11345526222/ec5e1979c41e637c",
+   "offset": 85327028,
+   "id": 36,
+   "glyph": "right_stick",
+   "static": false,
+   "xbox": "keep",
+   "keyboard": "face"
+  },
+  {
    "key": "CinemeleeApp-515fcb4-40",
    "resource": "primary/3861c21fc34b7612/v11345526222/ec5e1979c41e637c",
    "offset": 85327028,
@@ -242,6 +252,16 @@
    "keyboard": "face"
   },
   {
+   "key": "CinemeleeApp-89584b4-36",
+   "resource": "primary/3861c21fc34b7612/v11345526222/d107aa37d606b0be",
+   "offset": 144016564,
+   "id": 36,
+   "glyph": "right_stick",
+   "static": false,
+   "xbox": "keep",
+   "keyboard": "face"
+  },
+  {
    "key": "CinemeleeApp-89584b4-40",
    "resource": "primary/3861c21fc34b7612/v11345526222/d107aa37d606b0be",
    "offset": 144016564,
@@ -302,6 +322,27 @@
    "keyboard": "keep"
   },
   {
+   "key": "IndicatorApp-b5d4-12",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 46548,
+   "id": 12,
+   "glyph": "right_stick",
+   "static": false,
+   "xbox": "keep",
+   "keyboard": "face"
+  },
+  {
+   "key": "IndicatorApp-b5d4-19",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 46548,
+   "id": 19,
+   "glyph": "right_stick",
+   "static": false,
+   "xbox": "face",
+   "keyboard": "face",
+   "xbox_glyph": "r3"
+  },
+  {
    "key": "InteractApp-34c664-10",
    "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
    "offset": 3458660,
@@ -327,6 +368,26 @@
    "offset": 3458660,
    "id": 1021,
    "glyph": "triangle",
+   "static": false,
+   "xbox": "face",
+   "keyboard": "face"
+  },
+  {
+   "key": "InteractApp-34c664-1027",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 3458660,
+   "id": 1027,
+   "glyph": "cross",
+   "static": false,
+   "xbox": "face",
+   "keyboard": "face"
+  },
+  {
+   "key": "InteractApp-34c664-1029",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 3458660,
+   "id": 1029,
+   "glyph": "cross",
    "static": false,
    "xbox": "face",
    "keyboard": "face"
@@ -388,8 +449,8 @@
    "id": 1048,
    "glyph": "square",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-1050",
@@ -398,8 +459,8 @@
    "id": 1050,
    "glyph": "square",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-1055",
@@ -418,8 +479,8 @@
    "id": 1057,
    "glyph": "r2",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-106",
@@ -460,6 +521,36 @@
    "static": false,
    "xbox": "keep",
    "keyboard": "keep"
+  },
+  {
+   "key": "InteractApp-34c664-1075",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 3458660,
+   "id": 1075,
+   "glyph": "triangle",
+   "static": false,
+   "xbox": "label",
+   "keyboard": "label"
+  },
+  {
+   "key": "InteractApp-34c664-1076",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 3458660,
+   "id": 1076,
+   "glyph": "triangle",
+   "static": false,
+   "xbox": "label",
+   "keyboard": "label"
+  },
+  {
+   "key": "InteractApp-34c664-1078",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 3458660,
+   "id": 1078,
+   "glyph": "triangle",
+   "static": false,
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-108",
@@ -758,8 +849,8 @@
    "id": 1282,
    "glyph": "square",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "label",
+   "keyboard": "label"
   },
   {
    "key": "InteractApp-34c664-1285",
@@ -968,8 +1059,8 @@
    "id": 1348,
    "glyph": "l1",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-135",
@@ -1208,8 +1299,8 @@
    "id": 149,
    "glyph": "l2",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-15",
@@ -1418,8 +1509,8 @@
    "id": 197,
    "glyph": "r1",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-199",
@@ -1588,8 +1679,8 @@
    "id": 239,
    "glyph": "circle",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-241",
@@ -1598,8 +1689,8 @@
    "id": 241,
    "glyph": "circle",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-243",
@@ -1672,6 +1763,16 @@
    "keyboard": "label"
   },
   {
+   "key": "InteractApp-34c664-269",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 3458660,
+   "id": 269,
+   "glyph": "triangle",
+   "static": false,
+   "xbox": "face",
+   "keyboard": "face"
+  },
+  {
    "key": "InteractApp-34c664-27",
    "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
    "offset": 3458660,
@@ -1698,8 +1799,8 @@
    "id": 274,
    "glyph": "triangle",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-277",
@@ -1746,10 +1847,10 @@
    "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
    "offset": 3458660,
    "id": 287,
-   "glyph": "button",
+   "glyph": "triangle",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "label",
+   "keyboard": "label"
   },
   {
    "key": "InteractApp-34c664-29",
@@ -1788,8 +1889,8 @@
    "id": 40,
    "glyph": "r3",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-42",
@@ -1838,8 +1939,9 @@
    "id": 53,
    "glyph": "right_stick",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "face"
+   "xbox": "face",
+   "keyboard": "face",
+   "xbox_glyph": "r3"
   },
   {
    "key": "InteractApp-34c664-59",
@@ -1918,8 +2020,8 @@
    "id": 73,
    "glyph": "l3",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "InteractApp-34c664-78",
@@ -1928,8 +2030,9 @@
    "id": 78,
    "glyph": "left_stick",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "face"
+   "xbox": "face",
+   "keyboard": "face",
+   "xbox_glyph": "l3"
   },
   {
    "key": "InteractApp-34c664-8",
@@ -2108,8 +2211,8 @@
    "id": 223,
    "glyph": "cross",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "MenuApp-14af84-225",
@@ -2150,6 +2253,16 @@
    "static": false,
    "xbox": "keep",
    "keyboard": "keep"
+  },
+  {
+   "key": "MenuApp-14af84-254",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 1355652,
+   "id": 254,
+   "glyph": "cross",
+   "static": false,
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "MenuApp-14af84-276",
@@ -2468,8 +2581,8 @@
    "id": 223,
    "glyph": "cross",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "MenuApp-4-225",
@@ -2510,6 +2623,16 @@
    "static": false,
    "xbox": "keep",
    "keyboard": "keep"
+  },
+  {
+   "key": "MenuApp-4-254",
+   "resource": "primary/c2d79afbc68fc86c/v1/e32dc7d7dc8151e2",
+   "offset": 4,
+   "id": 254,
+   "glyph": "cross",
+   "static": false,
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "MenuApp-4-276",
@@ -2808,8 +2931,8 @@
    "id": 26,
    "glyph": "triangle",
    "static": false,
-   "xbox": "keep",
-   "keyboard": "keep"
+   "xbox": "face",
+   "keyboard": "face"
   },
   {
    "key": "StealthApp-3329c4-29",
@@ -2882,6 +3005,26 @@
    "keyboard": "keep"
   },
   {
+   "key": "StealthApp-3329c4-61",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 3353028,
+   "id": 61,
+   "glyph": "triangle",
+   "static": false,
+   "xbox": "label",
+   "keyboard": "label"
+  },
+  {
+   "key": "StealthApp-3329c4-62",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 3353028,
+   "id": 62,
+   "glyph": "triangle",
+   "static": false,
+   "xbox": "label",
+   "keyboard": "label"
+  },
+  {
    "key": "StealthApp-3329c4-8",
    "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
    "offset": 3353028,
@@ -2892,12 +3035,52 @@
    "keyboard": "keep"
   },
   {
+   "key": "WeaponApp-13d44-11",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 81220,
+   "id": 11,
+   "glyph": "cross",
+   "static": false,
+   "xbox": "face",
+   "keyboard": "face"
+  },
+  {
+   "key": "WeaponApp-13d44-292",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 81220,
+   "id": 292,
+   "glyph": "r1",
+   "static": false,
+   "xbox": "label",
+   "keyboard": "label"
+  },
+  {
+   "key": "WeaponApp-13d44-295",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 81220,
+   "id": 295,
+   "glyph": "r2",
+   "static": false,
+   "xbox": "label",
+   "keyboard": "label"
+  },
+  {
    "key": "WeaponApp-13d44-304",
    "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
    "offset": 81220,
    "id": 304,
    "glyph": "circle",
    "static": true,
+   "xbox": "face",
+   "keyboard": "face"
+  },
+  {
+   "key": "WeaponApp-13d44-9",
+   "resource": "primary/3861c21fc34b7612/v11345526222/baceeaafdf99323d",
+   "offset": 81220,
+   "id": 9,
+   "glyph": "cross",
+   "static": false,
    "xbox": "face",
    "keyboard": "face"
   }

@@ -65,4 +65,8 @@ C).
   checkout needs `python -m pip install unicorn numpy "Pillow>=10.1"`.
 - Only the 1.02 executable (CUSA00076) is verified. Building stops with a clear message on
   another build.
-- The Controls-menu controller diagrams are full illustrations and stay the game's own.
+- Pictures of the DualShock 4 itself stay the game's own: the Controls-menu diagrams, the small
+  controller icons for the touchpad options, and the controller drawing in the tutorial text.
+  Replacing them needs new controller illustrations.
+- With Xbox prompts, the sticks keep the game's "L" and "R" caps, because both pads use the same
+  sticks; a stick printed "L3" or "R3" shows LS or RS.

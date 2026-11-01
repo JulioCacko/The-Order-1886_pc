@@ -83,7 +83,7 @@ def region(image, box):
 
 
 def main(argv):
-    runtime = argv[0].lower()
+    runtime = os.path.normpath(argv[0]).lower()  # D:/... from a POSIX shell names the same window
     args = argv[1:]
     while args:
         op = args.pop(0)

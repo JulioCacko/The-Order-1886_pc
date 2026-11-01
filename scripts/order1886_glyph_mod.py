@@ -121,8 +121,12 @@ def owner_glyph(owners, movie, symbols):
     return min(votes, key=lambda g: (-votes[g][0], votes[g][1])) if votes else None
 
 
-def glyph_bitmaps(game, oodle):
-    """(resource, blob, payload, [(offset, movie, [(key, id, glyph, static, image, info)])])"""
+def glyph_bitmaps(game, oodle, planned=None):
+    """(resource, blob, payload, [(offset, movie, [(key, id, glyph, static, image, info)])])
+
+    Bitmaps no button class owns (the weapon HUD's R1, the button-mash crosses) are included
+    when planned ({key: entry}) names them, with the plan's glyph."""
+    planned = planned or {}
     root = Path(game) / ui.NAMESPACE
     for name in RESOURCES:
         blob = (root / name).read_bytes()
@@ -139,13 +143,14 @@ def glyph_bitmaps(game, oodle):
             app = next((n[9:] for n in names.values() if n.startswith('rad.apps.')), 'Movie')
             items = []
             for cid, bitmap in sorted(movie['bitmaps'].items()):
-                glyph = owner_glyph(owners.get(cid, []), movie, symbols)
+                key = f'{app}-{offset:x}-{cid}'
+                glyph = owner_glyph(owners.get(cid, []), movie, symbols) or planned.get(key, {}).get('glyph')
                 if not glyph:
                     continue
                 static = any('ButtonIcon' in n and n in owners.get(cid, []) and
                              len(ui.bitmaps_under(movie, c)) == 1 for n, c in symbols)
                 image = ui.decode_bitmap(bitmap)
-                items.append((f'{app}-{offset:x}-{cid}', cid, glyph, static, image, analyse(image)))
+                items.append((key, cid, glyph, static, image, analyse(image)))
             found.append((offset, movie, items))
         yield name, blob, data, found
 
@@ -459,7 +464,7 @@ def build(game, set_name, mods, plan=None, art=None, bindings=None, log=print, p
         planned = {e['key']: e for e in json.loads(Path(plan).read_text())['bitmaps']} if plan else {}
     folder = Path(mods) / SETS[set_name]
     total, outputs = 0, {}
-    for name, blob, data, found in glyph_bitmaps(game, oodle):
+    for name, blob, data, found in glyph_bitmaps(game, oodle, planned):
         payload = data
         for offset, movie, items in sorted(found, key=lambda f: -f[0]):
             images = {}
