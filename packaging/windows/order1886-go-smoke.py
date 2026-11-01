@@ -52,6 +52,11 @@ def main():
             raise ValueError("Packaged backend cannot import its modules: "
                              + (backend.stderr or backend.stdout).decode("utf-8", "replace")[-600:])
         worker = root / "bin/order1886-worker.exe"
+        # Control Flow Guard kills Unicorn's JIT, so the button prompt build (exit 127).
+        header = worker.read_bytes()[:4096]
+        characteristics = int.from_bytes(header[int.from_bytes(header[0x3C:0x40], "little") + 94:][:2], "little")
+        if characteristics & 0x4000:
+            raise ValueError("The packaged worker still has Control Flow Guard; button prompts would crash")
         requests = [
             dict(version=1,id=1,method="settings.set",params={"values":{"vsync":False,"ui_language":"pt"}}),
             dict(version=1,id=2,method="settings.set",params={"values":{"frame_rate":120}}),  # 30, 60, 90 and 0 are offered

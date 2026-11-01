@@ -273,6 +273,7 @@ static void set_host_priority(const char *name,int guest_prio) {
         printf("Runtime: cannot change the priority of '%s' (%lu)\n",name,GetLastError());
 #else
     /* Raising needs CAP_SYS_NICE; without it the thread keeps the normal priority. */
+    (void)name;
     (void)setpriority(PRIO_PROCESS,(id_t)syscall(SYS_gettid),-5);
 #endif
 }
