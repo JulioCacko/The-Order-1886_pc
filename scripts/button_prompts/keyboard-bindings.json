@@ -1,0 +1,19 @@
+{
+  "cross": "Space",
+  "circle": "C",
+  "square": "R",
+  "triangle": "E",
+  "l1": "Q",
+  "r1": "Y",
+  "l2": "__unbound__",
+  "r2": "__unbound__",
+  "l3": "Left Shift",
+  "r3": "X",
+  "options": "Escape",
+  "touchpad_left": "Tab",
+  "touchpad_right": "Backspace",
+  "up": "6",
+  "down": "5",
+  "left": "2",
+  "right": "1"
+}

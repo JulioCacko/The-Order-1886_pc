@@ -132,6 +132,9 @@ for key, label, detail in (
 field("mouse_look", "Mouse camera", "controls", "boolean", True, "Map mouse movement to the game camera; release capture when focus is lost.")
 field("mouse_sensitivity", "Mouse sensitivity", "controls", "number", 100, "Camera sensitivity in percent.", minimum=10, maximum=500)
 field("mouse_invert_y", "Invert vertical camera", "controls", "boolean", False, "Invert vertical mouse movement.")
+field("button_prompts", "Button prompts", "controls", "select", "playstation",
+      "The buttons the game shows in prompts, menus and quick-time events. Xbox and Keyboard and mouse are built from your own game files on the first launch with them (up to a minute) and leave the original files unchanged. Keyboard and mouse also uses its own key layout, listed in docs/order1886-button-prompts.md, in place of custom keyboard buttons.",
+      [("playstation", "PlayStation (original)", ""), ("xbox", "Xbox", ""), ("keyboard", "Keyboard and mouse", "")])
 field("vibration", "Controller vibration", "controls", "boolean", True, "Independent vibration configuration is pending runtime validation.", reason=RENDERER)
 for kind, label in (("keyboard", "Keyboard buttons"), ("controller", "Controller buttons")):
     field(kind + "_bindings", label, "controls", "bindings", {},

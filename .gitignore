@@ -8,6 +8,8 @@ pgo/
 !launcher/order1886/logo-horizontal.png
 !launcher/order1886/logo-stacked.png
 !launcher/order1886/app-icon.png
+# Project-made button prompt artwork (no game pixels): docs/order1886-button-prompts.md
+!scripts/button_prompts/**/*.png
 last_run.log
 dist/
 packaging/runtime-paths.nix

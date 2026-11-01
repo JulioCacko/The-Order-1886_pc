@@ -79,6 +79,7 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                 "--mouse-look", str(int(values.get("mouse_look", True))),
                 "--mouse-sensitivity", str(values.get("mouse_sensitivity", 100)),
                 "--mouse-invert-y", str(int(values.get("mouse_invert_y", False))),
+                "--button-prompts", values.get("button_prompts", "playstation"),
                 "--system-language", str(language)]
     command += ["--readbacks", values.get("readbacks", "relaxed")]
     # The presentation cap is a launcher setting; without this it never reached the backend
@@ -218,6 +219,7 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         "mouse_look": bool(saved.get("mouse_look", True)),
         "mouse_sensitivity": saved.get("mouse_sensitivity", 100),
         "mouse_invert_y": bool(saved.get("mouse_invert_y", False)),
+        "button_prompts": saved.get("button_prompts", "playstation"),
         "ui_language": saved.get("ui_language", "en"),
         "htile_unqualified": bool(saved.get("htile_unqualified", False)),
         "synchronous_recording": bool(saved.get("synchronous_recording", False)),
@@ -237,6 +239,7 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         ("display_mode", ("windowed", "borderless", "fullscreen"), "borderless"),
         ("presentation_filter", order1886.PRESENTATION_FILTERS, "fsr1"),
         ("aspect_ratio", ("original", "16:9"), "original"),
+        ("button_prompts", ("playstation", "xbox", "keyboard"), "playstation"),
     ):
         if values[key] not in allowed:
             values[key] = default

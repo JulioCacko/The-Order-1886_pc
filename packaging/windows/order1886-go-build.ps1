@@ -132,7 +132,7 @@ if (-not (Test-Path "$venv/Scripts/python.exe")) {
 }
 $buildPython = Join-Path $venv 'Scripts/python.exe'
 if (-not $SkipDependencyInstall) {
-    & $buildPython -m pip install --disable-pip-version-check 'pyinstaller==6.20.0' 'pillow==12.3.0' 'cryptography==50.0.1'
+    & $buildPython -m pip install --disable-pip-version-check 'pyinstaller==6.20.0' 'pillow==12.3.0' 'cryptography==50.0.1' 'numpy==2.5.3' 'unicorn==2.1.4'
     if ($LASTEXITCODE) { throw 'Build dependencies installation failed.' }
 }
 
@@ -163,10 +163,13 @@ foreach ($name in @('prepare.py','link_modules.py','link_libc.py','save_backup.p
         'order1886_frame_trace.py','order1886_perf_report.py',
         # order1886.py imports this by name from the shipped scripts/ directory; without it
         # every packaged Play fails on the import, before any game file is read.
-        'order1886_patches.py','order1886_editions.py')) {
+        'order1886_patches.py','order1886_editions.py',
+        # The Button prompts option builds its artwork from the player's game files.
+        'order1886_prompts.py','order1886_glyph_mod.py','order1886_ui_extract.py')) {
     Copy-Item -LiteralPath (Join-Path "$projectRoot/scripts" $name) -Destination $scriptData
 }
-& $buildPython -m PyInstaller --noconfirm --clean --console --onedir --log-level WARN --name order1886-worker --paths $projectRoot --add-data "$scriptData;scripts" --distpath "$stage/worker-dist" --workpath "$stage/worker-build" --specpath $stage "$projectRoot/launcher/order1886_worker.py"
+Copy-Item -LiteralPath "$projectRoot/scripts/button_prompts" -Destination $scriptData -Recurse
+& $buildPython -m PyInstaller --noconfirm --clean --console --onedir --log-level WARN --name order1886-worker --paths $projectRoot --hidden-import numpy --collect-submodules PIL --collect-all unicorn --add-data "$scriptData;scripts" --distpath "$stage/worker-dist" --workpath "$stage/worker-build" --specpath $stage "$projectRoot/launcher/order1886_worker.py"
 if ($LASTEXITCODE) { throw 'Worker build failed.' }
 foreach ($entry in Get-ChildItem -LiteralPath "$stage/worker-dist/order1886-worker") {
     Copy-Item -LiteralPath $entry.FullName -Destination (Join-Path $destination 'bin') -Recurse -Force

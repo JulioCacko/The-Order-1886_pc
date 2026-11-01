@@ -29,10 +29,10 @@ def cpython_licenses():
 
 
 # Shipped with the frozen worker on every platform: the bootloader and its hook data.
-SHIPPED = ("pyinstaller", "pyinstaller-hooks-contrib")
-# Used only by the Windows icon converter at packaging time, so its notice is collected when the
-# package is installed but is not a reason to fail the Linux build, where Pillow is not present.
-OPTIONAL = ("pillow",)
+# Pillow, numpy and Unicorn build the Button prompts artwork from the player's game files.
+SHIPPED = ("pyinstaller", "pyinstaller-hooks-contrib", "pillow", "numpy", "unicorn")
+# Collected when installed, never required. Pillow moved to SHIPPED with the Button prompts option.
+OPTIONAL = ()
 
 
 def collect(destination: Path):
@@ -61,6 +61,11 @@ def collect(destination: Path):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(distribution.locate_file(file), target)
             count += 1
+        fallback = Path(__file__).with_name(f"notice-{name}.txt")
+        if not count and fallback.is_file():  # a wheel that ships no licence file of its own
+            (destination / name).mkdir(parents=True, exist_ok=True)
+            shutil.copy2(fallback, destination / name / "NOTICE.txt")
+            count = 1
         if not count:
             raise RuntimeError(f"No license notice found for {name}")
     base = Path(sys.base_prefix)

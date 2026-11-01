@@ -51,6 +51,8 @@ SCRIPTS = (
     'order1886_input.py', 'order1886_frame_trace.py', 'order1886_perf_report.py',
     # order1886.py imports this by name from the shipped scripts/ directory.
     'order1886_patches.py', 'order1886_editions.py',
+    # The Button prompts option builds its artwork from the player's game files.
+    'order1886_prompts.py', 'order1886_glyph_mod.py', 'order1886_ui_extract.py',
 )
 
 
@@ -175,6 +177,7 @@ def main() -> None:
     script_dir.mkdir()
     for name in SCRIPTS:
         shutil.copy2(project / 'scripts' / name, script_dir / name)
+    shutil.copytree(project / 'scripts/button_prompts', script_dir / 'button_prompts')
 
     for name in ('LICENSE', 'README.md'):
         shutil.copy2(project / name, destination / name)
