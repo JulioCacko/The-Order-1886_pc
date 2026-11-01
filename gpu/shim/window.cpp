@@ -156,7 +156,7 @@ bool WindowSDL::PollEvents() {
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && !text_active &&
             !Ps4Overlay::CapturesInput() &&
-            (event.key.key == SDLK_F6 || (event.key.key == SDLK_ESCAPE && mouse_captured))) {
+            (event.key.key == SDLK_F6 || (event.key.key == SDLK_ESCAPE && mouse_captured && !Ps4Mouse::escape_is_game_key))) {
             mouse_released = event.key.key == SDLK_ESCAPE || !mouse_released;
             UpdateMouseCapture();
             continue;
@@ -210,6 +210,7 @@ bool WindowSDL::PollEvents() {
                 // SDL flags may already reflect a queued focus gain. Every focus-lost
                 // event must still release capture and discard prior motion/buttons.
                 mouse_focused = event.type == SDL_EVENT_WINDOW_FOCUS_GAINED;
+                if (!mouse_focused) Ps4Mouse::input.Button(3, false); // released elsewhere
                 UpdateMouseCapture();
             }
             break;

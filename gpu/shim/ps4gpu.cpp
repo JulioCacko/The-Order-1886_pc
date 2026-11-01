@@ -366,7 +366,11 @@ extern "C" void ps4gpu_mouse_sample(uint8_t axes[2], uint32_t* buttons) {
     const auto sample = Ps4Mouse::input.Sample();
     axes[0] = sample.x;
     axes[1] = sample.y;
-    *buttons = sample.buttons;
+    *buttons = sample.buttons | sample.clicks << 2;
+}
+
+extern "C" void ps4gpu_escape_is_game_key(void) {
+    Ps4Mouse::escape_is_game_key = true;
 }
 
 extern "C" int ps4gpu_text_input_begin(const char* initial, const char* prompt) {

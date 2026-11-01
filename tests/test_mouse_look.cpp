@@ -29,6 +29,8 @@ int main() {
     input.Button(1, true);
     input.Update(1, 100, false);
     assert(input.Sample().x == 128 && input.Sample().buttons == 0);
+    assert(input.Sample().clicks == 1); // menus still see a click with the cursor released
+    input.Button(1, false);
     input.Capture(true, 1);
     input.Motion(10, -10);
     input.Button(1, true);

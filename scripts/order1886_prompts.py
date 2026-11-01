@@ -23,7 +23,7 @@ import shutil
 
 ASSETS = Path(__file__).resolve().parent / 'button_prompts'
 SETS = ('playstation', 'xbox', 'keyboard')
-VERSION = 1  # bump when the composition below changes
+VERSION = 2  # bump when the composition below changes
 
 XBOX = dict(cross='A', circle='B', square='X', triangle='Y', l1='LB', r1='RB', l2='LT',
             r2='RT', l3='LS', r3='RS', options='MENU', touchpad='VIEW')
@@ -356,12 +356,18 @@ def placed(e, icon, kind):
 
 
 def keyboard(entry, image):
-    # Menus show the keys that act there (Space selects, C goes back): the runtime has no
-    # menu-aware mouse routing, so a left-click or Esc prompt would not be true.
+    # Menus show the inputs that act there: the runtime turns a left click into Cross and Esc
+    # into Circle while a menu has the focus (src/runtime_pad.c).
     from PIL import Image
-    if entry['key'].startswith('MenuApp-') and entry['id'] in MENU_BACKINGS:
+    menu = entry['key'].startswith('MenuApp-')
+    if menu and entry['id'] in MENU_BACKINGS:
         return Image.new('RGBA', image.size)
-    icon, kind = drawing(entry['glyph'])
+    if menu and entry['glyph'] == 'cross':
+        icon, kind = master('mouse-left').copy(), 'mouse-left'
+    elif menu and entry['glyph'] == 'circle':
+        icon, kind = keycap('ESC'), 'keycap'
+    else:
+        icon, kind = drawing(entry['glyph'])
     return placed(entry, icon, kind)
 
 

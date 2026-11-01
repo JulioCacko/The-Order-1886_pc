@@ -750,7 +750,10 @@ int main(int argc, char **argv) {
         _exit(missing ? 1 : 0); /* no destructors: GPU threads are running */
     }
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
-    if (order_profile) printf("The Order profile: original executable, no game-specific injection hooks\n");
+    if (order_profile) {
+        printf("The Order profile: original executable, no game-specific injection hooks\n");
+        runtime_pad_attach_order(image, size);
+    }
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif

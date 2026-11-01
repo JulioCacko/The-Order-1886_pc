@@ -35,8 +35,11 @@ int ps4gpu_choice_begin(const char *title, const char *const *items, const char 
 int ps4gpu_choice_poll(void);
 /* 1 while the in-game settings menu is open: the game's pad input is held neutral. */
 int ps4gpu_overlay_captures_input(void);
-/* Snapshot of window-thread mouse-to-stick input; no SDL calls on the guest thread. */
+/* Snapshot of window-thread mouse-to-stick input; no SDL calls on the guest thread. Buttons:
+ * bits 0/1 left/right while the cursor is captured, bits 2/3 left/right either way. */
 void ps4gpu_mouse_sample(uint8_t axes[2], uint32_t *buttons);
+/* Esc goes to the game in every state, so it no longer releases the cursor (F6 still does). */
+void ps4gpu_escape_is_game_key(void);
 /* Controller vibration strength set in the menu, 0 (off) to 100 (the game's own). */
 int ps4gpu_vibration_percent(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */

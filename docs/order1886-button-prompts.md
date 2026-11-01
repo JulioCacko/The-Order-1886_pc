@@ -39,8 +39,8 @@ Left click fires (R2) and right click aims (L2).
 | Action | Key | Game button |
 |---|---|---|
 | Move | W A S D | Left stick |
-| Vault, climb, leave cover; select in menus | Space | Cross |
-| Enter cover, contextual evade; back in menus | C | Circle |
+| Vault, climb, leave cover | Space | Cross |
+| Enter cover, contextual evade | C | Circle |
 | Reload | R | Square |
 | Interact, melee, takedown | E | Triangle |
 | Blacksight | Q | L1 |
@@ -52,12 +52,28 @@ Left click fires (R2) and right click aims (L2).
 | Primary weapon / sidearm | 1 / 2 | D-pad right / left |
 | Frag / smoke grenade | 5 / 6 | D-pad down / up |
 
-The keyboard's own R and F trigger keys are unbound, so R reloads without aiming. Esc also
-releases the mouse cursor (F6 captures it again).
+The keyboard's own R and F trigger keys are unbound, so R reloads without aiming.
 
-Not done yet: left click to select and Esc to go back inside menus. The runtime cannot tell a
-menu from gameplay, where left click fires, so menus show the keys that work there (Space and
-C).
+### In menus
+
+While a menu has the focus (title, main menu, pause, settings, death and hint screens), left
+click selects (Cross) and Esc goes back (Circle), and the menu prompts show the mouse and an
+ESC key. Space and C still work there too. Left click selects even when the cursor is
+released. In gameplay, left click fires and Esc pauses as before. A key or button you are
+holding keeps the meaning it had when you pressed it, so the Esc that opens the pause menu does
+not close it again, and the click that resumes the game does not fire.
+
+Because Esc always goes to the game, it no longer releases the mouse cursor. F6 releases and
+captures it.
+
+The runtime finds the menu from the game's own UI pages: the game keeps them in a tree, and
+the page in front is the `GamePlayerPage` (the HUD) or the `PhotoModePage` during play and a
+menu page otherwise. It reads that tree on every pad read through the Game singleton at image
+offset `0x16ab8b0` (UI list at `+0x348`, count at `+0x370`; UI object vtable `0x1640420`,
+root page at `+0x48`; a page's children at `+0xa0`, count at `+0xc8`, type hash at `+0x28`).
+These offsets belong to the 1.02 executable. The runtime checks the `GamePlayerPage` type
+record at `0x149c5e8` first, and leaves the mouse and Esc as in gameplay on any other build.
+Evidence: [verification/2026-10-31-menu-mouse-input.md](verification/2026-10-31-menu-mouse-input.md).
 
 ## Limits
 
