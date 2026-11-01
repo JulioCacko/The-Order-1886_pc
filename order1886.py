@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import functools
 import hashlib
 import json
 import math
@@ -148,8 +149,21 @@ def find_runtime(explicit=None):
         return None
     build = runtime_identity(path)['build']
     if not build or build.get('game_profile') != 'order1886' or build.get('runtime_abi') != RUNTIME_ABI:
-        raise ValueError('Selected executable is not a verified dedicated Order runtime. Rebuild order1886-runtime.exe.')
+        raise ValueError(f'{path.name} is not a verified Order runtime: {runtime_rejection(path, build)} '
+                         "Clear System > Runtime executable to use the installation's runtime.")
     return path
+
+
+def runtime_rejection(path, build):
+    """Why find_runtime refused path, in words a player can act on."""
+    if path.stem.lower().startswith('order1886-worker'):
+        return "it is the launcher's helper program, not the game runtime (order1886-runtime.exe)."
+    sidecar = path.with_name('runtime-build.json')
+    if not sidecar.is_file():
+        return f'{sidecar.name} is missing beside it; the runtime and its build record must stay together.'
+    if not build:
+        return f'it does not match the {sidecar.name} beside it (files from different builds or a modified file); reinstall the package.'
+    return f'it was built for {build.get("game_profile")!r} / {build.get("runtime_abi")!r}, not this launcher ({RUNTIME_ABI}).'
 
 
 def sha256(path):
@@ -157,9 +171,17 @@ def sha256(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+@functools.lru_cache(maxsize=4)
+def _runtime_sha256(path, size, mtime_ns, file_id):
+    return sha256(path)
+
+
 def runtime_identity(runtime):
     runtime = Path(runtime).resolve()
-    digest = sha256(runtime)
+    # The launcher polls state.get, which identifies the 129 MB runtime each time;
+    # rehash only when the file is replaced or rewritten.
+    status = runtime.stat()
+    digest = _runtime_sha256(str(runtime), status.st_size, status.st_mtime_ns, status.st_ino)
     try:
         build = json.loads(runtime.with_name('runtime-build.json').read_text(encoding='utf-8'))
         if not isinstance(build, dict) or build.get('runtime_sha256') != digest:
@@ -348,11 +370,17 @@ def timing_profile(settings):
             'vblank_hz': 60, 'vsync': bool(settings.get('vsync', True))}
 
 
+# Diagnostic switches that change no game behaviour; everything else ORDER1886_* is
+# set from the player's settings only.
+DIAGNOSTIC_ENVIRONMENT = frozenset({'ORDER1886_DIAG_RESOURCE_SHARPS', 'ORDER1886_FATAL_DUMP',
+                                    'ORDER1886_GPU_LOG', 'ORDER1886_PERF_DIAG'})
+
+
 def runtime_process_environment(runtime, inherited=None):
     runtime = Path(runtime).resolve()
     source = os.environ if inherited is None else inherited
     env = {k: v for k, v in source.items()
-           if not k.upper().startswith('ORDER1886_') or k == 'ORDER1886_DIAG_RESOURCE_SHARPS'}
+           if not k.upper().startswith('ORDER1886_') or k in DIAGNOSTIC_ENVIRONMENT}
     env['PATH'] = str(runtime.parent) + os.pathsep + env.get('PATH', '')
     if os.name == 'nt' and not getattr(sys, 'frozen', False) and ROOT / 'out' in runtime.parents:
         dependencies = Path(source.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
@@ -941,7 +969,8 @@ def main(argv=None):
             missing = re.search(r'Imports: (\d+) missing', tail)
             report['missing_imports'] = int(missing[1]) if missing else None
             stops = [line for line in tail.splitlines() if 'STOP:' in line or 'unresolved' in line.lower()]
-            report['stop_reason'] = stops[-1] if stops else None
+            closed = [line for line in tail.splitlines() if line.startswith('Window: closed by user')]
+            report['stop_reason'] = stops[-1] if stops else closed[-1] if closed else None
             report['status'] = ('timed_out' if report['timed_out'] else
                                 'stopped' if report.get('stop_requested') else
                                 'failed' if report['exit_code'] else 'process_exited')

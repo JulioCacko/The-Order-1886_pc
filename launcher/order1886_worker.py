@@ -55,6 +55,9 @@ def validate_patch(values):
         elif kind in ("directory", "file", "text"):
             if not isinstance(value, str) or len(value) > 4096 or any(c in value for c in ("\0", "\r", "\n")):
                 raise ValueError(item["label"] + " must be a valid path or text.")
+            if key == "runtime" and value.strip():
+                # A wrong pick used to save fine and only fail at Play (#127).
+                order1886.find_runtime(value.strip())
         elif kind == "secret":
             from scripts.order1886_trophy_text import parse_key
             if not isinstance(value, str):

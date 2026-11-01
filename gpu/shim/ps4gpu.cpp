@@ -248,7 +248,8 @@ extern "C" int ps4gpu_init(const Ps4GpuConfig* config) {
         while (window->PollEvents()) {
             SDL_Delay(2);
         }
-        LOG_INFO(Frontend, "Window closed by user");
+        // LOG_INFO is filtered from the boot log; a clean exit needs a visible cause (#127).
+        std::printf("Window: closed by user (close button, Alt+F4 or a system quit request)\n");
         runtime_report();
         std::fflush(stdout);
         std::_Exit(0);

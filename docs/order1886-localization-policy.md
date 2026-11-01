@@ -64,7 +64,7 @@ else stays English until a person who speaks the language owns the wording.
 - **Ambiguous one-word labels** (`Framing`, `Native`). Both could be read as composition
   or as a resolution claim, and a wrong guess is worse than English.
 
-74 of the 274 UI keys are translated. The remaining 200 are English in all twelve
+75 of the 304 UI keys are translated. The remaining 229 are English in all twelve
 non-English languages on purpose, and their reasons are the classes above.
 
 ## The translated keys
@@ -84,7 +84,7 @@ non-English languages on purpose, and their reasons are the classes above.
 `Restoring the previous version`, `Return to Whitechapel`, `Roll back this update`,
 `Save backups`, `Saving settings…`, `Search all settings`, `Search settings`,
 `Selected backup`, `Session log`, `Session output`, `Starting session…`, `Stop`,
-`Stop and close`, `Stop and close?`, `Timing`, `Trophy`, `Unavailable`, `Unlocked`,
+`Stop and close`, `Stop and close?`, `Timing`, `Trophy`, `Unavailable`, `Unlocked`, `Up to date`,
 `Update available`, `Update failed`, `Updates`, `Use current saves`, `View releases`,
 `uncapped`.
 

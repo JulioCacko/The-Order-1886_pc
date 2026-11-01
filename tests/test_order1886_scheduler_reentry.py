@@ -47,6 +47,7 @@ PREAMBLE = r"""
 #include <utility>
 #include <vector>
 #define ASSERT(value) assert(value)
+#define ASSERT_MSG(value, ...) assert(value)
 namespace vk { using CommandBuffer = int; }
 namespace Ps4Toggle {
 enum Toggle { ThreadedRecording, RecordPrefetch };

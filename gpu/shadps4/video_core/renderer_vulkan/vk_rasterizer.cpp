@@ -2335,7 +2335,18 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                 desc.buffer_type == Shader::BufferType::ReadConst && vsharp.base_address != 0
                     ? memory->ClampRangeSize(vsharp.base_address, vsharp.GetSize())
                     : 0;
-            if (desc.buffer_type == Shader::BufferType::ReadConst && vsharp.base_address != 0) {
+            // A ReadConst pointer into memory no VMA maps reads zero on GCN: bind the null
+            // buffer, as for a null pointer (#133). Misaligned or oversized ranges still stop.
+            const bool readconst_unmapped = desc.buffer_type == Shader::BufferType::ReadConst &&
+                                            vsharp.base_address != 0 && readconst_mapped_size == 0;
+            if (readconst_unmapped) {
+                // Same power-of-two log throttle as unaligned bindings, keyed apart by ~0u.
+                if (const auto count = CountUnalignedWarning(stage.pgm_hash, ~0u)) {
+                    LOG_WARNING(Render_Vulkan,
+                                "ReadConst pointer {:#x} in shader {:#x} is unmapped; reading zero "
+                                "(occurrences={})", vsharp.base_address, stage.pgm_hash, count);
+                }
+            } else if (desc.buffer_type == Shader::BufferType::ReadConst && vsharp.base_address != 0) {
                 ASSERT_MSG((vsharp.base_address & 3) == 0 &&
                                Shader::FitsReadConstStorageRange(readconst_mapped_size & ~u64(3), 0,
                                                                  instance.StorageMaxRange()),
@@ -2364,7 +2375,7 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                                      reinterpret_cast<const void*>(vsharp.base_address),
                                      memory->ClampRangeSize(vsharp.base_address, vsharp.GetSize()));
             }
-            if (vsharp.base_address == 0 || vsharp.GetSize() == 0) {
+            if (vsharp.base_address == 0 || vsharp.GetSize() == 0 || readconst_unmapped) {
                 buffer_infos.emplace_back(VK_NULL_HANDLE, 0, VK_WHOLE_SIZE);
             } else {
                 const u64 mapped_size = desc.buffer_type == Shader::BufferType::ReadConst
