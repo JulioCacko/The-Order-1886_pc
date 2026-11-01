@@ -52,9 +52,9 @@ Capturado del paquete de Windows de la preview 9 en una RTX 3070 a 1920×1080, m
 
 ## Descargar
 
-**Descarga publicada: v0.2.6, del 1 de noviembre.** Paquetes para Windows y Linux x86-64. Conserva la carpeta `user` al actualizar.
+**Descarga publicada: v0.2.7, del 1 de noviembre.** Paquetes para Windows y Linux x86-64. Conserva la carpeta `user` al actualizar.
 
-**[Descargar el paquete para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/order1886-go-windows.zip)** · **[Descargar el paquete para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/order1886-linux-x86_64.tar.gz)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.6) · [Guía de instalación](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/QUICKSTART.txt)
+**[Descargar el paquete para Windows](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.7/order1886-go-windows.zip)** · **[Descargar el paquete para Linux](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.7/order1886-linux-x86_64.tar.gz)** · [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.7) · [Guía de instalación](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.7/QUICKSTART.txt)
 
 Los paquetes incluyen el launcher, el runtime dedicado y las bibliotecas necesarias. No hace falta Python, MSYS2 ni compilador. Los archivos “Source code” de GitHub son para desarrolladores.
 
@@ -72,6 +72,19 @@ Extrae el `tar.gz` y ejecuta `The Order 1886`. Requiere un controlador Vulkan y 
 Los archivos originales del juego no se modifican. Las imágenes preparadas, la configuración, la caché, los registros, las partidas y las copias de seguridad quedan en la carpeta `user/order1886` de la instalación.
 
 ## Novedades
+
+**v0.2.7 — 1 de noviembre de 2026.** **Indicaciones de botones de Xbox y teclado** (#135): Controls → Button prompts muestra letras de Xbox o teclas y botones del ratón en cada indicación, menú, QTE, ataque sigiloso y en el HUD del arma, generadas a partir de tus propios archivos del juego (131 imágenes para Xbox y 185 para teclado; los dibujos del propio DualShock 4 se mantienen). Teclado y ratón también aplica una distribución de teclas a juego; Controls → Keyboard buttons sigue permitiendo asignar cualquier tecla. El worker de Windows ya no se cierra al generarlas. [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.7)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/v0.2.7/prompts-chapter-select.jpg" alt="Selección de capítulo con botones de Xbox: A seleccionar, B volver"></td>
+    <td width="50%"><img src="docs/images/v0.2.7/launcher-button-prompts.jpg" alt="Página Controls del launcher: Button prompts en Xbox"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/v0.2.7/prompts-turning-point.jpg" alt="La indicación Turning Point con botones de PlayStation, Xbox y teclado y ratón"></td>
+    <td width="50%"><img src="docs/images/v0.2.7/launcher-keyboard-buttons.jpg" alt="Página Controls del launcher: Keyboard buttons, una entrada por cada botón de PS4"></td>
+  </tr>
+</table>
 
 **v0.2.6 — 1 de noviembre de 2026.** **Los botones de carpetas y la búsqueda de actualizaciones del launcher funcionan** (#131): Open installation, logs y player data abren la carpeta, y una versión ya instalada indica **Up to date**. **Un Runtime executable incorrecto se rechaza al elegirlo**, y una ventana del juego cerrada aparece como motivo del fin de la sesión (#127). **Menos paradas de la biblioteca GPU (exit 23)**: los punteros de shader no válidos leen cero como en la PS4, y siete correcciones de cierres vienen de SpartanPort (#133, sin confirmar contra el informe). **Primeros cambios de uso de CPU para procesadores de 6 hilos**, con un informe de CPU por hilo en el registro de arranque (#134, sin bajada medida todavía). [Notas de la versión](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.6)
 

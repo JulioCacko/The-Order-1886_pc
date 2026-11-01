@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/order1886-go-windows.zip"><b>⬇ Windows package</b></a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/order1886-linux-x86_64.tar.gz"><b>⬇ Linux package</b></a> ·
-  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.6">Release notes</a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.7/order1886-go-windows.zip"><b>⬇ Windows package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.7/order1886-linux-x86_64.tar.gz"><b>⬇ Linux package</b></a> ·
+  <a href="https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.7">Release notes</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="https://github.com/JulioCacko/The-Order-1886_pc/issues">Report a problem</a>
@@ -104,6 +104,19 @@ How these were taken, with hashes and logs: [preview 9 release verification](doc
 
 ## What's new
 
+**v0.2.7 — 1 November 2026.** **Xbox and keyboard button prompts** (#135): Controls → Button prompts shows Xbox letters or keycaps and mouse buttons in every prompt, menu, quick-time event, takedown and the weapon HUD, built from your own game files (131 Xbox and 185 keyboard bitmaps; pictures of the DualShock 4 itself stay). Keyboard and mouse also applies a matching key layout; Controls → Keyboard buttons still lets you assign any key. The Windows worker no longer crashes while building them. [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.7)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/v0.2.7/prompts-chapter-select.jpg" alt="Chapter selection with Xbox prompts: A Select, B Back"></td>
+    <td width="50%"><img src="docs/images/v0.2.7/launcher-button-prompts.jpg" alt="Launcher Controls page: Button prompts set to Xbox"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/v0.2.7/prompts-turning-point.jpg" alt="The Turning Point prompt with PlayStation, Xbox and keyboard-and-mouse buttons"></td>
+    <td width="50%"><img src="docs/images/v0.2.7/launcher-keyboard-buttons.jpg" alt="Launcher Controls page: Keyboard buttons, a host input for each PS4 button"></td>
+  </tr>
+</table>
+
 **v0.2.6 — 1 November 2026.** **Launcher folder buttons and update checks work** (#131): Open installation, logs and player data open the folder, and an installed release now reads **Up to date**. **A wrong Runtime executable is refused when you choose it**, and a closed game window is named as the reason a session ended (#127). **Fewer GPU-library stops (exit 23)**: invalid shader pointers read zero as on the PS4, and seven crash fixes come from SpartanPort (#133, not confirmed against the report). **First CPU-use changes for 6-thread processors**, with a per-thread CPU report in the boot log (#134, no measured drop yet). [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.6)
 
 **v0.2.5 — 29 October 2026.** **Native resolution up to 4K with no upscaler** (#3, #128): Graphics → Render resolution offers Original, 2560, 3840 or a custom width, and the game draws every screen-sized pass at that size. **Borderless no longer turns into exclusive full-screen** on Windows (#121, #125). **Linux runs dumps with mixed-case folder names** (#124). TOport is credited for the renderer fixes ported from it (#112, #123). [Release notes](https://github.com/JulioCacko/The-Order-1886_pc/releases/tag/v0.2.5)
@@ -154,13 +167,13 @@ See [current status](docs/STATUS.md) and the [4K/60 acceptance plan](docs/order1
 
 ## Download and start
 
-**Published download: v0.2.6 (November 1).** Windows and Linux x86-64 packages. Keep your `user` folder when upgrading.
+**Published download: v0.2.7 (November 1).** Windows and Linux x86-64 packages. Keep your `user` folder when upgrading.
 
-**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/order1886-go-windows.zip)** ·
-**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/order1886-linux-x86_64.tar.gz)** ·
-[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/QUICKSTART.txt) ·
-[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/order1886-go-windows.zip.sha256) ·
-[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.6/order1886-linux-x86_64.tar.gz.sha256)
+**[Download the Windows package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.7/order1886-go-windows.zip)** ·
+**[Download the Linux package](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.7/order1886-linux-x86_64.tar.gz)** ·
+[Setup guide](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.7/QUICKSTART.txt) ·
+[Windows checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.7/order1886-go-windows.zip.sha256) ·
+[Linux checksum](https://github.com/JulioCacko/The-Order-1886_pc/releases/download/v0.2.7/order1886-linux-x86_64.tar.gz.sha256)
 
 The packages include the launcher, the dedicated runtime and the libraries they need. No Python, MSYS2 or compiler is required. GitHub's "Source code" archives are for developers.
 
