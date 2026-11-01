@@ -2388,29 +2388,54 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                     LOG_ERROR(Render, "Clamped size from {} to {} for stage {:#x}",
                               vsharp.GetSize(), size, stage.pgm_hash);
                 }
-                const auto [buffer, offset] = buffer_cache.ObtainBuffer(
-                    vsharp.base_address, size, desc.is_written, desc.is_formatted);
-                const u64 offset_aligned = Common::AlignDown(offset, alignment);
-                const u64 adjust = offset - offset_aligned;
-                if (desc.buffer_type == Shader::BufferType::ReadConst) {
-                    ASSERT_MSG(Shader::FitsReadConstStorageRange(size, adjust, instance.StorageMaxRange()),
-                               "ReadConst VMA range exceeds Vulkan storage-buffer range");
-                }
-                if (adjust % 4 != 0) {
-                    if (const auto count = CountUnalignedWarning(stage.pgm_hash, adjust % 4)) {
-                        LOG_WARNING(Render_Vulkan,
-                                    "Buffer binding in shader {:#x} isn't dword aligned: remainder={} "
-                                    "occurrences={} (repeats counted)", stage.pgm_hash, adjust % 4, count);
+                // The recompiled shaders read buffers in dwords, so a binding that starts two
+                // bytes into a dword is read two bytes early. The Order double-buffers 66990-byte
+                // vertex records: every other frame the second copy starts at +2 and the objects
+                // drawn from it get garbage positions (they vanish). Read-only blocks the GPU has not
+                // written are copied from guest memory to a dword-aligned stream-buffer slot, once per
+                // scheduler tick (~150 draws bind the same record); small per-draw buffers keep the
+                // old path.
+                if (!desc.is_written && desc.buffer_type != Shader::BufferType::ReadConst &&
+                    (vsharp.base_address & 3) != 0 && size >= 4096 &&
+                    !buffer_cache.IsRegionGpuModified(vsharp.base_address, size)) {
+                    if (unaligned_copies_tick != scheduler.CurrentTick()) {
+                        unaligned_copies.clear();
+                        unaligned_copies_tick = scheduler.CurrentTick();
                     }
+                    auto& stream = buffer_cache.GetStreamBuffer();
+                    const auto [copy, inserted] =
+                        unaligned_copies.try_emplace(vsharp.base_address ^ (size << 44), 0);
+                    if (inserted) {
+                        copy->second = stream.Copy(reinterpret_cast<const void*>(vsharp.base_address),
+                                                   size, alignment);
+                    }
+                    push_data.AddOffset(binding.buffer, 0);
+                    buffer_infos.emplace_back(stream.Handle(), copy->second, size);
+                } else {
+                    const auto [buffer, offset] = buffer_cache.ObtainBuffer(
+                        vsharp.base_address, size, desc.is_written, desc.is_formatted);
+                    const u64 offset_aligned = Common::AlignDown(offset, alignment);
+                    const u64 adjust = offset - offset_aligned;
+                    if (desc.buffer_type == Shader::BufferType::ReadConst) {
+                        ASSERT_MSG(Shader::FitsReadConstStorageRange(size, adjust, instance.StorageMaxRange()),
+                                   "ReadConst VMA range exceeds Vulkan storage-buffer range");
+                    }
+                    if (adjust % 4 != 0) {
+                        if (const auto count = CountUnalignedWarning(stage.pgm_hash, adjust % 4)) {
+                            LOG_WARNING(Render_Vulkan,
+                                        "Buffer binding in shader {:#x} isn't dword aligned: remainder={} "
+                                        "occurrences={} (repeats counted)", stage.pgm_hash, adjust % 4, count);
+                        }
+                    }
+                    push_data.AddOffset(binding.buffer, adjust);
+                    buffer_infos.emplace_back(buffer->Handle(), offset_aligned, size + adjust);
+                    bound_buffers.emplace_back(buffer, offset, size, desc.is_written);
+                    if (desc.is_written) {
+                        // Raw storage-buffer writes can also make an aliased cached image stale.
+                        texture_cache.InvalidateMemoryFromGPU(vsharp.base_address, size);
+                    }
+                    needs_barrier |= runtime.IsBufferAccessed(buffer, offset, size, desc.is_written);
                 }
-                push_data.AddOffset(binding.buffer, adjust);
-                buffer_infos.emplace_back(buffer->Handle(), offset_aligned, size + adjust);
-                bound_buffers.emplace_back(buffer, offset, size, desc.is_written);
-                if (desc.is_written) {
-                    // Raw storage-buffer writes can also make an aliased cached image stale.
-                    texture_cache.InvalidateMemoryFromGPU(vsharp.base_address, size);
-                }
-                needs_barrier |= runtime.IsBufferAccessed(buffer, offset, size, desc.is_written);
             }
         }
 

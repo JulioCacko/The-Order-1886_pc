@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include <atomic>
 #include <map>
 
@@ -372,6 +374,10 @@ private:
         bool is_written;
     };
     boost::container::static_vector<BoundBuffer, Shader::NUM_BUFFERS> bound_buffers;
+    /// Read-only buffers with a 2-byte base, copied dword-aligned (BindBuffers): guest base and
+    /// size -> stream-buffer offset, reused until the scheduler tick changes.
+    std::unordered_map<u64, u64> unaligned_copies;
+    u64 unaligned_copies_tick{};
 
     u32 set_write_index{};
     Pipeline::DescriptorWrites set_writes;
