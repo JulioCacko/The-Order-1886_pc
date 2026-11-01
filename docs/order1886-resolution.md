@@ -45,7 +45,7 @@ need are tracked in #7, and the providers themselves in #10–#13.
 ## Native render resolution (#3)
 
 Graphics → **Render resolution** makes the game itself render at a larger (or smaller)
-size: Original (1920 wide), 2560, 3840 (native 4K) or a custom width (multiple of 16, 1280
+size: 1280 (the Steam Deck's screen width), Original (1920 wide), 2560, 3840 (native 4K) or a custom width (multiple of 16, 1280
 to 4880; 4192 with 16:9 framing). The height follows **Framing**: width/2.4 for Original
 (3840×1600, letterboxed into 3840×2160) and the full 16:9 frame for 16:9 (3840×2160).
 

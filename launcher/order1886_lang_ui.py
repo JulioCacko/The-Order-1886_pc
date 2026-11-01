@@ -14,6 +14,7 @@ tests/test_order1886_ui_catalog.py fails when a UI string is missing from it.
 
 UI_KEYS = [
     "1 — baseline",
+    "1280 wide, Steam Deck — experimental",
     "1280 × 720 output",
     "16:9 — experimental",
     "16×",
