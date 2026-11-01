@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 import order1886
+import order1886_glyph_mod as glyph_mod
 import order1886_mods as mods
 import order1886_prompts as prompts
 import order1886_input as inputs
@@ -34,11 +35,17 @@ class PromptPlanTests(unittest.TestCase):
     def test_plan_has_roles_for_both_sets_and_shipped_art_covers_them(self):
         for prompt_set in ('xbox', 'keyboard'):
             planned = prompts.plan(prompt_set)
-            self.assertEqual(len(planned), 290)
+            self.assertEqual(len(planned), 308)
             active = [e for e in planned.values() if e['role'] != 'keep']
             self.assertTrue(active)
             for e in active:
                 self.assertIn(e['role'], ('face', 'label'))
+                self.assertIn(e['glyph'], glyph_mod.TOKENS)
+            # The weapon HUD's alternate-fire "R1" has no button class; the plan names it.
+            self.assertEqual(planned['WeaponApp-13d44-292']['role'], 'label')
+        # A stick printed "L3" is LS on Xbox and stays the WASD cluster on the keyboard.
+        self.assertEqual(prompts.plan('xbox')['InteractApp-34c664-78']['glyph'], 'l3')
+        self.assertEqual(prompts.plan('keyboard')['InteractApp-34c664-78']['glyph'], 'left_stick')
         marks = {p.stem for p in (prompts.ASSETS / 'marks').glob('*.png')}
         self.assertTrue(set(prompts.XBOX.values()) <= marks)
         needed = {label for label in prompts.KEYS.values() if label not in prompts.DRAWN_KEYS}

@@ -23,7 +23,7 @@ import shutil
 
 ASSETS = Path(__file__).resolve().parent / 'button_prompts'
 SETS = ('playstation', 'xbox', 'keyboard')
-VERSION = 1  # bump when the composition below changes
+VERSION = 2  # bump when the composition below changes
 
 XBOX = dict(cross='A', circle='B', square='X', triangle='Y', l1='LB', r1='RB', l2='LT',
             r2='RT', l3='LS', r3='RS', options='MENU', touchpad='VIEW')
@@ -39,9 +39,11 @@ MENU_BACKINGS = {114, 276, 277, 285, 288}
 
 
 def plan(prompt_set):
-    """{key: entry} with the reviewed glyph and this set's role."""
+    """{key: entry} with the reviewed glyph and this set's role. <set>_glyph overrides the
+    glyph for one set: a stick printed "L3" is LS on Xbox but still WASD on the keyboard."""
     entries = json.loads((ASSETS / 'plan.json').read_text(encoding='utf-8'))['bitmaps']
-    return {e['key']: dict(e, role=e[prompt_set]) for e in entries}
+    return {e['key']: dict(e, role=e[prompt_set], glyph=e.get(prompt_set + '_glyph', e['glyph']))
+            for e in entries}
 
 
 def keyboard_bindings():
@@ -224,7 +226,9 @@ def composite(e, source, token):
             out[y0:y1, x0:x1, :3] = np.uint8(np.clip(rgb[..., None], 0, 255))
             out[y0:y1, x0:x1, 3] = np.uint8(np.clip(alpha * peak, 0, 255))
     else:
-        old_ink = (lum < 120) if ink == 'dark' else (lum > 145)
+        # On a light body the old symbol's grey anti-aliased edges count as ink too, or a
+        # ghost triangle or square corners stay around the new letter.
+        old_ink = (lum < (200 if white_body else 120)) if ink == 'dark' else (lum > 145)
         if e['glyph'] == 'options':
             old_ink = np.ones(lum.shape, bool)
         old = old_ink & (native[..., 3] > 25)
@@ -330,7 +334,9 @@ def placed(e, icon, kind):
     bx0, by0, bx1, by1 = e['box']
     bw, bh = bx1 - bx0, by1 - by0
     cx, cy = (bx0 + bx1) / 2, (by0 + by1) / 2
-    if e['role'] == 'label':
+    if e['role'] == 'label' and max(width, height) < 40:  # the weapon HUD's R1/R2: use it all
+        cx, cy, maxw, maxh = width / 2, height / 2, width, height
+    elif e['role'] == 'label':
         maxw, maxh = min(width * .72, max(bw * 1.45, 28)), min(height * .64, max(bh * 1.7, 23))
     else:
         maxw, maxh = min(width * .92, bw), min(height * .92, bh)
