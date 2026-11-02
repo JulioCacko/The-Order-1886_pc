@@ -305,12 +305,11 @@ void BufferCache::KeepPageSynchronized(VAddr device_addr, u64 size, u64 pgm_hash
         return;
     }
     std::scoped_lock lock{synchronized_mutex};
-    if (synchronized_ranges.Intersects(device_addr, size)) {
-        return;
-    }
+    // Add even when it overlaps: Add merges, and a range may extend past an earlier one.
+    const bool fresh = !synchronized_ranges.Intersects(device_addr, size);
     synchronized_ranges.Add(device_addr, size);
     static u32 logged = 0; // synchronized_mutex is held
-    if (logged++ < 32) {
+    if (fresh && logged++ < 32) {
         std::printf("Readback sync: %#llx size %llu (shader %016llx)\n",
                     static_cast<unsigned long long>(device_addr),
                     static_cast<unsigned long long>(size),
