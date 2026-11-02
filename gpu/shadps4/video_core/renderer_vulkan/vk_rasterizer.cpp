@@ -2331,6 +2331,13 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
         } else {
             const auto vsharp =
                 prepared ? prepared->buffer_sharps[buffer_index] : desc.GetSharp(stage);
+            // Sun-shadow depth range (from TOport c0195df, GPL-2.0): see KeepPageSynchronized.
+            if (desc.is_written &&
+                (stage.uses_buffer_atomic_float_min_max || stage.pgm_hash == 0x7550d841 ||
+                 stage.pgm_hash == 0x7b1b18c9)) {
+                buffer_cache.KeepPageSynchronized(vsharp.base_address, vsharp.GetSize(),
+                                                  stage.pgm_hash);
+            }
             const u64 readconst_mapped_size =
                 desc.buffer_type == Shader::BufferType::ReadConst && vsharp.base_address != 0
                     ? memory->ClampRangeSize(vsharp.base_address, vsharp.GetSize())

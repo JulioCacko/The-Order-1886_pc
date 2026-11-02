@@ -234,7 +234,8 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
                 std::scoped_lock lock{gpu_ranges_mutex};
                 on_gpu = gpu_modified_ranges.Intersects(device_addr, size);
             }
-            if (!on_gpu && DeferReadback(arena, window_start, window_end - window_start)) {
+            if (!on_gpu && !SynchronizedPage(device_addr, size) &&
+                DeferReadback(arena, window_start, window_end - window_start)) {
                 memory_tracker->MarkRegionAsCpuModified(device_addr, size);
                 return;
             }
@@ -293,6 +294,45 @@ void BufferCache::DownloadMemory(const Buffer* arena, VAddr device_addr, u64 siz
                                 copy.size);
     }
     memory_tracker->UnmarkRegionAsGpuModified(device_addr, size);
+}
+
+void BufferCache::KeepPageSynchronized(VAddr device_addr, u64 size, u64 pgm_hash) {
+    static const bool enabled = [] {
+        const char* env = std::getenv("ORDER1886_SUN_SYNC");
+        return !(env && env[0] == '0');
+    }();
+    if (!enabled || device_addr == 0 || size == 0) {
+        return;
+    }
+    std::scoped_lock lock{synchronized_mutex};
+    if (synchronized_ranges.Intersects(device_addr, size)) {
+        return;
+    }
+    synchronized_ranges.Add(device_addr, size);
+    static u32 logged = 0; // synchronized_mutex is held
+    if (logged++ < 32) {
+        std::printf("Readback sync: %#llx size %llu (shader %016llx)\n",
+                    static_cast<unsigned long long>(device_addr),
+                    static_cast<unsigned long long>(size),
+                    static_cast<unsigned long long>(pgm_hash));
+        std::fflush(stdout);
+    }
+}
+
+bool BufferCache::SynchronizedPage(VAddr addr, u64 size) {
+    const VAddr start = Common::AlignDown(addr, 4_KB);
+    const VAddr end = Common::AlignUp(addr + size, 4_KB);
+    std::scoped_lock lock{synchronized_mutex};
+    if (!synchronized_ranges.Intersects(start, end - start)) {
+        return false;
+    }
+    static std::atomic<u32> hits{0};
+    if (hits.fetch_add(1) < 16) {
+        std::printf("Readback sync: CPU write at %#llx, not deferred\n",
+                    static_cast<unsigned long long>(addr));
+        std::fflush(stdout);
+    }
+    return true;
 }
 
 bool BufferCache::DeferReadback(const Buffer* arena, VAddr device_addr, u64 size) {
