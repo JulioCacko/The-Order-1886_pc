@@ -100,6 +100,13 @@ public:
         watch_written_buffers = watch;
     }
 
+    /// Outputs of the depth-range shaders that fit the sun-shadow cascades (atomic float
+    /// min/max, 0x7550d841, 0x7b1b18c9). A CPU write to their pages is never deferred: the
+    /// game resets these values on the CPU and must find the GPU's result in place first.
+    /// ORDER1886_SUN_SYNC=0 turns it off.
+    void KeepPageSynchronized(VAddr device_addr, u64 size, u64 pgm_hash);
+    bool SynchronizedPage(VAddr addr, u64 size);
+
     /// ORDER1886_READBACK_LOG=1: which dispatch wrote the small buffers the CPU reads back.
     static bool ReadbackLog();
     void SetCurrentDispatch(u64 hash) {
@@ -191,6 +198,8 @@ private:
     Buffer gds_buffer;
     RangeSet gpu_modified_ranges;
     std::mutex gpu_ranges_mutex;
+    std::mutex synchronized_mutex;
+    RangeSet synchronized_ranges; ///< see KeepPageSynchronized (guarded by synchronized_mutex)
 
     /// Deferred readbacks (from TOport 32efe96, GPL-2.0). A guest write beside (not on)
     /// GPU-written bytes of a page goes on at once; those bytes are copied to host memory in the
