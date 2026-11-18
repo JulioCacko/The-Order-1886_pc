@@ -21,6 +21,12 @@ set_target_properties(ffx_vulkan_portable ffx_vulkan_fsr3_vk_backend_1_1_4
 if(NOT MSVC)
     # SDK vk.cpp uses std::lock_guard through an MSVC-only transitive include.
     target_compile_options(ffx_vulkan_fsr3_vk_backend_1_1_4 PRIVATE -include mutex)
+    # Newer libc++/mingw-w64 (clang 23) no longer pull these in transitively: _countof (stdlib.h),
+    # log2 (cmath), placement new (new) and swprintf_s (wchar.h). Same MSVC-only-include class as above.
+    target_compile_options(ffx_vulkan_fsr3_vk_backend_1_1_4 PRIVATE
+        "SHELL:-include stdlib.h" "SHELL:-include cmath" "SHELL:-include new" "SHELL:-include wchar.h")
+    target_compile_options(ffx_vulkan_fsr3_host_1_1_4 PRIVATE
+        "SHELL:-include stdlib.h" "SHELL:-include cmath" "SHELL:-include new" "SHELL:-include wchar.h")
 endif()
 
 add_library(order1886_fsr3 SHARED order1886_fsr3.cpp)
