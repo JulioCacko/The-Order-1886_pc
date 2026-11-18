@@ -69,7 +69,13 @@ $incomplete = Join-Path $destination 'GO-BUILD-INCOMPLETE.txt'
 Push-Location (Join-Path $projectRoot 'launcher-go')
 try {
     if (-not $SkipFrontendBuild) {
-        & go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.0 build -clean -skipbindings
+        # Ship the prebuilt launcher UI (launcher-go/frontend-prebuilt, borrowed from DivinusX): it has
+        # no source here, so the frontend build must not run and replace it with the older src UI.
+        $dist = Join-Path (Get-Location) 'frontend/dist'
+        if (Test-Path -LiteralPath $dist) { Remove-Item -LiteralPath $dist -Recurse -Force }
+        New-Item -ItemType Directory -Path $dist -Force | Out-Null
+        Copy-Item -Path (Join-Path (Get-Location) 'frontend-prebuilt/*') -Destination $dist -Recurse -Force
+        & go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.0 build -clean -s -skipbindings
         if ($LASTEXITCODE) { throw 'Go launcher build failed.' }
     }
     $goLauncher = Join-Path $projectRoot 'launcher-go/build/bin/The Order 1886.exe'

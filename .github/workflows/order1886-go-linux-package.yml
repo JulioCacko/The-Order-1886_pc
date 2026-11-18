@@ -121,7 +121,9 @@ jobs:
           cd launcher-go
           go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
           # Ubuntu 24.04 ships WebKitGTK 4.1 only; Wails selects it with the webkit2_41 tag.
-          "$(go env GOPATH)/bin/wails" build -clean -skipbindings -platform linux/amd64 -tags webkit2_41
+          # Ship the prebuilt launcher UI instead of the frontend/src build (borrowed from DivinusX).
+          rm -rf frontend/dist && mkdir -p frontend/dist && cp -r frontend-prebuilt/. frontend/dist/
+          "$(go env GOPATH)/bin/wails" build -clean -s -skipbindings -platform linux/amd64 -tags webkit2_41
           # The entry points link no WebKitGTK, so they start on SteamOS and other systems without it (#114).
           CGO_ENABLED=0 go build -tags noui -trimpath -ldflags '-s -w' -o build/entry/order1886-entry .
           ls -l build/bin/ build/entry/

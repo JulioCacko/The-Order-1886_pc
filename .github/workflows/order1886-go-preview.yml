@@ -65,7 +65,11 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           go vet ./...
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.0 build -clean -skipbindings
+          # Ship the prebuilt launcher UI instead of the frontend/src build (borrowed from DivinusX).
+          Remove-Item -LiteralPath frontend/dist -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path frontend/dist -Force | Out-Null
+          Copy-Item -Path frontend-prebuilt/* -Destination frontend/dist -Recurse -Force
+          go run github.com/wailsapp/wails/v2/cmd/wails@v2.17.0 build -clean -s -skipbindings
   linux:
     runs-on: ubuntu-latest
     timeout-minutes: 20

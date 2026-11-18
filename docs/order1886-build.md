@@ -56,8 +56,9 @@ To produce the portable package:
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
-(cd launcher-go && "$(go env GOPATH)/bin/wails" build -clean -skipbindings \
-    -platform linux/amd64 -tags webkit2_41)
+# The launcher ships the prebuilt UI in launcher-go/frontend-prebuilt (no frontend build):
+(cd launcher-go && rm -rf frontend/dist && mkdir -p frontend/dist && cp -r frontend-prebuilt/. frontend/dist/ \
+    && "$(go env GOPATH)/bin/wails" build -clean -s -skipbindings -platform linux/amd64 -tags webkit2_41)
 python -m PyInstaller --noconfirm --clean --console --onedir --name order1886-worker \
     --paths "$PWD" --add-data "$PWD/scripts:scripts" --distpath out/worker-dist \
     --workpath out/worker-build --specpath out launcher/order1886_worker.py
