@@ -2,6 +2,7 @@
  * GnmDriver, VideoOut and kernel event queues, adapted to the native loader. */
 #ifndef PS4GPU_H
 #define PS4GPU_H
+#include <stddef.h>
 #include <stdint.h>
 #ifdef __cplusplus
 extern "C" {
@@ -33,6 +34,8 @@ int ps4gpu_text_input_poll(char *out_utf8, uint64_t size);
  * poll: -1 while open, -2 cancelled, else the chosen index. */
 int ps4gpu_choice_begin(const char *title, const char *const *items, const char *const *images, int count, int focus);
 int ps4gpu_choice_poll(void);
+/* The loaded executable image, for the in-game menu's live frame-rate switch (ps4_guest_image.h). */
+void ps4gpu_set_guest_image(void *base, size_t size);
 /* 1 while the in-game settings menu is open: the game's pad input is held neutral. */
 int ps4gpu_overlay_captures_input(void);
 /* Snapshot of window-thread mouse-to-stick input; no SDL calls on the guest thread. */

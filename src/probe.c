@@ -701,6 +701,7 @@ int main(int argc, char **argv) {
         Ps4GpuConfig gpu={title,serial,gpu_user_dir && *gpu_user_dir ? gpu_user_dir : (user_dir ? user_dir : "user"),(uint32_t)sdk,attributes,1920,1080};
         gpu_enabled=1; /* page tracking starts while the rasterizer registers guest memory */
         if (ps4gpu_init(&gpu)) fail("GPU initialization failed");
+        ps4gpu_set_guest_image(image, size);
         printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,ps4gpu_symbol_count());
     }
     unsigned char *traps = allocate(round_page((import_count + 1) * 32));

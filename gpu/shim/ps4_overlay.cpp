@@ -10,12 +10,14 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include <SDL3/SDL.h>
 #include "ps4_settings.h"
 #include "ps4_graphics.h"
 #include "ps4_perf_stats.h"
+#include "ps4_guest_image.h"
 
 extern "C" void runtime_restart(void); // src/probe.c: starts run.py again, ends this process
 #include "common/elf_info.h"
@@ -90,8 +92,8 @@ Ps4PerfStats::PresentationCounter presentation_counter;
 std::chrono::steady_clock::time_point last_ui_frame{};
 
 bool SettingsMenuEnabled() {
-    // Opt-in per launch (ORDER1886_SETTINGS_MENU=1): the menu and the settings it edits
-    // live are not gameplay-qualified for this title yet, so it stays closed by default.
+    // Per launch through ORDER1886_SETTINGS_MENU=1, which the backend sets when the launcher passes
+    // --in-game-menu (its "game menu" option, on by default); a direct runtime launch stays closed.
     return Ps4Settings::MenuEnabled();
 }
 
@@ -471,6 +473,362 @@ void Notice() {
     ImGui::End();
 }
 
+
+// ---- In-game settings menu (F1) -------------------------------------------------------------
+// Laid out like Longshot's (rows of label | value, a description panel, key hints), coloured
+// with the launcher's palette, which follows the game's: charcoal, parchment and gold.
+namespace Menu {
+
+constexpr ImU32 Rgba(u32 rgb, float alpha = 1.0f) {
+    return IM_COL32((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff, int(alpha * 255.0f));
+}
+constexpr ImU32 Backdrop = IM_COL32(0, 0, 0, 150);
+constexpr ImU32 Panel = Rgba(0x0c0e0f, 0.97f);
+constexpr ImU32 Surface = Rgba(0x141718);
+constexpr ImU32 Surface2 = Rgba(0x1b1e1f);
+constexpr ImU32 Line = IM_COL32(255, 255, 255, 20);
+constexpr ImU32 LineStrong = IM_COL32(255, 255, 255, 38);
+constexpr ImU32 Ink = Rgba(0xf1ede4);
+constexpr ImU32 Muted = Rgba(0x9c9d96);
+constexpr ImU32 Accent = Rgba(0xd8bd77);
+constexpr ImU32 AccentInk = Rgba(0x17150f);
+constexpr ImU32 Focus = Rgba(0xf2d894);
+constexpr ImU32 RowFocus = Rgba(0x2a2418);
+constexpr ImU32 Segment = Rgba(0x3a3122);
+
+enum class Kind { Choice, Toggle };
+struct Row {
+    const char* section; // non-null: a heading drawn above this row
+    const char* label;
+    Kind kind;
+    std::vector<std::string> values; // Toggle: {"Off", "On"}
+    int current;
+    bool available;
+    const char* title;
+    const char* body;
+    std::string note;          // shown under the body with a gold bar (current effect)
+    void (*apply)(int index);  // stores the new value
+};
+
+int focused = 0;
+// 0: the game decides its own interval; otherwise the interval the menu set, plus one (the
+// interval itself can be 0), kept every frame.
+std::atomic<u32> chosen_interval{0};
+
+const int OutputChoices[] = {Ps4Settings::OutputAutomatic, 0, 1, 2, 3};
+// One frame-rate row. 30 and 60 are the engine's own intervals (2 and 1); every higher rate runs
+// the engine uncapped (interval 0) and lets the presentation cap pace it, so no executable code
+// is changed live. Unlocked removes the cap: V-Sync or the GPU sets the limit.
+constexpr int Rates[] = {30, 60, 90, 120, 144, 165, 240, 0};
+constexpr int RateCount = int(sizeof(Rates) / sizeof(Rates[0]));
+
+void SetGameFrameRate(int index) {
+    const int rate = Rates[index];
+    const u32 interval = rate == 30 ? 2u : rate == 60 ? 1u : 0u;
+    chosen_interval = interval + 1;
+    if (volatile uint32_t* global = Ps4GuestImage::IntervalGlobal()) {
+        *global = interval;
+    }
+    Ps4Settings::Get().fps_limit = rate;
+}
+
+std::vector<Row> BuildRows() {
+    auto& s = Ps4Settings::Get();
+    std::vector<Row> rows;
+    volatile uint32_t* global = Ps4GuestImage::IntervalGlobal();
+    const u32 interval = global ? *global : 2u;
+    const int limit = s.fps_limit.load();
+    int rate = interval >= 2 ? 0 : interval == 1 ? 1 : RateCount - 1;
+    if (interval == 0) {
+        for (int i = 2; i < RateCount - 1; ++i) {
+            if (Rates[i] == limit) {
+                rate = i;
+            }
+        }
+    }
+    std::vector<std::string> labels;
+    for (int i = 0; i < RateCount; ++i) {
+        labels.push_back(Rates[i] == 0    ? "Unlocked \xe2\x80\x94 experimental"
+                         : Rates[i] == 30 ? "30 FPS \xe2\x80\x94 native"
+                                          : std::to_string(Rates[i]) + " FPS \xe2\x80\x94 experimental");
+    }
+    std::string note = "Not available: this executable is not the verified 01.02 build.";
+    if (global) {
+        note = rate == 0 ? "Running at 30 FPS, as on the console."
+               : rate == RateCount - 1
+                   ? "Running uncapped: V-Sync or the GPU sets the limit."
+                   : "Running at " + std::to_string(Rates[rate]) + " FPS.";
+    }
+    rows.push_back({"Frame rate", "Game frame rate", Kind::Choice, labels, rate, global != nullptr,
+                    "Game frame rate",
+                    "How many frames the game runs per second. Changes right away. 30 FPS is native; "
+                    "the rest are experimental: the game clock follows measured time, but some "
+                    "quick-time events in Chapters 6 and 9 can get stuck, so go back to 30 there if one "
+                    "does. With V-Sync on, the display's refresh rate is the most you will see.",
+                    note, SetGameFrameRate});
+    const int mode = std::clamp(s.display_mode.load(), 0, int(Ps4Graphics::DisplayModeCount) - 1);
+    rows.push_back({"Screen", "Window mode", Kind::Choice, {"Window", "Borderless", "Fullscreen"}, mode,
+                    true, "Window mode",
+                    "Window keeps the desktop around the game. Borderless fills the screen without a "
+                    "border and switches instantly. Fullscreen takes the display for itself.",
+                    "", [](int index) { Ps4Settings::Get().display_mode = index; }});
+    rows.push_back({nullptr, "V-Sync", Kind::Toggle, {"Off", "On"}, s.vsync ? 1 : 0, true, "V-Sync",
+                    "Waits for the monitor before showing each frame: no tearing, a little more "
+                    "input delay. Off shows frames as soon as they are ready.",
+                    "", [](int index) { Ps4Settings::Get().vsync = index == 1; }});
+    int output = 0;
+    for (int i = 0; i < 5; ++i) {
+        if (OutputChoices[i] == s.output_res) {
+            output = i;
+        }
+    }
+    std::string size_note;
+    if (const int w = s.image_width, h = s.image_height; w > 0 && h > 0) {
+        size_note = "The game's picture is " + std::to_string(w) + "x" + std::to_string(h) + ".";
+    }
+    rows.push_back({nullptr, "Output resolution", Kind::Choice,
+                    {"Automatic (window)", "1280x720", "1920x1080", "2560x1440", "3840x2160"}, output, true,
+                    "Output resolution",
+                    "The size the finished picture is scaled to before it is fitted to the window. "
+                    "Automatic follows the window. The game still renders its scene at its own size.",
+                    size_note, [](int index) { Ps4Settings::Get().output_res = OutputChoices[index]; }});
+    rows.push_back({"Overlay", "FPS counter", Kind::Toggle, {"Off", "On"}, s.show_fps ? 1 : 0, true,
+                    "FPS counter", "The frame rate and frame time in a corner of the screen. F9 also "
+                    "shows or hides it.",
+                    "", [](int index) { Ps4Settings::Get().show_fps = index == 1; }});
+    return rows;
+}
+
+ImVec2 TextSize(float size, const char* text) {
+    return ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
+}
+void Text(ImDrawList* dl, float size, ImVec2 pos, ImU32 color, const char* text, float wrap = 0.0f) {
+    dl->AddText(ImGui::GetFont(), size, pos, color, text, nullptr, wrap);
+}
+void TextCentered(ImDrawList* dl, float size, ImVec2 a, ImVec2 b, ImU32 color, const char* text) {
+    const ImVec2 t = TextSize(size, text);
+    Text(dl, size, ImVec2((a.x + b.x - t.x) * 0.5f, (a.y + b.y - t.y) * 0.5f), color, text);
+}
+void Arrow(ImDrawList* dl, ImVec2 center, float r, bool right, ImU32 color) {
+    if (right) {
+        dl->AddTriangleFilled(ImVec2(center.x - r * 0.6f, center.y - r), ImVec2(center.x - r * 0.6f, center.y + r),
+                              ImVec2(center.x + r * 0.8f, center.y), color);
+    } else {
+        dl->AddTriangleFilled(ImVec2(center.x + r * 0.6f, center.y - r), ImVec2(center.x + r * 0.6f, center.y + r),
+                              ImVec2(center.x - r * 0.8f, center.y), color);
+    }
+}
+void KeyCap(ImDrawList* dl, float s, ImVec2& pos, const char* key) {
+    const float size = 22.0f * s;
+    const ImVec2 t = TextSize(size, key);
+    const ImVec2 a = pos, b = ImVec2(pos.x + std::max(t.x + 16.0f * s, 34.0f * s), pos.y + 34.0f * s);
+    dl->AddRectFilled(a, b, Ink, 4.0f * s);
+    TextCentered(dl, size, a, b, AccentInk, key);
+    pos.x = b.x + 6.0f * s;
+}
+
+void Change(std::vector<Row>& rows, int row, int step) {
+    Row& r = rows[row];
+    if (!r.available || r.values.empty()) {
+        return;
+    }
+    const int count = int(r.values.size());
+    const int next = r.kind == Kind::Toggle ? (step == 0 ? 1 - r.current : std::clamp(r.current + step, 0, 1))
+                                            : (r.current + step + count) % count;
+    if (next != r.current) {
+        r.apply(next);
+        r.current = next;
+        dirty = true;
+    }
+}
+
+void Draw() {
+    std::vector<Row> rows = BuildRows();
+    const int count = int(rows.size());
+    focused = std::clamp(focused, 0, count - 1);
+
+    // Keyboard and controller (forwarded to ImGui while the menu is open).
+    const auto pressed = [](ImGuiKey key) { return ImGui::IsKeyPressed(key, true); };
+    if (pressed(ImGuiKey_UpArrow) || pressed(ImGuiKey_GamepadDpadUp)) {
+        focused = (focused + count - 1) % count;
+    }
+    if (pressed(ImGuiKey_DownArrow) || pressed(ImGuiKey_GamepadDpadDown)) {
+        focused = (focused + 1) % count;
+    }
+    if (pressed(ImGuiKey_LeftArrow) || pressed(ImGuiKey_GamepadDpadLeft)) {
+        Change(rows, focused, -1);
+    }
+    if (pressed(ImGuiKey_RightArrow) || pressed(ImGuiKey_GamepadDpadRight)) {
+        Change(rows, focused, 1);
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_Space, false) ||
+        ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown, false)) {
+        Change(rows, focused, rows[focused].kind == Kind::Toggle ? 0 : 1);
+    }
+    bool close = ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false);
+
+    const ImGuiIO& io = ImGui::GetIO();
+    const float W = io.DisplaySize.x, H = io.DisplaySize.y;
+    const float s = std::max(H / 1080.0f, 0.6f);
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(io.DisplaySize);
+    ImGui::Begin("##settings_menu", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
+                     ImGuiWindowFlags_NoBringToFrontOnFocus);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, Backdrop);
+
+    const float margin = std::min(60.0f * s, W * 0.03f);
+    const ImVec2 p0(margin, margin), p1(W - margin, H - margin);
+    dl->AddRectFilled(p0, p1, Panel, 6.0f * s);
+    dl->AddRect(p0, p1, LineStrong, 6.0f * s);
+
+    // Top bar: title and the tab row.
+    const float bar = 74.0f * s;
+    dl->AddRectFilled(p0, ImVec2(p1.x, p0.y + bar), Surface, 6.0f * s, ImDrawFlags_RoundCornersTop);
+    dl->AddLine(ImVec2(p0.x, p0.y + bar), ImVec2(p1.x, p0.y + bar), Line);
+    Text(dl, 24.0f * s, ImVec2(p0.x + 28.0f * s, p0.y + 14.0f * s), Accent, "THE ORDER: 1886");
+    Text(dl, 18.0f * s, ImVec2(p0.x + 28.0f * s, p0.y + 44.0f * s), Muted, "In-game settings");
+    const float tab_x = p0.x + 330.0f * s, tab_w = 210.0f * s;
+    dl->AddRectFilled(ImVec2(tab_x, p0.y), ImVec2(tab_x + tab_w, p0.y + bar), RowFocus);
+    dl->AddRectFilled(ImVec2(tab_x, p0.y + bar - 4.0f * s), ImVec2(tab_x + tab_w, p0.y + bar), Accent);
+    TextCentered(dl, 32.0f * s, ImVec2(tab_x, p0.y), ImVec2(tab_x + tab_w, p0.y + bar), Ink, "Graphics");
+
+    // Rows on the left, description on the right.
+    const float top = p0.y + bar + 36.0f * s, bottom = p1.y - 78.0f * s;
+    const float left = p0.x + 40.0f * s, inner = p1.x - p0.x - 80.0f * s;
+    const float list_w = inner * 0.56f, label_w = list_w * 0.5f;
+    const float row_h = 58.0f * s, gap = 12.0f * s;
+    const float text = 27.0f * s;
+    float y = top;
+    const ImVec2 mouse = io.MousePos;
+    for (int i = 0; i < count; ++i) {
+        Row& r = rows[i];
+        if (r.section) {
+            if (i > 0) {
+                y += 14.0f * s;
+            }
+            const ImVec2 t = TextSize(26.0f * s, r.section);
+            Text(dl, 26.0f * s, ImVec2(left, y), Accent, r.section);
+            dl->AddLine(ImVec2(left + t.x + 18.0f * s, y + t.y * 0.55f), ImVec2(left + list_w, y + t.y * 0.55f),
+                        LineStrong);
+            y += t.y + 16.0f * s;
+        }
+        const bool focus = i == focused;
+        const ImVec2 a(left, y), m(left + label_w, y + row_h), b(left + list_w, y + row_h);
+        // Mouse: hovering focuses a row, a click on the value changes it (left half back).
+        if (mouse.x >= a.x && mouse.x < b.x && mouse.y >= a.y && mouse.y < b.y) {
+            if (ImGui::IsMouseClicked(0)) {
+                focused = i;
+                if (mouse.x >= m.x) {
+                    const bool back = r.kind == Kind::Choice && mouse.x < (m.x + b.x) * 0.5f;
+                    if (r.kind == Kind::Toggle) {
+                        const int target = mouse.x < (m.x + b.x) * 0.5f ? 0 : 1;
+                        if (target != r.current) {
+                            Change(rows, i, 0);
+                        }
+                    } else {
+                        Change(rows, i, back ? -1 : 1);
+                    }
+                }
+            }
+        }
+        dl->AddRectFilled(a, ImVec2(m.x, b.y), focus ? RowFocus : Surface2);
+        dl->AddRect(a, b, Line);
+        if (focus) {
+            dl->AddRectFilled(a, ImVec2(a.x + 5.0f * s, b.y), Accent);
+        }
+        Text(dl, text, ImVec2(a.x + 26.0f * s, a.y + (row_h - text) * 0.5f - 1.0f * s),
+             r.available ? Ink : Muted, r.label);
+        const ImVec2 va(m.x, a.y), vb(b.x, b.y);
+        if (r.kind == Kind::Toggle) {
+            const float half = (vb.x - va.x) * 0.5f, inset = 5.0f * s;
+            for (int k = 0; k < 2; ++k) {
+                const ImVec2 sa(va.x + half * k + inset, va.y + inset), sb(va.x + half * (k + 1) - inset, vb.y - inset);
+                const bool on = k == r.current;
+                if (on) {
+                    dl->AddRectFilled(sa, sb, focus ? Accent : Segment, 2.0f * s);
+                }
+                TextCentered(dl, text, sa, sb, on ? (focus ? AccentInk : Ink) : Muted, r.values[k].c_str());
+            }
+            if (focus) {
+                dl->AddRect(ImVec2(va.x - 1, va.y - 1), ImVec2(vb.x + 1, vb.y + 1), Ink, 3.0f * s, 0, 3.0f * s);
+            }
+        } else {
+            if (focus) {
+                dl->AddRectFilled(ImVec2(va.x + 5.0f * s, va.y + 5.0f * s), ImVec2(vb.x - 5.0f * s, vb.y - 5.0f * s),
+                                  r.available ? Accent : Segment, 2.0f * s);
+                dl->AddRect(ImVec2(va.x - 1, va.y - 1), ImVec2(vb.x + 1, vb.y + 1), Ink, 3.0f * s, 0, 3.0f * s);
+            } else {
+                dl->AddRectFilled(va, vb, Surface);
+            }
+            const ImU32 ink = focus && r.available ? AccentInk : (r.available ? Ink : Muted);
+            TextCentered(dl, text, va, vb, ink, r.values[r.current].c_str());
+            if (r.available) {
+                const float cy = (va.y + vb.y) * 0.5f;
+                Arrow(dl, ImVec2(va.x + 26.0f * s, cy), 7.0f * s, false, focus ? AccentInk : Muted);
+                Arrow(dl, ImVec2(vb.x - 26.0f * s, cy), 7.0f * s, true, focus ? AccentInk : Muted);
+            }
+        }
+        y += row_h + gap;
+    }
+
+    // Description panel for the focused row.
+    const Row& r = rows[focused];
+    const ImVec2 da(left + list_w + 48.0f * s, top), db(p1.x - 40.0f * s, bottom - 10.0f * s);
+    dl->AddRectFilled(da, db, Surface);
+    dl->AddRect(da, db, LineStrong);
+    const float pad = 30.0f * s, wrap = db.x - da.x - pad * 2;
+    float dy = da.y + pad;
+    Text(dl, 32.0f * s, ImVec2(da.x + pad, dy), Focus, r.title);
+    dy += 50.0f * s;
+    Text(dl, 26.0f * s, ImVec2(da.x + pad, dy), Ink, r.body, wrap);  // wrap is a width
+    dy += ImGui::GetFont()->CalcTextSizeA(26.0f * s, FLT_MAX, wrap, r.body).y + 22.0f * s;
+    if (!r.note.empty()) {
+        const ImVec2 t = ImGui::GetFont()->CalcTextSizeA(24.0f * s, FLT_MAX, wrap - 20.0f * s, r.note.c_str());
+        dl->AddRectFilled(ImVec2(da.x + pad, dy), ImVec2(da.x + pad + 4.0f * s, dy + t.y), Accent);
+        Text(dl, 24.0f * s, ImVec2(da.x + pad + 20.0f * s, dy), Muted, r.note.c_str(), wrap - 20.0f * s);
+    }
+
+    // Key hints, right-aligned like Longshot's.
+    const float hy = p1.y - 58.0f * s;
+    dl->AddLine(ImVec2(p0.x, hy - 14.0f * s), ImVec2(p1.x, hy - 14.0f * s), Line);
+    struct Hint { const char* label; const char* keys[2]; };
+    const Hint hints[] = {{"Choose", {"\xe2\x96\xb2", "\xe2\x96\xbc"}}, {"Change", {"\xe2\x97\x80", "\xe2\x96\xb6"}},
+                          {"Close", {"F1", "Esc"}}};
+    float width = 0.0f;
+    for (const Hint& h : hints) {
+        width += TextSize(24.0f * s, h.label).x + 12.0f * s + 2 * 40.0f * s + 36.0f * s;
+    }
+    ImVec2 hp(p1.x - 40.0f * s - width, hy);
+    for (const Hint& h : hints) {
+        Text(dl, 24.0f * s, ImVec2(hp.x, hp.y + 4.0f * s), Ink, h.label);
+        hp.x += TextSize(24.0f * s, h.label).x + 12.0f * s;
+        KeyCap(dl, s, hp, h.keys[0]);
+        KeyCap(dl, s, hp, h.keys[1]);
+        hp.x += 30.0f * s;
+    }
+    ImGui::End();
+    if (close) {
+        SetOpen(false);
+    }
+}
+
+// Keep the interval the menu chose: the game writes its own at a few scripted moments.
+void EnforceFrameRate() {
+    const u32 chosen = chosen_interval.load(std::memory_order_relaxed);
+    if (!chosen) {
+        return;
+    }
+    const u32 interval = chosen - 1;
+    if (volatile uint32_t* global = Ps4GuestImage::IntervalGlobal(); global && *global != interval) {
+        *global = interval;
+    }
+}
+
+} // namespace Menu
+
 } // namespace
 
 void OnPresented(bool loading_frame) {
@@ -549,7 +907,7 @@ void Init(const Vulkan::Instance& instance, vk::Format format, u32 image_count) 
     overlay_instance = &instance;
     initialized = true;
     std::printf("Overlay: %s\n", SettingsMenuEnabled()
-                    ? "menu ready (Insert or R3+L2)"
+                    ? "menu ready (F1 or Insert; R3+L2 on a controller)"
                     : "settings menu disabled; system dialogs and screenshots available");
 }
 
@@ -674,9 +1032,11 @@ bool HandleEvent(const SDL_Event& event) {
             Vulkan::FrameCapture::Request();
             return true;
         }
+        // F1 (and Insert) open and close the menu; Esc closes it.
+        const bool toggle_key = event.key.key == SDLK_F1 || event.key.key == SDLK_INSERT;
         if (settings_menu_enabled && down && !event.key.repeat &&
-            (event.key.key == SDLK_INSERT || (is_open && event.key.key == SDLK_ESCAPE))) {
-            SetOpen(event.key.key == SDLK_INSERT ? !is_open : false);
+            (toggle_key || (is_open && event.key.key == SDLK_ESCAPE))) {
+            SetOpen(toggle_key ? !is_open : false);
             return true;
         }
         if (!is_open) {
@@ -828,6 +1188,7 @@ void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
     const float ms = std::chrono::duration<float, std::milli>(now - last_ui_frame).count();
     last_ui_frame = now;
     ConfirmRestart();
+    Menu::EnforceFrameRate();
     if (!Visible()) {
         return;
     }
@@ -866,6 +1227,9 @@ void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
     }
     if (choice_active && !menu_open) {
         ChoiceBox();
+    }
+    if (menu_open) {
+        Menu::Draw();
     }
     ImGui::Render();
 

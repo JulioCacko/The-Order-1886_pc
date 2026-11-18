@@ -118,9 +118,9 @@ Values& Get();
 
 /// Reads the file, then the environment overrides. Called once at start.
 void Load();
-/// The in-game menu is opt-in through ORDER1886_SETTINGS_MENU=1. The menu, its tabs and
-/// the live settings it edits are not gameplay-qualified for this title, so a launch that
-/// does not ask for it behaves exactly as before.
+/// The in-game menu (F1, Insert, R3+L2) is enabled per launch by ORDER1886_SETTINGS_MENU=1: the
+/// backend sets it when the launcher passes --in-game-menu (its game menu option, on by default).
+/// A launch that does not ask for it behaves exactly as before.
 bool MenuEnabled();
 /// Checks the loaded choice before the first frame; unsupported FSR 4 uses FSR 3.1. `problem`
 /// is recorded whenever FSR 4 is unavailable, so the reason exists even if nobody asked for it.
