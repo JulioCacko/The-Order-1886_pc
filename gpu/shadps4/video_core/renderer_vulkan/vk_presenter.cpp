@@ -319,6 +319,10 @@ Presenter::Presenter(Frontend::WindowSDL& window_, AmdGpu::Liverpool* liverpool_
     }
 
     fsr_pass.Create(device, instance.GetAllocator(), num_images);
+    // The FSR 4 v07 shaders need float16, int8, packed dot products and linear compute
+    // derivatives; ask the device once, before any provider loads (#12).
+    Ps4Settings::ConfigureUpscalerSupport(instance.IsFsr4Int8Supported(),
+                                          instance.IsFsr411Supported(), nullptr);
     ReportUpscalerFallback(Ps4Settings::Get().requested_upscaler, DetectUpscaleProviders(instance));
     pp_pass.Create(device, swapchain.GetSurfaceFormat().format);
     Ps4Overlay::Init(instance, swapchain.GetSurfaceFormat().format, num_images);
@@ -454,6 +458,7 @@ Frame* Presenter::PrepareLastFrame() {
         vk::Result result = instance.GetDevice().waitForFences(frame->present_done, false,
                                                                std::numeric_limits<u64>::max());
         if (result == vk::Result::eSuccess) {
+            completed_presentations.fetch_add(1, std::memory_order_release);
             break;
         }
         if (result == vk::Result::eTimeout) {

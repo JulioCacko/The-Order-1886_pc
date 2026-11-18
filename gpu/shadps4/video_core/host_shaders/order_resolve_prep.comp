@@ -24,6 +24,7 @@ layout(push_constant) uniform Constants {
     float log2_exposure;        // resolve constant 60, used unless exposure_from_texture
     uint samples;
     uint exposure_from_texture; // resolve constant 61 != 0
+    uint invert_depth;          // 1 for the fixed-permutation FSR 4 v07 model (standard depth)
 };
 
 void main() {
@@ -49,5 +50,9 @@ void main() {
     const float vy = v.y * ((signs & 2u) != 0u ? 1.0 : -1.0);
     imageStore(motion_out, p, vec4(vec2(vx, vy) * velocity_scale, 0.0, 0.0));
 
-    imageStore(depth_out, p, vec4(texelFetch(depth_tex, p, 0).r));
+    float d = texelFetch(depth_tex, p, 0).r;
+    if (invert_depth != 0u) {
+        d = 1.0 - d; // The Order's reversed depth -> the model's standard orientation
+    }
+    imageStore(depth_out, p, vec4(d));
 }

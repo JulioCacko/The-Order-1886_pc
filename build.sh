@@ -111,6 +111,22 @@ if ! ninja -C out/gpu ps4gpu > out/gpu-build.log 2>&1; then
     grep -v '^\[' out/gpu-build.log | tail -40 >&2
     echo 'GPU library build failed (full log: out/gpu-build.log)' >&2; exit 1
 fi
+# Upscaler providers the runtime dlopens beside its own binary (vk_upscale_providers.cpp).
+# FSR 3.1 is the fallback when the device cannot run the FSR 4 v07 shaders (#12). The FSR 4
+# provider source (gpu/upscalers/fsr4) is not in this tree yet, so it is built only when present.
+for provider in fsr3 fsr4; do
+    if [[ ! -f "gpu/upscalers/$provider/CMakeLists.txt" ]]; then
+        echo "Provider skipped (no gpu/upscalers/$provider): order1886_$provider.so"; continue
+    fi
+    cmake -S "gpu/upscalers/$provider" -B "out/$provider-provider" -G Ninja \
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo >> out/gpu-build.log 2>&1
+    if ! ninja -C "out/$provider-provider" "order1886_$provider" >> out/gpu-build.log 2>&1; then
+        grep -v '^\[' "out/gpu-build.log" | tail -40 >&2
+        echo "Provider build failed: order1886_$provider (full log: out/gpu-build.log)" >&2; exit 1
+    fi
+    cp "out/$provider-provider/order1886_$provider.so" out/
+    echo "Provider built: out/order1886_$provider.so"
+done
 # $ORIGIN/gpu: packaged copies keep the library next to the binary without patching it.
 gpu=(-Lout/gpu -lps4gpu -Wl,-rpath,'$ORIGIN/gpu' -Wl,-rpath,"$PWD/out/gpu" -rdynamic)
 runtime=(src/runtime*.c)

@@ -470,9 +470,10 @@ def runtime_environment(runtime, user, settings=None, inherited=None):
 
 
 # Launcher "Upscaling" choices the backend honours: Linear or FSR 1 presentation, or a temporal
-# provider (FSR 3.1, DLSS) in place of the game's temporal resolve followed by FSR 1 presentation.
-TEMPORAL_PROVIDERS = ('fsr3', 'dlss')
-PRESENTATION_FILTERS = ('linear', 'fsr1', 'fsr3', 'dlss')
+# provider (FSR 3.1, FSR 4, DLSS) in place of the game's temporal resolve followed by FSR 1
+# presentation.
+TEMPORAL_PROVIDERS = ('fsr3', 'fsr4', 'dlss')
+PRESENTATION_FILTERS = ('linear', 'fsr1', 'fsr3', 'fsr4', 'dlss')
 
 
 # Keys the in-game menu can change that also exist as launcher settings. The runtime writes

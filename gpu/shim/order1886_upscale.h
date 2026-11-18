@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define ORDER1886_UPSCALE_ABI 1u
+#define ORDER1886_UPSCALE_ABI 2u
 typedef enum OrderUpscaleStatus {
     ORDER_UPSCALE_OK = 0,
     ORDER_UPSCALE_INVALID_ARGUMENT = 1,
@@ -62,6 +62,10 @@ typedef struct OrderUpscaleFrame {
     float frame_time_ms, pre_exposure;
     float camera_near, camera_far, vertical_fov;
     uint32_t reset_history;
+    // ABI 2: GPU work through this many presented frames has completed (host-proven by a
+    // signalled present fence). Temporal providers use it as the retirement watermark for
+    // history slots; providers built against ABI 1 read only the prefix and are unaffected.
+    uint64_t gpu_frames_completed;
 } OrderUpscaleFrame;
 
 typedef struct OrderUpscaleProviderApi {

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <deque>
+#include <atomic>
 
 #include <condition_variable>
 
@@ -55,6 +56,13 @@ public:
 
     HostPasses::PostProcessingPass::Settings& GetPPSettingsRef() {
         return pp_settings;
+    }
+
+    /// Host-proven GPU completion: the count of present fences the presenter has waited on.
+    /// All command-buffer work submitted before those presents (the temporal resolve included)
+    /// finished, so providers may retire history slots up to this watermark (ABI 2).
+    static u64 CompletedPresentations() {
+        return completed_presentations.load(std::memory_order_acquire);
     }
 
     HostPasses::FsrPass::Settings& GetFsrSettingsRef() {
@@ -109,6 +117,9 @@ private:
     void RecreateFrame(Frame* frame, u32 width, u32 height);
 
     void SetExpectedGameSize(s32 width, s32 height);
+
+    /// Written by the presenter thread in PrepareLastFrame, read by temporal providers.
+    static inline std::atomic<u64> completed_presentations{0};
 
 private:
     float expected_ratio{1920.0 / 1080.0f};

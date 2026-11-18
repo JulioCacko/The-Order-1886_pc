@@ -14,6 +14,7 @@
 #include "video_core/host_shaders/order_resolve_prep_comp.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_order_resolve.h"
+#include "video_core/renderer_vulkan/vk_presenter.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
@@ -31,6 +32,7 @@ struct Push {
     float log2_exposure;
     u32 samples;
     u32 exposure_from_texture;
+    u32 invert_depth; ///< flip reversed depth for the fixed-permutation FSR 4 v07 model
 };
 
 /// One image the prep pass writes and the provider reads (or, for output, writes).
@@ -304,6 +306,10 @@ void ReplaceTemporalResolve(Rasterizer& rasterizer, std::span<const VideoCore::I
     }
 
     const auto now = std::chrono::steady_clock::now();
+    // The FSR 4 v07 bundle is compiled with DEPTH_INVERTED=0: the model wants standard
+    // (near=0) depth, so the prep pass flips The Order's reversed depth when FS4 is the
+    // provider. FSR 3.1 and DLAA keep their own depth-convention flags unchanged.
+    const bool fsr4 = resolve.provider && std::string_view(resolve.provider->key) == "fsr4";
     float frame_ms = std::chrono::duration<float, std::milli>(now - resolve.last_time).count();
     if (frame_ms <= 0.0f || frame_ms > 250.0f) {
         resolve.reset = true; // paused, loading or a skipped resolve: the history is stale
@@ -316,6 +322,7 @@ void ReplaceTemporalResolve(Rasterizer& rasterizer, std::span<const VideoCore::I
         info.format = image.info.pixel_format;
         return *image.FindView(info).image_view;
     };
+    const u64 completed_presentations = Presenter::CompletedPresentations();
     const vk::ImageView color_in = view(color), velocity_in = view(velocity),
                         exposure_in = view(exposure), depth_in = view(depth);
     const auto read = [&](VideoCore::Image& image, vk::ImageLayout layout) {
@@ -338,6 +345,7 @@ void ReplaceTemporalResolve(Rasterizer& rasterizer, std::span<const VideoCore::I
         .log2_exposure = Float(flatbuf, 60),
         .samples = color.info.num_samples,
         .exposure_from_texture = Float(flatbuf, 61) != 0.0f ? 1u : 0u,
+        .invert_depth = (fsr4 && resolve.depth_inverted) ? 1u : 0u,
     };
     std::array<vk::Image, 4> own;
     std::array<vk::ImageView, 4> own_views;
@@ -434,6 +442,7 @@ void ReplaceTemporalResolve(Rasterizer& rasterizer, std::span<const VideoCore::I
             .camera_far = 1000.0f, // finite: DLSS checks far > near even with infinite depth
             .vertical_fov = 0.7f,
             .reset_history = reset ? 1u : 0u,
+            .gpu_frames_completed = static_cast<uint64_t>(completed_presentations),
         };
         char error[256]{};
         if (resolve.provider->api.dispatch(resolve.context, &frame, error, sizeof(error)) !=

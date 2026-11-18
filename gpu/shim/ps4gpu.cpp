@@ -212,13 +212,9 @@ static void StartProfileWriter() {
 extern "C" int ps4gpu_init(const Ps4GpuConfig* config) {
     Ps4Settings::Load();
     // Record why the vendor upscalers cannot run, so the answer exists before any device query
-    // and a reader is not left with a silently false flag. Both providers ship in this tree; the
-    // Order temporal integration is the disabled baseline, and DLSS also needs the vendor runtime
-    // that is built separately and never committed.
-    Ps4Settings::ConfigureUpscalerSupport(
-        false, false,
-        "FSR 4 and FSR 4.1.1 providers ship in this tree, but the Order temporal integration is "
-        "disabled in this build and the device must expose the required FSR 4 support (#12).");
+    // and a reader is not left with a silently false flag. The FSR 4 providers check the device's
+    // real support in the presenter before the first frame (#12); DLSS also needs the vendor
+    // runtime that is built separately and never committed.
     Ps4Settings::ConfigureDlssSupport(
         false,
         "DLSS is not an inherited engine upscaler here: NVIDIA DLAA runs through order1886_dlss.dll in "

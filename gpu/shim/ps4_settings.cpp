@@ -247,6 +247,9 @@ void ConfigureUpscalerSupport(bool fsr4, bool fsr411, const char* problem) {
         std::printf("Upscaler: %s unsupported on this GPU; falling back to FSR 3.1 before the first frame\n",
                     UpscalerName(requested));
         v.upscaler = UpscalerFsr3;
+        // The launcher's choice drives provider selection; keeping the old request would make
+        // vk_order_resolve look for an FSR 4 provider the device cannot run.
+        v.requested_upscaler = UpscalerFsr3;
     }
 }
 
