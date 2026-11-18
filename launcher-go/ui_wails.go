@@ -26,7 +26,7 @@ func runUI(app *App) error {
 	return wails.Run(&options.App{
 		Title: "The Order: 1886", Width: 1280, Height: 820, MinWidth: 940, MinHeight: 620,
 		BackgroundColour: &options.RGBA{R: 12, G: 14, B: 15, A: 255},
-		AssetServer:      &assetserver.Options{Assets: frontend},
+		AssetServer:      &assetserver.Options{Assets: frontend, Handler: musicHandler{app}},
 		Bind:             []interface{}{app}, OnStartup: app.startup, OnBeforeClose: app.beforeClose,
 		OnShutdown: app.shutdown,
 		// Separate portable installations must not reuse a live WebView profile.
