@@ -373,6 +373,7 @@ def timing_profile(settings):
 # Diagnostic switches that change no game behaviour; everything else ORDER1886_* is
 # set from the player's settings only.
 DIAGNOSTIC_ENVIRONMENT = frozenset({'ORDER1886_DIAG_RESOURCE_SHARPS', 'ORDER1886_FATAL_DUMP',
+                                    'ORDER1886_TRACE', 'ORDER1886_PAD_FILE',
                                     'ORDER1886_GPU_LOG', 'ORDER1886_PERF_DIAG'})
 
 
@@ -554,7 +555,8 @@ OUTPUT_RESOLUTIONS = ('automatic', '1280x720', '1920x1080', '2560x1440', '3840x2
 GRAPHICS_DEFAULTS = {'output_resolution': 'automatic', 'sharpness': 0, 'anisotropy': 1, 'frames_queued': 1,
                      'overlay_frametime': True, 'overlay_gpu': False, 'overlay_cpu': False,
                      'overlay_memory': False, 'async_shaders': True, 'background_warmup': False,
-                     'parallel_warmup': False, 'speculative_readbacks': False}
+                     'parallel_warmup': False, 'speculative_readbacks': False,
+                     'sun_sync': 1, 'htile_expand': True}
 
 
 def graphics_settings(settings):
@@ -563,7 +565,7 @@ def graphics_settings(settings):
     if values['output_resolution'] not in OUTPUT_RESOLUTIONS:
         raise ValueError('Invalid output resolution')
     for key, allowed in (('sharpness', range(0, 101)), ('anisotropy', (1, 2, 4, 8, 16)),
-                         ('frames_queued', (0, 1, 2))):
+                         ('frames_queued', (0, 1, 2)), ('sun_sync', (0, 1, 2))):
         if type(values[key]) is not int or values[key] not in allowed:
             raise ValueError(f'Invalid {key.replace("_", " ")}: {values[key]!r}')
     for key, default in GRAPHICS_DEFAULTS.items():
@@ -606,6 +608,10 @@ def write_runtime_config(user, settings):
               **({'upscaler': upscaler} if upscaler else {}),
               'output_res': graphics['output_resolution'],
               'rcas': int(graphics['sharpness'] > 0), 'rcas_strength': graphics['sharpness'],
+              # The sun-shadow chain (theorder1886-port#26): staging readback sync (1) plus the
+              # draw-time HTILE expand (on) fix The Chase's every-other-frame sun flicker. The
+              # runtime also keeps these across its own in-game Save.
+              'sun_sync': graphics['sun_sync'], 'htile_expand': int(graphics['htile_expand']),
               # The runtime's "off" is 0; the launcher shows it as the game's own 1x.
               'anisotropy': 0 if graphics['anisotropy'] == 1 else graphics['anisotropy'],
               'frames_queued': graphics['frames_queued'],
@@ -773,8 +779,11 @@ def argument_parser():
                         help='Frames the GPU command thread may run ahead; 0 is unbounded')
     for name, default in (('overlay-frametime', 1), ('overlay-gpu', 0), ('overlay-cpu', 0),
                           ('overlay-memory', 0), ('async-shaders', 1), ('background-warmup', 0),
-                          ('parallel-warmup', 0), ('speculative-readbacks', 0)):
+                          ('parallel-warmup', 0), ('speculative-readbacks', 0), ('htile-expand', 1)):
         parser.add_argument('--' + name, type=int, choices=[0, 1], default=default)
+    parser.add_argument('--sun-sync', type=int, choices=[0, 1, 2], default=1,
+                        help='Sun shadow readback: 0 off, 1 staging (default, fixes The Chase '
+                             'flicker), 2 legacy synchronous drain')
     parser.add_argument('--mouse-look', type=int, choices=[0, 1], default=1)
     parser.add_argument('--mouse-sensitivity', type=int, default=100,
                         help='Mouse-to-stick sensitivity, 10 to 500 percent (default: 100)')

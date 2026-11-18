@@ -10,7 +10,8 @@
 namespace VideoCore {
 
 Sampler::Sampler(const Vulkan::Instance& instance, const AmdGpu::Sampler& sampler,
-                 const AmdGpu::BorderColorBuffer border_color_base, const bool is_depth, float extra_lod_bias) {
+                 const std::optional<std::array<float, 4>>& custom_border_color,
+                 const bool is_depth, float extra_lod_bias) {
     using namespace Vulkan;
     const bool game_anisotropy = AmdGpu::IsAnisoFilter(sampler.xy_mag_filter) ||
                                  AmdGpu::IsAnisoFilter(sampler.xy_min_filter);
@@ -34,15 +35,11 @@ Sampler::Sampler(const Vulkan::Instance& instance, const AmdGpu::Sampler& sample
     }
 
     const auto custom_color = [&]() -> std::optional<vk::SamplerCustomBorderColorCreateInfoEXT> {
-        if (border_color == vk::BorderColor::eFloatCustomEXT) {
-            const auto border_color_index = sampler.border_color_ptr.Value();
-            const auto border_color_buffer = border_color_base.Address<std::array<float, 4>*>();
-            const auto custom_border_color_array = border_color_buffer[border_color_index];
-
+        if (border_color == vk::BorderColor::eFloatCustomEXT && custom_border_color) {
             const vk::SamplerCustomBorderColorCreateInfoEXT ret{
                 .customBorderColor =
                     vk::ClearColorValue{
-                        .float32 = custom_border_color_array,
+                        .float32 = *custom_border_color,
                     },
                 .format = vk::Format::eR32G32B32A32Sfloat,
             };

@@ -7,10 +7,12 @@
 #include <unordered_map>
 #include <algorithm>
 #include <bit>
+#include <cstdio>
 #include <cstdlib>
 #include <magic_enum/magic_enum.hpp>
 #include "ps4_copy.h"
 #include "ps4_toggles.h"
+#include "ps4_settings.h"
 #include "common/alignment.h"
 #include "core/memory.h"
 #include "video_core/amdgpu/liverpool.h"
@@ -215,6 +217,15 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
         return;
     }
     const auto flush_request = [this, device_addr, size, is_write] {
+        static const bool trace = std::getenv("ORDER1886_TRACE") != nullptr;
+        const auto trace_at = [&](const char* where) {
+            if (trace) {
+                std::printf("TRACE fault %#llx w=%d %s\n",
+                            static_cast<unsigned long long>(device_addr), int(is_write), where);
+                std::fflush(stdout);
+            }
+        };
+        trace_at("enter");
         const u32 first_block = device_addr >> block_shift;
         const u32 last_block = (device_addr + size - 1) >> block_shift;
         const auto* arena = GetArena(first_block, last_block);
@@ -227,6 +238,37 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
             std::max<VAddr>(Common::AlignDown(device_addr, WindowSize), arena->cpu_addr);
         const VAddr window_end = std::min<VAddr>(
             std::max<VAddr>(window_start + WindowSize, device_addr + size), arena_end);
+        // Sun-sync staging: the sun's EVSM ranges are GPU-written and CPU-read; a fault on a
+        // registered page takes the newest GPU-completed copy of the whole batch. This serves
+        // read faults without the synchronous download below - that drain is what handed the
+        // shadow pass half-updated depth and made the sun flicker every other frame (v0.2.9,
+        // and The Chase in v0.2.16). A CPU *write* never needs GPU bytes: with no completed
+        // batch yet (level init) the write takes the stale backing and returns. Falling into
+        // the drain there deadlocked the loader - the GPU thread runs this lambda under the
+        // Liverpool lock, and scheduler.Finish() waits on a tick that DrawRec cannot close
+        // until the Liverpool lock is free (chase15 trace: "sun-nobatch" -> "dl finish" ->
+        // silence). Only read faults with no batch yet still take the drain; by the time the
+        // game samples the EVSMs a batch exists, so it is rare, and it is the correct wait.
+        if (const u32 sun_sync = Ps4Settings::Get().sun_sync; sun_sync >= 1 &&
+            SynchronizedPage(device_addr, size)) {
+            const bool delivered = sun_sync == 1 && DeliverSunCopies();
+            trace_at(delivered ? "sun-delivered" : "sun-nobatch");
+            if (delivered || is_write) {
+                if (is_write) {
+                    // The batch (or the stale backing) stands in for the download the drain
+                    // would have done, so the GPU-dirty bits must drop the same way
+                    // DownloadMemory drops them - otherwise a later windowed download copies
+                    // the arena over these bytes before the CPU data is uploaded.
+                    {
+                        std::scoped_lock lock{gpu_ranges_mutex};
+                        gpu_modified_ranges.Subtract(device_addr, size);
+                    }
+                    memory_tracker->UnmarkRegionAsGpuModified(device_addr, size);
+                    memory_tracker->MarkRegionAsCpuModified(device_addr, size);
+                }
+                return;
+            }
+        }
         if (is_write && deferred_readbacks_enabled &&
             !Ps4Toggle::Disabled(Ps4Toggle::DeferredReadbacks)) {
             bool on_gpu;
@@ -242,8 +284,11 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
         }
         // GPU data of earlier deferred readbacks in this window must reach guest memory
         // before this readback completes.
+        trace_at("pre-wait");
         WaitDeferredReadbacks(window_start, window_end - window_start);
+        trace_at("pre-download");
         DownloadMemory(arena, window_start, window_end - window_start);
+        trace_at("post-download");
         if (is_write) {
             memory_tracker->MarkRegionAsCpuModified(device_addr, size);
         }
@@ -285,7 +330,16 @@ void BufferCache::DownloadMemory(const Buffer* arena, VAddr device_addr, u64 siz
         copy.dstOffset += download.offset;
     }
     runtime.CopyBuffer(arena, download.buffer, copies);
+    if (std::getenv("ORDER1886_TRACE")) {
+        std::printf("TRACE dl finish copies=%zu total=%llu\n", copies.size(),
+                    static_cast<unsigned long long>(total_size_bytes));
+        std::fflush(stdout);
+    }
     scheduler.Finish();
+    if (std::getenv("ORDER1886_TRACE")) {
+        std::printf("TRACE dl finish-done\n");
+        std::fflush(stdout);
+    }
 
     download.buffer->Invalidate(download.offset, download.size);
     for (const auto& copy : copies) {
@@ -297,11 +351,11 @@ void BufferCache::DownloadMemory(const Buffer* arena, VAddr device_addr, u64 siz
 }
 
 void BufferCache::KeepPageSynchronized(VAddr device_addr, u64 size, u64 pgm_hash) {
-    static const bool enabled = [] {
-        const char* env = std::getenv("ORDER1886_SUN_SYNC");
-        return !(env && env[0] == '0');
-    }();
-    if (!enabled || device_addr == 0 || size == 0) {
+    // Mode from runtime.ini / ORDER1886_SUN_SYNC: 0 off, 1 staging (default), 2 legacy drain.
+    if (Ps4Settings::Get().sun_sync == 0) {
+        return;
+    }
+    if (device_addr == 0 || size == 0) {
         return;
     }
     std::scoped_lock lock{synchronized_mutex};
@@ -330,6 +384,91 @@ bool BufferCache::SynchronizedPage(VAddr addr, u64 size) {
         std::printf("Readback sync: CPU write at %#llx, not deferred\n",
                     static_cast<unsigned long long>(addr));
         std::fflush(stdout);
+    }
+    return true;
+}
+
+// Sun-sync staging (mateussmeneses/theorder1886-port 7cf7979, theorder1886-port#26).
+// The drain-on-fault design (above) is what made the sun flicker in v0.2.9: the GPU stall
+// handed the shadow pass a half-updated depth range. Instead, snapshot the registered
+// ranges at the sun EVSM copy dispatch into host-visible staging; a CPU write fault then
+// takes the newest batch the GPU has already completed - fresh data, no stall.
+void BufferCache::RecordSunCopies() {
+    if (Ps4Settings::Get().sun_sync != 1) {
+        return; // only the staging mode batches; drain mode keeps the synchronous path
+    }
+    std::vector<std::pair<VAddr, VAddr>> ranges;
+    {
+        std::scoped_lock lock{synchronized_mutex};
+        if (!synchronized_ranges.Intersects(0, ~0ULL)) {
+            return;
+        }
+        synchronized_ranges.ForEach([&](VAddr start, VAddr end) { ranges.emplace_back(start, end); });
+    }
+    // Recording happens outside the mutex: the scheduler and staging pool have their own
+    // locks, and DeliverSunCopies (guest fault thread) must never queue behind a record.
+    u64 total = 0;
+    for (const auto& [start, end] : ranges) {
+        total += Common::AlignUp(end - start, 16);
+    }
+    // A bounded queue: while the GPU is stalled, a freed pool entry cannot be reused until its
+    // tick retires, so recording every dispatch would allocate without limit (2 MiB per batch -
+    // the chase12 hang: 1156 dedicated buffers, vkAllocateMemory stuck in reclaim). When the
+    // queue is full, skip the snapshot; CPU faults fall back to the drain path until it frees.
+    {
+        std::scoped_lock lock{synchronized_mutex};
+        if (sun_batches.size() >= 4) {
+            return;
+        }
+    }
+    if (std::getenv("ORDER1886_TRACE")) {
+        std::printf("TRACE record enter total=%llu\n", static_cast<unsigned long long>(total));
+        std::fflush(stdout);
+    }
+    SunBatch batch{};
+    batch.staging = staging_pool.Request(total, VideoCore::MemoryType::HostCached, 0, true);
+    u64 offset = 0;
+    for (const auto& [start, end] : ranges) {
+        const u64 size = end - start;
+        const auto* arena = GetArena(start >> block_shift, (end - 1) >> block_shift);
+        if (arena) {
+            runtime.CopyBuffer(arena, batch.staging.buffer,
+                               std::array{vk::BufferCopy{start - arena->cpu_addr,
+                                                         batch.staging.offset + offset, size}});
+            batch.items.push_back({start, size, offset});
+        }
+        offset += Common::AlignUp(size, 16);
+    }
+    batch.tick = scheduler.CurrentTick();
+    std::scoped_lock lock{synchronized_mutex};
+    sun_batches.push_back(std::move(batch));
+    // Completed batches older than the newest completed one are no longer needed.
+    while (sun_batches.size() > 1 && scheduler.IsFree(sun_batches[1].tick)) {
+        staging_pool.FreeDeferred(sun_batches.front().staging);
+        sun_batches.pop_front();
+    }
+    // A stalled GPU must not grow the queue without limit.
+    while (sun_batches.size() > 4) {
+        staging_pool.FreeDeferred(sun_batches.front().staging);
+        sun_batches.pop_front();
+    }
+}
+
+bool BufferCache::DeliverSunCopies() {
+    std::scoped_lock lock{synchronized_mutex};
+    const SunBatch* newest = nullptr;
+    for (const auto& batch : sun_batches) {
+        if (scheduler.IsFree(batch.tick)) {
+            newest = &batch;
+        }
+    }
+    if (!newest) {
+        return false;
+    }
+    newest->staging.buffer->Invalidate(newest->staging.offset, newest->staging.size);
+    for (const auto& item : newest->items) {
+        memory->TryWriteBacking(reinterpret_cast<void*>(item.addr),
+                                newest->staging.mapped + item.staging_offset, item.size);
     }
     return true;
 }

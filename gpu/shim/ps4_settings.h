@@ -87,6 +87,13 @@ struct Values {
     // FSR 4 checks (menu): the provider's auto exposure, the jitter sign it is given.
     std::atomic<bool> fsr4_auto_exposure{false};
     std::atomic<bool> fsr4_invert_jitter{false};
+    /// Sun shadow readback mode (theorder1886-port#26): 0 off, 1 staging (default), 2 legacy
+    /// drain. Staging copies the sun ranges to host staging at the EVSM copy dispatch and
+    /// serves CPU write faults from the newest completed batch - no mid-frame queue drain,
+    /// which is what made the sun's shadows flicker every other frame in The Chase.
+    std::atomic<int> sun_sync{1};
+    /// Draw-time HTILE expand for depth-writing passes (the decisive half of #26 on RDNA4).
+    std::atomic<bool> htile_expand{true};
     std::atomic<int> active_render_width{0}, active_render_height{0};
     std::atomic<int> output_res{OutputDefault}; ///< index into OutputWidths, or OutputAutomatic
     /// Live resolution and preset changes (run.sh): 0 off by default (startup patch, fastest

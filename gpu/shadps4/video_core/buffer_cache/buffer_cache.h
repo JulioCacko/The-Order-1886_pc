@@ -106,6 +106,12 @@ public:
     /// ORDER1886_SUN_SYNC=0 turns it off.
     void KeepPageSynchronized(VAddr device_addr, u64 size, u64 pgm_hash);
     bool SynchronizedPage(VAddr addr, u64 size);
+    /// Sun-sync staging (mateussmeneses 7cf7979): copy the registered ranges to host-visible
+    /// staging at the sun EVSM dispatch; a CPU read fault then takes the newest completed
+    /// batch without a queue drain. RecordSunCopies records into the current command stream.
+    void RecordSunCopies();
+    /// Returns true when a completed batch was written into guest backing memory.
+    bool DeliverSunCopies();
 
     /// ORDER1886_READBACK_LOG=1: which dispatch wrote the small buffers the CPU reads back.
     static bool ReadbackLog();
@@ -200,6 +206,10 @@ private:
     std::mutex gpu_ranges_mutex;
     std::mutex synchronized_mutex;
     RangeSet synchronized_ranges; ///< see KeepPageSynchronized (guarded by synchronized_mutex)
+    /// Sun-sync staging batches (see RecordSunCopies), oldest first, guarded by synchronized_mutex.
+    struct SunItem { VAddr addr; u64 size; u64 staging_offset; };
+    struct SunBatch { Vulkan::StagingBufferRef staging; std::vector<SunItem> items; u64 tick; };
+    std::deque<SunBatch> sun_batches;
 
     /// Deferred readbacks (from TOport 32efe96, GPL-2.0). A guest write beside (not on)
     /// GPU-written bytes of a page goes on at once; those bytes are copied to host memory in the

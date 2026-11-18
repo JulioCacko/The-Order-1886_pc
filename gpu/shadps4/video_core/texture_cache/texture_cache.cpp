@@ -1330,13 +1330,28 @@ void TextureCache::RefreshImage(Image& image) {
 vk::Sampler TextureCache::GetSampler(const AmdGpu::Sampler& sampler,
                                      AmdGpu::BorderColorBuffer border_color_base,
                                      const bool is_depth, float extra_lod_bias) {
+    // The S# holds an index into a mutable guest table. Snapshot the effective custom color
+    // once so the cache key and the Vulkan sampler always describe the same RGBA value
+    // (mateussmeneses/theorder1886-port e1ceeabe8): reusing an S# with a different table entry
+    // used to keep the previous color - visible on shadow-map edge clamps.
+    std::optional<std::array<float, 4>> custom_border_color;
+    if (sampler.border_color_type.Value() == AmdGpu::BorderColor::Custom &&
+        instance.IsCustomBorderColorSupported()) {
+        const auto colors = border_color_base.Address<const std::array<float, 4>*>();
+        custom_border_color = colors[sampler.border_color_ptr.Value()];
+    }
     // Compare and plain uses of one S# need separate samplers; so do extra LOD biases.
-    const u64 hash = HashCombine(HashCombine(XXH3_64bits(&sampler, sizeof(sampler)), is_depth),
-                                 u64(std::bit_cast<u32>(extra_lod_bias)));
+    u64 hash = HashCombine(HashCombine(XXH3_64bits(&sampler, sizeof(sampler)), is_depth),
+                           u64(std::bit_cast<u32>(extra_lod_bias)));
+    if (custom_border_color) {
+        hash = HashCombine(hash, XXH3_64bits(custom_border_color->data(),
+                                             sizeof(*custom_border_color)));
+    }
 
     std::scoped_lock lock{samplers_mutex};
-    const auto [it, new_sampler] = samplers.try_emplace(hash, instance, sampler, border_color_base,
-                                                        is_depth, extra_lod_bias);
+    const auto [it, new_sampler] = samplers.try_emplace(hash, instance, sampler,
+                                                        custom_border_color, is_depth,
+                                                        extra_lod_bias);
     if (new_sampler) {
         samplers.at(hash).lru_id = sampler_lru_cache.Insert(hash, gc_tick);
     } else {

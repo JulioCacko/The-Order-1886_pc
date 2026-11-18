@@ -122,6 +122,19 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.fsr4_auto_exposure = i != 0;
     } else if (key == "fsr4_invert_jitter") {
         v.fsr4_invert_jitter = i != 0;
+    } else if (key == "sun_sync") {
+        // Words or numbers: off=0, staging=1 (default), drain=2 (the v0.2.9 synchronous path).
+        if (value == "off") {
+            v.sun_sync = 0;
+        } else if (value == "drain") {
+            v.sun_sync = 2;
+        } else if (value == "staging") {
+            v.sun_sync = 1;
+        } else {
+            v.sun_sync = std::clamp(i, 0, 2);
+        }
+    } else if (key == "htile_expand") {
+        v.htile_expand = i != 0;
     } else if (key == "live_resolution") {
         v.live_resolution = value == "auto" ? -1 : std::clamp(i, 0, 1);
     } else if (key == "output_res") {
@@ -174,6 +187,7 @@ void Load() {
         {"ORDER1886_STALE_READBACK", "stale_readback"},     {"ORDER1886_FSR1", "fsr1"},
         {"ORDER1886_RCAS", "rcas"},                        {"ORDER1886_FRAMES_AHEAD", "frames_queued"},
         {"ORDER1886_ANISOTROPY", "anisotropy"},            {"ORDER1886_VIBRATION", "vibration"},
+        {"ORDER1886_SUN_SYNC", "sun_sync"},                {"ORDER1886_HTILE_DRAW_EXPAND", "htile_expand"},
     };
     for (const auto& [env, key] : env_keys) {
         if (const char* value = std::getenv(env); value && value[0]) {
@@ -199,12 +213,13 @@ void Load() {
     v.startup_anisotropy = v.anisotropy;
     const int out = v.output_res;
     std::printf("Settings: output %s, sharpening %s (%d), anisotropy %d, async shaders %d, "
-                "frames queued %d, overlay items 0x%x\n",
+                "frames queued %d, overlay items 0x%x, sun sync %d, htile expand %d\n",
                 out == OutputAutomatic ? "window"
                                        : (std::to_string(OutputWidths[out]) + "x" +
                                           std::to_string(OutputHeights[out])).c_str(),
                 v.rcas ? "on" : "off", v.rcas_strength.load(), v.anisotropy.load(),
-                int(v.async_shaders.load()), v.frames_queued.load(), v.overlay_items.load());
+                int(v.async_shaders.load()), v.frames_queued.load(), v.overlay_items.load(),
+                v.sun_sync.load(), int(v.htile_expand.load()));
 }
 
 bool GraphicsNeedRestart() {
@@ -281,6 +296,10 @@ void Save() {
         v.overlay_scale.load(), v.overlay_corner.load(), v.overlay_opacity.load(), v.overlay_layout.load());
     std::fprintf(file, "mouse_look=%d\nmouse_sensitivity=%d\nmouse_invert_y=%d\n",
         int(v.mouse_look.load()), v.mouse_sensitivity.load(), int(v.mouse_invert_y.load()));
+    // The sun-shadow chain (theorder1886-port#26): an in-game save must keep the launcher's
+    // readback mode and expand switch, or the next launch silently reverts the flicker fix.
+    std::fprintf(file, "sun_sync=%d\nhtile_expand=%d\n",
+        v.sun_sync.load(), int(v.htile_expand.load()));
     // The launcher's FSR 3.1 choice arrives as this key; dropping it on an in-game save would
     // switch the player back to the game's own resolve at the next launch.
     if (v.requested_upscaler != UpscalerOff) {

@@ -17,6 +17,7 @@
 #include "core/debug_state.h"
 #include "core/emulator_settings.h"
 #include "core/memory.h"
+#include "ps4_settings.h"
 #include "shader_recompiler/runtime_info.h"
 #include "video_core/amdgpu/liverpool.h"
 #include "video_core/amdgpu/pm4_cmds.h"
@@ -1417,6 +1418,12 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
 
     buffer_cache.WatchWrittenBuffers(ReadbackWatchedShader(cs.pgm_hash));
     buffer_cache.SetCurrentDispatch(cs.pgm_hash);
+    // Sun EVSM copy dispatch (mateussmeneses 7cf7979, theorder1886-port#26): snapshot the
+    // registered sun ranges into host staging at this point, so a CPU read fault can be
+    // served with the newest completed copy without draining the queue (v0.2.10 flicker).
+    if (cs.pgm_hash == 0x7b1b18c9) {
+        buffer_cache.RecordSunCopies();
+    }
     const bool bound = BindResources(pipeline);
     buffer_cache.WatchWrittenBuffers(false);
     buffer_cache.SetCurrentDispatch(0);
@@ -3234,12 +3241,8 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
         // cascade maps' HTILE Zmask directly, and on RDNA4 a cleared mask makes the moment
         // texture constant, so the sun's shadows and wet-surface specular vanish. Fill the
         // mask with the uncompressed value once per surface, again whenever the pass clears
-        // depth. ORDER1886_HTILE_DRAW_EXPAND=0 disables it.
-        static const bool htile_draw_expand = [] {
-            const char* env = std::getenv("ORDER1886_HTILE_DRAW_EXPAND");
-            return !env || env[0] != '0';
-        }();
-        if (htile_draw_expand && htile_address && regs.depth_control.depth_enable &&
+        // depth. Graphics → HTILE draw expand (ORDER1886_HTILE_DRAW_EXPAND=0) disables it.
+        if (Ps4Settings::Get().htile_expand && htile_address && regs.depth_control.depth_enable &&
             regs.depth_control.depth_write_enable &&
             (is_depth_clear || !uncompressed_htiles.contains(htile_address))) {
             const u64 size = memory->ClampRangeSize(
