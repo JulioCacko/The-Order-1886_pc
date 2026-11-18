@@ -4,6 +4,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include <atomic>
 #include <map>
@@ -488,6 +489,9 @@ private:
     } texture_task;
     /// Draws whose textures the helper bound completely, partly or not at all (ORDER1886_FRAME_STATS).
     u64 helper_full = 0, helper_partial = 0, helper_serial = 0;
+    /// HTILE ranges already filled with the uncompressed mask this session
+    /// (see htile_expand.h); re-marked when the pass clears depth.
+    std::unordered_set<VAddr> uncompressed_htiles;
     /// The memoized cache entry of each image binding (FindImage memo taken), else null.
     boost::container::static_vector<ImageDescCacheEntry*, Shader::NUM_IMAGES> image_binding_entries;
     bool fault_process_pending{};

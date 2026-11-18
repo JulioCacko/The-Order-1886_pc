@@ -29,6 +29,7 @@
 #include "video_core/renderer_vulkan/order1886_image_mode.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
+#include "video_core/renderer_vulkan/htile_expand.h"
 #include "video_core/renderer_vulkan/vk_gpu_profiler.h"
 #include "ps4_threads.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
@@ -3228,6 +3229,35 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
             }
         }
         ASSERT(desc.view_info.range.extent.levels == 1 && !image.binding.needs_rebind);
+        // Draw-time HTILE expand (mateussmeneses/theorder1886-port 7cf7979; the RDNA4 retest on
+        // theorder1886-port#26 found it decisive): the EVSM sun conversion compute reads the
+        // cascade maps' HTILE Zmask directly, and on RDNA4 a cleared mask makes the moment
+        // texture constant, so the sun's shadows and wet-surface specular vanish. Fill the
+        // mask with the uncompressed value once per surface, again whenever the pass clears
+        // depth. ORDER1886_HTILE_DRAW_EXPAND=0 disables it.
+        static const bool htile_draw_expand = [] {
+            const char* env = std::getenv("ORDER1886_HTILE_DRAW_EXPAND");
+            return !env || env[0] != '0';
+        }();
+        if (htile_draw_expand && htile_address && regs.depth_control.depth_enable &&
+            regs.depth_control.depth_write_enable &&
+            (is_depth_clear || !uncompressed_htiles.contains(htile_address))) {
+            const u64 size = memory->ClampRangeSize(
+                htile_address, static_cast<u32>(VideoCore::HtileUncompressedSize(
+                                   image.info.size.width, image.info.size.height,
+                                   image.info.resources.layers)));
+            if (size) {
+                static constexpr u32 ZmaskUncompressed = 0xf;
+                const auto [buffer, offset] =
+                    buffer_cache.ObtainBuffer(htile_address, static_cast<u32>(size), true);
+                runtime.FillBuffer(buffer, offset, size, ZmaskUncompressed);
+                if (uncompressed_htiles.insert(htile_address).second) {
+                    std::printf("HTILE: %#llx marked uncompressed, %llu bytes\n",
+                                static_cast<unsigned long long>(htile_address),
+                                static_cast<unsigned long long>(size));
+                }
+            }
+        }
 
         const bool has_stencil = image.info.props.has_stencil;
         // Stencil writes can be enabled while depth writes are off.

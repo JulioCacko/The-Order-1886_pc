@@ -128,7 +128,7 @@ echo "Built $PWD/out/order1886-runtime"
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -Igpu/shadps4 tools/gpu_capabilities.c "${libraries[@]}" -o out/ps4-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
-    cmake --build out/gpu --target order-shader-math-test order-spirv-test pipeline-binary-cache-test amd-paths-test mouse-look-test selective-readbacks-test htile-metadata-test image-rejection-test
+    cmake --build out/gpu --target order-shader-math-test order-spirv-test pipeline-binary-cache-test amd-paths-test mouse-look-test selective-readbacks-test htile-metadata-test htile-expand-test image-rejection-test
     out/gpu/order-shader-math-test
     out/gpu/order-spirv-test
     out/gpu/pipeline-binary-cache-test
@@ -136,6 +136,7 @@ if [[ ${1:-} == --test ]]; then
     out/gpu/mouse-look-test
     for mode in 0 1 2 3 999; do ORDER1886_READBACKS=$mode out/gpu/selective-readbacks-test; done
     out/gpu/htile-metadata-test
+    out/gpu/htile-expand-test
     out/gpu/image-rejection-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test
