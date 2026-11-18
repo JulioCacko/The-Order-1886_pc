@@ -29,6 +29,29 @@ class InvalidConsole:
         pass
 
 
+def prepared_image(path):
+    """A derived PS4BOOT2 image like prepare.prepare leaves, for tests that mock the preparer.
+
+    Preparation always runs the system-language recipe and the UI fix on it, so the image
+    carries the stock jump-table bytes the recipe expects."""
+    import struct
+    size = 0xb00000
+    data = bytearray(56 + 24 + 128 + 32 + size)
+    struct.pack_into('<8s6Q', data, 0, b'PS4BOOT2', size, 0xa0, 1, 1, 1, 1)
+    Path(path).write_bytes(bytes(data))
+    with_language_table(path)
+
+
+def with_language_table(boot):
+    """Put the stock system-language jump-table bytes into an existing derived image."""
+    import order1886_patches as patches
+    edit, = patches.LANGUAGE['edits']
+    data = bytearray(Path(boot).read_bytes())
+    at = 56 + 24 + 128 + 32 + edit['offset']
+    data[at:at + len(edit['expected'])] = edit['expected']
+    Path(boot).write_bytes(bytes(data))
+
+
 class OrderBackendTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -86,7 +109,8 @@ class OrderBackendTests(unittest.TestCase):
         out = self.user / 'prepared'
         def link(_game, target):
             (target / 'boot-linked.bin').write_bytes(b'linked image')
-        with patch.object(order1886.prepare, 'prepare') as prepare, \
+        with patch.object(order1886.prepare, 'prepare',
+                          side_effect=lambda _game, target: prepared_image(target / 'boot.bin')) as prepare, \
                 patch.object(order1886.link_modules, 'link', side_effect=link) as linker:
             order1886.prepare_game(self.game, out)
             order1886.prepare_game(self.game, out)
@@ -186,9 +210,9 @@ class OrderBackendTests(unittest.TestCase):
             return {'exit_code': 0, 'runtime_exit_code': 0, 'timed_out': False,
                     'stop_requested': False, 'forced_stop': False, 'elapsed_seconds': 0}
 
-        # Brazilian Portuguese (17) exists only in CUSA00785; other editions get Portugal's (7).
+        # Every edition keeps the language it was asked for: the prepared image removes the SKU filter.
         for title_id, choice, expected in (('CUSA00076', None, 1), ('CUSA00076', 8, 8), ('CUSA00076', 0, 0),
-                                           ('CUSA00076', 17, 7), ('CUSA00785', 17, 17)):
+                                           ('CUSA00076', 17, 17), ('CUSA00785', 17, 17)):
             self.metadata['TITLE_ID'] = title_id
             with self.subTest(title_id=title_id, choice=choice), \
                     patch.object(order1886, 'find_runtime', return_value=runtime), \
@@ -246,6 +270,7 @@ class OrderBackendTests(unittest.TestCase):
 
         def prepare(_game, target):
             write_boot_fixture(target / 'boot.bin')
+            with_language_table(target / 'boot.bin')
 
         def link(_game, target):
             shutil.copyfile(target / 'boot.bin', target / 'boot-linked.bin')

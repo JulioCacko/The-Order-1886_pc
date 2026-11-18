@@ -64,7 +64,7 @@ else stays English until a person who speaks the language owns the wording.
 - **Ambiguous one-word labels** (`Framing`, `Native`). Both could be read as composition
   or as a resolution claim, and a wrong guess is worse than English.
 
-75 of the 304 UI keys are translated. The remaining 229 are English in all twelve
+78 of the 322 UI keys are translated. The remaining 244 are English in all twelve
 non-English languages on purpose, and their reasons are the classes above.
 
 ## The translated keys
@@ -73,8 +73,8 @@ non-English languages on purpose, and their reasons are the classes above.
 `Checking for updates…`, `Choose your extracted game folder`, `Chromatic aberration`,
 `Completed`, `Configure graphics`, `Controller buttons`, `Controller vibration`,
 `Default`, `Depth of field`, `Download update`, `Downloading`, `Film grain`,
-`Game & Content`, `Game frame rate`, `Game installation`, `Install and restart`,
-`Install and restart?`, `Installation tools`, `Invert vertical camera`,
+`Follow launcher language`, `Game & Content`, `Game frame rate`, `Game installation`, `Game language`, `Install and restart`,
+`In-game menu (F1)`, `Install and restart?`, `Installation tools`, `Invert vertical camera`,
 `Keyboard buttons`, `Launch configuration`, `Main navigation`, `Manage game and saves`,
 `Motion blur`, `Mouse camera`, `Mouse sensitivity`, `No session yet`,
 `No update checked yet`, `Off`, `On`, `Open installation`, `Open logs`,

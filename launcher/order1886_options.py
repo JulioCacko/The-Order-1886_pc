@@ -24,6 +24,35 @@ RENDERER = "This setting is not exposed by the validated Order launch profile ye
 PATCH = "No hash-verified recipe for this executable is available yet."
 FG = "Frame-generation presentation, synchronization and latency qualification are pending."
 FIELDS = []
+# Game language: value, label, PS4 system-language ID. The executable maps the system language
+# through its table at 0xf13370 (21 languages); the prepared image drops the SKU filter
+# (scripts/order1886_patches.py, LANGUAGE) so every entry reaches the game, which still needs that
+# language's assets in the dump. Borrowed from DivinusX/a-port-of-the-order-1886-thats-actually-alive
+# (v0.2.20, GPL-2.0-or-later).
+GAME_LANGUAGES = (
+    ("en", "English (US)", 1),
+    ("en-GB", "English (UK)", 18),
+    ("es", "Español (España)", 3),
+    ("es-419", "Español (Latinoamérica)", 20),
+    ("fr", "Français", 2),
+    ("it", "Italiano", 5),
+    ("de", "Deutsch", 4),
+    ("nl", "Nederlands", 6),
+    ("pt-PT", "Português (Portugal)", 7),
+    ("pt-BR", "Português (Brasil)", 17),
+    ("ru", "Русский", 8),
+    ("pl", "Polski", 16),
+    ("sv", "Svenska", 13),
+    ("no", "Norsk", 15),
+    ("fi", "Suomi", 12),
+    ("da", "Dansk", 14),
+    ("tr", "Türkçe", 19),
+    ("ja", "日本語", 0),
+    ("ko", "한국어", 9),
+    ("zh-Hans", "简体中文", 11),
+    ("zh-Hant", "繁體中文", 10),
+)
+GAME_LANGUAGE_IDS = {value: ident for value, _, ident in GAME_LANGUAGES}
 
 
 def field(key, label, page, kind, default, description, choices=None, reason="", **limits):
@@ -39,6 +68,9 @@ def field(key, label, page, kind, default, description, choices=None, reason="",
 
 
 field("game_dir", "Game folder", "game", "directory", "", "Select your extracted game folder (any edition: CUSA00076, CUSA00035, CUSA00070, CUSA00100, CUSA00670 or CUSA00785). Original files remain unchanged.")
+field("game_language", "Game language", "game", "select", "follow",
+      "Language of the game's text and voices, applied on the next launch. Follow uses the launcher language when the game supports it. The game needs that language's assets in your dump; otherwise it shows English.",
+      [("follow", "Follow launcher language", "")] + [(value, label, "") for value, label, _ in GAME_LANGUAGES])
 field("runtime", "Runtime executable", "system", "file", "", "Leave empty to use the installation's verified Order runtime.")
 field("trophy_key", "Trophy key", "achievements", "secret", "",
       "Optional: your own console's trophy key, 32 hexadecimal digits, as shadPS4 uses it. With it the launcher decrypts trophy names and descriptions from your game's own files; hidden trophies stay hidden until earned. The key stays in this installation's settings and is never sent anywhere.")
@@ -96,7 +128,10 @@ field("frame_rate", "Game frame rate", "performance", "select", 30,
       "30 FPS is native. 60, 90 and Unlocked are experimental: the game clock follows measured time, but Chapter 6/9 QTE checks remain required, and gameplay timing above 60 FPS is still unmeasured: at 60 FPS the tested courtyard runs at about 53 FPS on an RTX 3070. Unlocked runs as fast as the presentation frame cap allows; on a 60 Hz display, VSync holds every rate at 60.",
       [(30, "30 FPS — native", ""), (60, "60 FPS — experimental", ""),
        (90, "90 FPS — experimental", ""), (0, "Unlocked — experimental", "")])
-field("in_game_menu", "In-game settings menu", "performance", "boolean", False, "Off by default. The menu, its tabs and the settings it changes while the game runs are unqualified for this title: input capture, focus and stability have not been verified in gameplay, so enable it only to help test it. Insert or R3+R2 toggles it when enabled.")
+# A new key, on by default: the launcher saves every key, so most players already have
+# in_game_menu=False stored and a new default on the old key would never apply.
+# order1886_common maps game_menu onto the in_game_menu launch flag.
+field("game_menu", "In-game menu (F1)", "performance", "boolean", True, "Press F1 in game (or R3+L2 on a controller) to change the frame rate, window mode, V-Sync, output resolution and FPS counter while you play. Changes apply immediately and last for that session.")
 field("fps_cap", "Presentation frame cap", "performance", "number", 120, "Limits how often the runtime presents (#14). At 30, 60 or 90 FPS the game frame rate still wins while it is lower, so the default of 120 never changes their pacing and lowering it throttles presentation only. With Unlocked this cap is the frame rate. The game clock follows measured time either way, so this is not a simulation-speed control.", minimum=30, maximum=240)
 field("frame_generation", "Frame generation", "performance", "select", "off", "Generated frames do not increase simulation rate. All three providers remain in the gold plan.",
       [("off", "Off", ""), ("fsr", "AMD FSR Frame Generation", FG),
@@ -134,8 +169,8 @@ field("mouse_look", "Mouse camera", "controls", "boolean", True, "Map mouse move
 field("mouse_sensitivity", "Mouse sensitivity", "controls", "number", 100, "Camera sensitivity in percent.", minimum=10, maximum=500)
 field("mouse_invert_y", "Invert vertical camera", "controls", "boolean", False, "Invert vertical mouse movement.")
 field("button_prompts", "Button prompts", "controls", "select", "playstation",
-      "The buttons the game shows in prompts, menus and quick-time events. Xbox and Keyboard and mouse are built from your own game files on the first launch with them (up to a minute) and leave the original files unchanged. Keyboard and mouse also uses its own key layout, listed in docs/order1886-button-prompts.md, in place of custom keyboard buttons.",
-      [("playstation", "PlayStation (original)", ""), ("xbox", "Xbox", ""), ("keyboard", "Keyboard and mouse", "")])
+      "The buttons the game shows in prompts, menus and quick-time events. Keyboard and mouse is built from your own game files on the first launch with it (up to a minute) and leaves the original files unchanged. Its keycaps show your keyboard buttons from the Controls page and follow a change on the next launch.",
+      [("playstation", "PlayStation (original)", ""), ("keyboard", "Keyboard and mouse", "")])
 field("vibration", "Controller vibration", "controls", "boolean", True, "Independent vibration configuration is pending runtime validation.", reason=RENDERER)
 for kind, label in (("keyboard", "Keyboard buttons"), ("controller", "Controller buttons")):
     field(kind + "_bindings", label, "controls", "bindings", {},
@@ -145,10 +180,6 @@ for kind, label in (("keyboard", "Keyboard buttons"), ("controller", "Controller
 field("input_remapping", "Stick axes and analog trigger remapping", "controls", "text", "", "Keyboard stick axes, physical analog triggers and real touch input are not independently remappable yet (#4).", reason=RENDERER)
 field("ui_language", "Launcher language", "system", "select", "en", "Apply the launcher catalog immediately. Game language changes take effect on its next launch when assets are installed.",
       [(key, title, "") for key, title in LANGUAGES.items()])
-field("game_text_language", "Game text language", "game", "select", "follow", "Independent text selection remains tracked in #21.",
-      [("follow", "Follow launcher language", "")] + [(key, title, PATCH) for key, title in LANGUAGES.items()], reason=PATCH)
-field("game_voice_language", "Game voice language", "game", "select", "follow", "Independent voice selection requires installed language assets (#21).",
-      [("follow", "Follow launcher language", "")] + [(key, title, PATCH) for key, title in LANGUAGES.items()], reason=PATCH)
 field("selected_patches", "Catalogued patches", "game", "patches", [], "Recipes that edit the prepared image are applied on the next preparation, and each one must match this build`s title id, APP_VER, VERSION, image hashes and expected bytes or the preparation refuses it. The 60 FPS and 16:9 recipes are configured by the game frame rate and framing settings instead, so they are not selectable here.")
 field("mods_dir", "Mods folder", "game", "directory", "", "Mount loose-file overlays without changing original game files.")
 field("mods_enabled", "Enable mods", "game", "boolean", False, "Only enabled folders in the saved order are mounted.")

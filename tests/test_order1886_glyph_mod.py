@@ -72,7 +72,7 @@ class GlyphModTests(unittest.TestCase):
     def test_keyboard_labels_follow_bindings(self):
         labels = glyphs.labels_for('keyboard', {'cross': 'Q', 'circle': 'Left Shift'})
         self.assertEqual((labels['cross'], labels['circle'], labels['r2']), ('Q', 'SHIFT', 'LMB'))
-        self.assertEqual(glyphs.labels_for('xbox')['triangle'], 'Y')
+        self.assertEqual(glyphs.labels_for('keyboard')['triangle'], 'Q')  # the runtime default key
 
     def test_art_precedence(self):
         from PIL import Image

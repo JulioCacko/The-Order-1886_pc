@@ -32,27 +32,21 @@ def entry(**values):
 
 
 class PromptPlanTests(unittest.TestCase):
-    def test_plan_has_roles_for_both_sets_and_shipped_art_covers_them(self):
-        for prompt_set in ('xbox', 'keyboard'):
-            planned = prompts.plan(prompt_set)
-            self.assertEqual(len(planned), 308)
-            active = [e for e in planned.values() if e['role'] != 'keep']
-            self.assertTrue(active)
-            for e in active:
-                self.assertIn(e['role'], ('face', 'label'))
-                self.assertIn(e['glyph'], glyph_mod.TOKENS)
-            # The weapon HUD's alternate-fire "R1" has no button class; the plan names it.
-            self.assertEqual(planned['WeaponApp-13d44-292']['role'], 'label')
-        # A stick printed "L3" is LS on Xbox and stays the WASD cluster on the keyboard.
-        self.assertEqual(prompts.plan('xbox')['InteractApp-34c664-78']['glyph'], 'l3')
-        self.assertEqual(prompts.plan('keyboard')['InteractApp-34c664-78']['glyph'], 'left_stick')
-        marks = {p.stem for p in (prompts.ASSETS / 'marks').glob('*.png')}
-        self.assertTrue(set(prompts.XBOX.values()) <= marks)
-        needed = {label for label in prompts.KEYS.values() if label not in prompts.DRAWN_KEYS}
-        self.assertTrue(needed <= marks)
-        drawings = {p.stem for p in (prompts.ASSETS / 'keyboard').glob('*.png')}
-        self.assertTrue(set(prompts.DRAWN_KEYS.values()) | {'key-square', 'key-wide', 'mouse-left',
-                        'mouse-right', 'mouse-move', 'wasd'} <= drawings)
+    def test_plan_has_roles_for_the_keyboard_set(self):
+        planned = prompts.plan('keyboard')
+        self.assertEqual(len(planned), 308)
+        active = [e for e in planned.values() if e['role'] != 'keep']
+        self.assertTrue(active)
+        for e in active:
+            self.assertIn(e['role'], ('face', 'label'))
+            self.assertIn(e['glyph'], glyph_mod.TOKENS)
+        # The weapon HUD's alternate-fire "R1" has no button class; the plan names it.
+        self.assertEqual(planned['WeaponApp-13d44-292']['role'], 'label')
+        # A stick printed "L3" stays the WASD cluster on the keyboard.
+        self.assertEqual(planned['InteractApp-34c664-78']['glyph'], 'left_stick')
+        # The keycaps are drawn at build time: the art folder ships a plan and a key layout only.
+        self.assertTrue((prompts.ASSETS / 'plan.json').is_file())
+        self.assertTrue((prompts.ASSETS / 'keyboard-bindings.json').is_file())
 
     def test_keyboard_preset_is_a_valid_binding_map_matching_the_keycaps(self):
         preset = prompts.keyboard_bindings()
@@ -60,7 +54,16 @@ class PromptPlanTests(unittest.TestCase):
         self.assertEqual(preset['cross'], 'Space')
         self.assertEqual(preset['options'], 'Escape')
         self.assertEqual((preset['right'], preset['left'], preset['down'], preset['up']), ('1', '2', '5', '6'))
-        self.assertEqual(prompts.KEYS['dpad_right'], '1')
+        labels = prompts.keyboard_labels()
+        self.assertEqual(labels['dpad_right'], '1')
+        self.assertEqual(labels['options'], 'ESC')
+
+    def test_keycaps_follow_the_players_bindings(self):
+        labels = prompts.keyboard_labels({'cross': 'Q', 'circle': 'Left Shift', 'r1': '__unbound__'})
+        self.assertEqual((labels['cross'], labels['circle']), ('Q', 'SHIFT'))
+        # An unbound button keeps the default key drawn.
+        self.assertEqual(labels['r1'], prompts.keyboard_labels()['r1'])
+        self.assertEqual((labels['l2'], labels['r2']), ('RMB', 'LMB'))
 
     def test_playstation_builds_nothing_and_unknown_sets_are_refused(self):
         with tempfile.TemporaryDirectory() as state:
@@ -68,38 +71,28 @@ class PromptPlanTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 prompts.prepare('game', state, 'switch')
 
+    def test_the_retired_xbox_set_launches_with_the_original_layout(self):
+        notes = []
+        with tempfile.TemporaryDirectory() as state:
+            self.assertEqual(prompts.prepare('game', state, 'xbox', log=notes.append), [])
+        self.assertEqual(len(notes), 1)
+        self.assertIn('retired', notes[0])
+        self.assertNotIn('xbox', prompts.SETS)
+
 
 class CompositionTests(unittest.TestCase):
-    def test_xbox_replaces_only_the_marking_inside_the_edit_region(self):
-        import numpy as np
-        source = disc_with_cross()
-        result = prompts.composite(entry(), source, 'A')
-        self.assertEqual(result.size, source.size)
-        before, after = np.asarray(source), np.asarray(result)
-        changed = np.any(before != after, axis=2)
-        self.assertTrue(changed.any(), 'the marking must change')
-        # The ring and everything outside the concentric edit disc stay the source's own pixels.
-        yy, xx = np.indices(changed.shape)
-        outside = ((xx - 31.5) ** 2 + (yy - 31.5) ** 2) > (56 * .41) ** 2
-        self.assertFalse(changed[outside].any())
-        # The old X arms reach into the corners of the disc and are gone there.
-        self.assertGreater(int(after[24, 24, 0]), 120)
-
-    def test_xbox_keeps_sticks_and_dpad_as_the_game_draws_them(self):
-        source = disc_with_cross()
-        self.assertIsNone(prompts.xbox(entry(glyph='dpad_up'), source))
-        self.assertIsNone(prompts.xbox(entry(glyph='left_stick'), source))
-
     def test_keyboard_draws_keys_at_the_original_size_and_clears_menu_discs(self):
         source = disc_with_cross()
-        drawn = prompts.keyboard(entry(), source)
+        labels = prompts.keyboard_labels()
+        drawn = prompts.keyboard(entry(), source, labels)
         self.assertEqual(drawn.size, source.size)
         self.assertIsNotNone(drawn.getchannel('A').getbbox())
-        backing = prompts.keyboard(entry(key='MenuApp-4-288', id=288), source)
+        backing = prompts.keyboard(entry(key='MenuApp-4-288', id=288), source, labels)
         self.assertIsNone(backing.getchannel('A').getbbox())
         for glyph in ('r2', 'l2', 'left_stick', 'right_stick', 'dpad_up_down', 'options'):
             with self.subTest(glyph=glyph):
-                self.assertEqual(prompts.keyboard(entry(glyph=glyph, static=False), source).size, source.size)
+                self.assertEqual(prompts.keyboard(entry(glyph=glyph, static=False), source, labels).size,
+                                 source.size)
 
 
 class OverlayTests(unittest.TestCase):
@@ -129,13 +122,25 @@ class WiringTests(unittest.TestCase):
         from launcher.order1886_options import FIELDS
         field = next(f for f in FIELDS if f['key'] == 'button_prompts')
         self.assertEqual([c['value'] for c in field['choices']], list(prompts.SETS))
+        self.assertEqual(list(prompts.SETS), ['playstation', 'keyboard'])
         settings = vars(order1886.argument_parser().parse_args(['--button-prompts', 'keyboard']))
         self.assertEqual(settings['button_prompts'], 'keyboard')
         command = launcher.backend_command({'game_dir': 'g', 'display_mode': 'windowed', 'vsync': True,
-                                            'show_fps': False, 'button_prompts': 'xbox'})
-        self.assertEqual(command[command.index('--button-prompts') + 1], 'xbox')
+                                            'show_fps': False, 'button_prompts': 'keyboard'})
+        self.assertEqual(command[command.index('--button-prompts') + 1], 'keyboard')
         source = (ROOT / 'order1886.py').read_text(encoding='utf-8')
-        self.assertIn("args.keyboard_bindings = prompts.keyboard_bindings()", source)
+        # The prompts follow the player's map instead of overwriting it.
+        self.assertIn("bindings=args.keyboard_bindings", source)
+        self.assertNotIn("args.keyboard_bindings = prompts.keyboard_bindings()", source)
+
+    def test_a_stored_xbox_choice_migrates_to_the_original_prompts(self):
+        from launcher import order1886_common as launcher
+        with tempfile.TemporaryDirectory() as state:
+            for stored, expected in (('xbox', 'playstation'), ('keyboard', 'keyboard'),
+                                     ('playstation', 'playstation'), ('nonsense', 'playstation')):
+                with self.subTest(stored=stored):
+                    values = launcher.load_launch_settings(Path(state), {'button_prompts': stored})
+                    self.assertEqual(values['button_prompts'], expected)
 
     def test_packaging_ships_the_generator_its_art_and_dependencies(self):
         build = (ROOT / 'packaging/windows/order1886-go-build.ps1').read_text(encoding='utf-8')

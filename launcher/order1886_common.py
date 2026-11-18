@@ -61,11 +61,46 @@ def render_width(values: dict) -> int:
     return values.get("custom_render_width", 3200) if width == 0 else width
 
 
+def game_system_language(values: dict) -> int | None:
+    """The PS4 system-language ID picked on Game & Content, or None to follow the launcher language.
+
+    Borrowed from DivinusX/a-port-of-the-order-1886-thats-actually-alive (v0.2.20, GPL-2.0-or-later).
+    """
+    from launcher.order1886_options import GAME_LANGUAGE_IDS
+    choice = values.get("game_language", "follow")
+    return GAME_LANGUAGE_IDS.get(choice) if isinstance(choice, str) else None
+
+
+def game_menu_enabled(values: dict) -> bool:
+    """The in-game menu (F1) follows game_menu, on by default; the old in_game_menu key is ignored.
+
+    Saved settings from the old opt-in field would otherwise keep in_game_menu=False forever.
+    """
+    choice = values.get("game_menu", True)
+    return choice if isinstance(choice, bool) else True
+
+
+def _prepare_cache(state: Path | None) -> None:
+    """Keep the shader cache in the package, adopt a pre-fix shared cache and import a shipped
+    seed bundle before the runtime starts (upstream issue #17). A cache problem must never stop
+    the game, so failures are reported and swallowed."""
+    if state is None:
+        return
+    try:
+        from scripts.order1886_cache import prepare_cache_for_launch
+        prepare_cache_for_launch(state)
+    except Exception as error:  # noqa: BLE001
+        print(f"launcher: shader cache setup skipped: {error}")
+
+
 def backend_command(values: dict, mode: str = "play", state: Path = STATE,
                     stop_file: Path | None = None) -> list[str]:
     from order1886 import SYSTEM_LANGUAGES, inputs
     locale = values.get("ui_language", "en")
     language = SYSTEM_LANGUAGES.get(locale, 1) if isinstance(locale, str) else 1
+    picked = game_system_language(values)
+    if picked is not None:
+        language = picked
     command = ([sys.executable, "--run-backend"] if FROZEN else
                [sys.executable, str(ROOT / "order1886.py")])
     command += ["--game-dir", values["game_dir"], "--state-dir", str(state),
@@ -93,7 +128,7 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
     # Live runtime switches stay off the command line unless the player asked for them.
     if values.get("htile_unqualified"):
         command += ["--htile"]
-    if values.get("in_game_menu"):
+    if game_menu_enabled(values):
         command += ["--in-game-menu"]
     if values.get("synchronous_recording"):
         command += ["--synchronous-recording"]
@@ -126,6 +161,7 @@ def backend_command(values: dict, mode: str = "play", state: Path = STATE,
         command += ["--check-imports"]
     if stop_file is not None:
         command += ["--stop-file", str(stop_file)]
+    _prepare_cache(state)
     return command
 
 
@@ -225,7 +261,8 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         "synchronous_recording": bool(saved.get("synchronous_recording", False)),
         "texture_update_locking": bool(saved.get("texture_update_locking", False)),
         "fps_cap": saved.get("fps_cap", 120),
-        "in_game_menu": bool(saved.get("in_game_menu", False)),
+        "game_menu": game_menu_enabled(saved),
+        "in_game_menu": game_menu_enabled(saved),
         "automatic_updates": bool(saved.get("automatic_updates", False)),
         "update_channel": saved.get("update_channel", "preview"),
         "mods_dir": saved.get("mods_dir", ""),
@@ -239,7 +276,8 @@ def load_launch_settings(state: Path, saved: dict | None = None) -> dict:
         ("display_mode", ("windowed", "borderless", "fullscreen"), "borderless"),
         ("presentation_filter", order1886.PRESENTATION_FILTERS, "fsr1"),
         ("aspect_ratio", ("original", "16:9"), "original"),
-        ("button_prompts", ("playstation", "xbox", "keyboard"), "playstation"),
+        # The Xbox set was retired: a stored "xbox" falls back to the game's own prompts.
+        ("button_prompts", ("playstation", "keyboard"), "playstation"),
     ):
         if values[key] not in allowed:
             values[key] = default

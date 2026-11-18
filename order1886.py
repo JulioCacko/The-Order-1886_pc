@@ -784,9 +784,10 @@ def argument_parser():
     parser.add_argument('--mods-dir', default='', help='Folder containing explicitly selected asset mod folders')
     parser.add_argument('--mods-enabled', type=int, choices=[0, 1], default=0)
     parser.add_argument('--mods-order', default='[]', help='JSON list of enabled mod folder names; later entries win')
-    parser.add_argument('--button-prompts', choices=prompts.SETS, default='playstation',
-                        help="Button prompt artwork: the game's own, Xbox, or keyboard and mouse "
-                             "(built from your game files on first use; keyboard applies its key layout)")
+    parser.add_argument('--button-prompts', choices=prompts.SETS + prompts.RETIRED, default='playstation',
+                        help="Button prompt artwork: the game's own, or keyboard and mouse "
+                             "(built from your game files on first use; follows your key layout). "
+                             "The retired 'xbox' value launches with the game's own prompts")
     parser.add_argument('--disable-effects', default='',
                         help='Comma-separated post effects to turn off in the prepared image ('
                              + ', '.join(post_effects.EFFECTS) + '); empty keeps them all')
@@ -821,8 +822,9 @@ def main(argv=None):
             inputs.validate(mapping, kind)
             setattr(args, kind + '_bindings', mapping)
         if args.button_prompts == 'keyboard':
-            # The keyboard prompts draw these keys, so the game must use the same layout.
-            args.keyboard_bindings = prompts.keyboard_bindings()
+            # The prompts follow the player's map; a button the player left alone plays and
+            # shows the preset layout, so the keycap and the key that acts there agree.
+            args.keyboard_bindings = {**prompts.keyboard_bindings(), **args.keyboard_bindings}
             inputs.validate(args.keyboard_bindings, 'keyboard')
         args.mods_dir = str(mods.resolve_root(args.mods_dir, ROOT))
         game, user = mods.safe_path(args.game_dir), mods.safe_path(args.state_dir)
@@ -912,7 +914,8 @@ def main(argv=None):
             logs.mkdir(exist_ok=True)
             log = logs / f'{stamp}-{mode}.log'
             prompt_files = [] if args.check_imports else prompts.prepare(
-                game, user, args.button_prompts, log=lambda line: emit_status(line, fallback=diagnostic_log))
+                game, user, args.button_prompts, log=lambda line: emit_status(line, fallback=diagnostic_log),
+                bindings=args.keyboard_bindings)
             mounted_game = mods.build_overlay(game, user, args.mods_dir,
                                              bool(args.mods_enabled) and not args.check_imports, mod_order,
                                              extra=prompt_files)

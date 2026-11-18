@@ -42,11 +42,20 @@ class DisplayPreparationTests(unittest.TestCase):
         self.addCleanup(self.stack.close)
         self.stack.enter_context(patch.object(timing.prepare, 'parse_self', side_effect=lambda data: self.guest))
 
-    def test_original_profile_never_touches_missing_derived_image(self):
+    def test_original_profile_leaves_the_aspect_instruction_alone(self):
+        # The UI fix inspects every derived image, so the image must exist; an executable whose
+        # UI sites differ keeps its own code and the result says so instead of failing.
+        boot = self.base / 'derived.bin'
+        offset = fixture(boot)
+        before = boot.read_bytes()
         profile = display.validate_source(self.source, 'original', {})
-        result = display.apply_prepared(self.base / 'absent.bin', profile)
+        result = display.apply_prepared(boot, profile)
         self.assertFalse(result['applied'])
         self.assertEqual(result['aspect_ratio'], 'original')
+        self.assertFalse(result['ui_fix']['applied'])
+        self.assertIn('signature mismatch', result['ui_fix']['reason'])
+        self.assertEqual(boot.read_bytes(), before)
+        self.assertEqual(boot.read_bytes()[offset:offset + len(SIGNATURE)], SIGNATURE)
 
     def test_fullscreen_changes_only_verified_float_immediate(self):
         boot = self.base / 'derived.bin'

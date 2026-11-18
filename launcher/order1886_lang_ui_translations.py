@@ -104,6 +104,9 @@ UI_TRANSLATIONS = {
         "Use current saves": "Использовать текущие сохранения",
         "View releases": "Смотреть выпуски",
         "uncapped": "без ограничения",
+        "Game language": "Язык игры",
+        "In-game menu (F1)": "Меню в игре (F1)",
+        "Follow launcher language": "Как язык лаунчера",
     },
     "ar": {
         "Achievements": "الإنجازات",
@@ -181,6 +184,9 @@ UI_TRANSLATIONS = {
         "Use current saves": "استخدام بيانات الحفظ الحالية",
         "View releases": "عرض الإصدارات",
         "uncapped": "بلا حد",
+        "Game language": "لغة اللعبة",
+        "In-game menu (F1)": "قائمة اللعبة (F1)",
+        "Follow launcher language": "اتباع لغة المشغّل",
     },
     "es": {
         "Achievements": "Logros",
@@ -258,6 +264,9 @@ UI_TRANSLATIONS = {
         "Use current saves": "Usar partidas actuales",
         "View releases": "Ver versiones",
         "uncapped": "sin límite",
+        "Game language": "Idioma del juego",
+        "In-game menu (F1)": "Menú del juego (F1)",
+        "Follow launcher language": "Seguir el idioma del launcher",
     },
     "pt": {
         "Achievements": "Conquistas",
@@ -335,6 +344,9 @@ UI_TRANSLATIONS = {
         "Use current saves": "Usar dados salvos atuais",
         "View releases": "Ver versões",
         "uncapped": "sem limite",
+        "Game language": "Idioma do jogo",
+        "In-game menu (F1)": "Menu do jogo (F1)",
+        "Follow launcher language": "Seguir o idioma do launcher",
     },
     "fr": {
         "Achievements": "Succès",
@@ -412,6 +424,9 @@ UI_TRANSLATIONS = {
         "Use current saves": "Utiliser les sauvegardes actuelles",
         "View releases": "Voir les versions",
         "uncapped": "sans limite",
+        "Game language": "Langue du jeu",
+        "In-game menu (F1)": "Menu en jeu (F1)",
+        "Follow launcher language": "Suivre la langue du lanceur",
     },
     "de": {
         "Achievements": "Erfolge",
@@ -489,6 +504,9 @@ UI_TRANSLATIONS = {
         "Use current saves": "Aktuelle Spielstände verwenden",
         "View releases": "Releases ansehen",
         "uncapped": "ohne Begrenzung",
+        "Game language": "Spielsprache",
+        "In-game menu (F1)": "Menü im Spiel (F1)",
+        "Follow launcher language": "Launcher-Sprache verwenden",
     },
     "it": {
         "Achievements": "Obiettivi",
@@ -566,6 +584,9 @@ UI_TRANSLATIONS = {
         "Use current saves": "Usa salvataggi attuali",
         "View releases": "Vedi release",
         "uncapped": "senza limite",
+        "Game language": "Lingua del gioco",
+        "In-game menu (F1)": "Menu di gioco (F1)",
+        "Follow launcher language": "Segui la lingua del launcher",
     },
     "pl": {
         "Achievements": "Osiągnięcia",
@@ -643,6 +664,9 @@ UI_TRANSLATIONS = {
         "Use current saves": "Użyj bieżących zapisów",
         "View releases": "Zobacz wydania",
         "uncapped": "bez limitu",
+        "Game language": "Język gry",
+        "In-game menu (F1)": "Menu w grze (F1)",
+        "Follow launcher language": "Użyj języka launchera",
     },
     "tr": {
         "Achievements": "Başarımlar",
@@ -720,6 +744,9 @@ UI_TRANSLATIONS = {
         "Use current saves": "Geçerli kayıtları kullan",
         "View releases": "Sürümleri görüntüle",
         "uncapped": "sınırsız",
+        "Game language": "Oyun dili",
+        "In-game menu (F1)": "Oyun içi menü (F1)",
+        "Follow launcher language": "Başlatıcı dilini kullan",
     },
     "zh": {
         "Achievements": "成就",
@@ -797,6 +824,9 @@ UI_TRANSLATIONS = {
         "Use current saves": "使用当前存档",
         "View releases": "查看版本",
         "uncapped": "无上限",
+        "Game language": "游戏语言",
+        "In-game menu (F1)": "游戏内菜单（F1）",
+        "Follow launcher language": "跟随启动器语言",
     },
     "ja": {
         "Achievements": "実績",
@@ -874,6 +904,9 @@ UI_TRANSLATIONS = {
         "Use current saves": "現在のセーブデータを使用",
         "View releases": "リリースを見る",
         "uncapped": "上限なし",
+        "Game language": "ゲームの言語",
+        "In-game menu (F1)": "ゲーム内メニュー (F1)",
+        "Follow launcher language": "ランチャーの言語に従う",
     },
     "ko": {
         "Achievements": "업적",
@@ -951,5 +984,8 @@ UI_TRANSLATIONS = {
         "Use current saves": "현재 저장 사용",
         "View releases": "릴리스 보기",
         "uncapped": "제한 없음",
+        "Game language": "게임 언어",
+        "In-game menu (F1)": "게임 내 메뉴 (F1)",
+        "Follow launcher language": "런처 언어 따르기",
     },
 }

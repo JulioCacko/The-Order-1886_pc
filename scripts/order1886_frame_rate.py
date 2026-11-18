@@ -62,6 +62,12 @@ def interval_write(rva, interval):
     return b'\xc7\x05' + struct.pack('<iI', TARGET_GLOBAL_RVA - rva - 10, interval)
 
 
+# The published 60 FPS patch's instruction. Some dumps carry it in eboot.bin already (#3): the
+# source is accepted with it, 60 FPS then has nothing to write, the 90 FPS and unlocked recipes
+# write their own interval over it, and 30 FPS puts the native interval back.
+PREPATCHED_INSTRUCTION = interval_write(INSTRUCTION_RVA, 1)
+
+
 def pacer_instruction(microseconds):
     """imul r14d, dword [RIP+disp32], imm32: the pacer's frame budget is interval * imm32."""
     return b'\x44\x69\x35' + struct.pack('<iI', TARGET_GLOBAL_RVA - PACER_RVA - 11, microseconds)
@@ -121,11 +127,13 @@ def image_bytes(elf, ph, rva, size):
     return None
 
 
-def verify_source_identity(eboot, metadata, sites, *, feature, recovery):
+def verify_source_identity(eboot, metadata, sites, *, feature, recovery, prepatched=()):
     """An accepted edition whose executable holds the expected bytes at every recipe site.
 
     No hash or APP_VER is required: the bytes are what the edits depend on, and a build whose
-    code differs at any site is refused before preparation."""
+    code differs at any site is refused before preparation. prepatched holds (rva, bytes) a
+    site may hold instead because a published patch is already in the executable; those
+    sites are listed in source_prepatched."""
     title_id = metadata.get('TITLE_ID')
     if not editions.supported(title_id):
         raise ValueError(f'{feature} supports {", ".join(editions.TITLE_IDS)}; '
@@ -133,15 +141,30 @@ def verify_source_identity(eboot, metadata, sites, *, feature, recovery):
     source = Path(eboot).resolve()
     data = prepare.read_self(source)
     elf, _, ph = prepare.parse_self(data)[:3]
+    already = dict(prepatched)
+    found_prepatched = []
     for rva, expected in sites:
         found = image_bytes(elf, ph, rva, len(expected))
         if found != expected:
+            if found is not None and already.get(rva) == found:
+                found_prepatched.append(hex(rva))
+                continue
             raise ValueError(f'{feature} does not match this executable at RVA {rva:#x}: expected '
                              f'{expected.hex()}, found {found.hex() if found else "unmapped"} '
                              f'(APP_VER {metadata.get("APP_VER", "unknown")}). {recovery}')
     return dict(source_verified=True, source_eboot=str(source), title_id=title_id,
                 source_self_sha256=hashlib.sha256(data).hexdigest(),
-                source_elf_sha256=hashlib.sha256(elf).hexdigest())
+                source_elf_sha256=hashlib.sha256(elf).hexdigest(),
+                source_prepatched=found_prepatched)
+
+
+def source_instruction(eboot, rva, size):
+    """The bytes eboot.bin holds at rva, or None when it cannot be read as a SELF there."""
+    try:
+        elf, _, ph = prepare.parse_self(prepare.read_self(Path(eboot).resolve()))[:3]
+    except (ValueError, struct.error):
+        return None
+    return image_bytes(elf, ph, rva, size)
 
 
 def source_sites(frame_rate):
@@ -170,39 +193,54 @@ def validate_source(eboot, frame_rate, metadata):
     profile = {**recipe(rate), 'recipe_sha256': recipe_sha256(rate), 'applied': False,
                'source_verified': False, 'gameplay_verified': False}
     if rate == 30:
+        # The native baseline must not inherit a 60 FPS unlock baked into the dump (#3).
+        if source_instruction(eboot, INSTRUCTION_RVA, len(PREPATCHED_INSTRUCTION)) == PREPATCHED_INSTRUCTION:
+            profile['source_prepatched'] = [hex(INSTRUCTION_RVA)]
         return profile
     profile.update(verify_source_identity(eboot, metadata, source_sites(rate), feature=FEATURES[rate],
-                                         recovery='Select 30 FPS to use the native baseline.'))
+                                         recovery='Select 30 FPS to use the native baseline.',
+                                         prepatched=[(INSTRUCTION_RVA, PREPATCHED_INSTRUCTION)]))
     return profile
+
+
+def prepatched_site(profile, rva):
+    return rva == INSTRUCTION_RVA and hex(rva) in profile.get('source_prepatched', ())
 
 
 def apply_prepared(boot, profile):
     """Validate every guard before modifying a single byte in a fresh PS4BOOT2 image."""
     rate = validate_frame_rate(profile['engine_fps'])
-    if rate == 30:
+    if rate == 30 and not prepatched_site(profile, INSTRUCTION_RVA):
         return dict(profile)
     path = Path(boot).resolve()
     if profile.get('source_eboot') and path == Path(profile['source_eboot']).resolve():
         raise ValueError('Timing patches may only modify a derived prepared image')
     data, image_offset, size = prepared_image(path)
-    if rate != 60:
+    if rate not in (30, 60):
         return apply_edits(path, data, image_offset, size, profile)
     if INSTRUCTION_RVA + len(EXPECTED_INSTRUCTION) > size:
         raise ValueError('PS4BOOT2 image bounds mismatch')
     offset = image_offset + INSTRUCTION_RVA
     instruction = bytes(data[offset:offset + len(EXPECTED_INSTRUCTION)])
-    if instruction != EXPECTED_INSTRUCTION:
-        raise ValueError(f'Experimental 60 FPS instruction signature mismatch at RVA {INSTRUCTION_RVA:#x}')
+    feature = 'Native 30 FPS' if rate == 30 else 'Experimental 60 FPS'
+    accepted = (PREPATCHED_INSTRUCTION,) if rate == 30 else (
+        (EXPECTED_INSTRUCTION, PREPATCHED_INSTRUCTION) if prepatched_site(profile, INSTRUCTION_RVA)
+        else (EXPECTED_INSTRUCTION,))
+    if instruction not in accepted:
+        raise ValueError(f'{feature} instruction signature mismatch at RVA {INSTRUCTION_RVA:#x}')
     target = INSTRUCTION_RVA + len(instruction) + struct.unpack_from('<i', instruction, 2)[0]
     if target != TARGET_GLOBAL_RVA or target + 4 > size:
-        raise ValueError('Experimental 60 FPS instruction RIP target mismatch')
-    if not profile.get('source_verified') or profile.get('recipe_sha256') != recipe_sha256(60):
+        raise ValueError(f'{feature} instruction RIP target mismatch')
+    if rate == 60 and (not profile.get('source_verified') or profile.get('recipe_sha256') != recipe_sha256(60)):
         raise ValueError('Experimental 60 FPS source/recipe verification is missing or stale')
+    interval = 2 if rate == 30 else 1
     before = hashlib.sha256(data).hexdigest()
-    data[offset + 6] = 1  # Only mov dword [RIP+disp32], 2 -> 1; never force the live global.
+    changed = int(data[offset + 6] != interval)
+    data[offset + 6] = interval  # Only the mov's immediate; never force the live global.
     after = hashlib.sha256(data).hexdigest()
-    path.write_bytes(data)
-    return {**profile, 'applied': True, 'changed_bytes': 1,
+    if changed:
+        path.write_bytes(data)
+    return {**profile, 'applied': True, 'changed_bytes': changed,
             'boot_file_offset': hex(offset + 6), 'instruction_before': instruction.hex(),
             'instruction_after': bytes(data[offset:offset + len(instruction)]).hex(),
             'boot_sha256_before': before, 'boot_sha256_after': after}
@@ -215,13 +253,17 @@ def apply_edits(path, data, image_offset, size, profile):
     if not profile.get('source_verified') or profile.get('recipe_sha256') != recipe_sha256(rate):
         raise ValueError(f'{feature} source/recipe verification is missing or stale')
     sites = edits(rate)
+    current = []
     for rva, expected, _ in sites:
-        if rva + len(expected) > size or bytes(data[image_offset + rva:image_offset + rva + len(expected)]) != expected:
+        found = bytes(data[image_offset + rva:image_offset + rva + len(expected)])
+        if rva + len(expected) > size or not (
+                found == expected or (prepatched_site(profile, rva) and found == PREPATCHED_INSTRUCTION)):
             raise ValueError(f'{feature} instruction signature mismatch at RVA {rva:#x}')
+        current.append(found)
     before = hashlib.sha256(data).hexdigest()
     for rva, _, replacement in sites:
         data[image_offset + rva:image_offset + rva + len(replacement)] = replacement
     path.write_bytes(data)
     return {**profile, 'applied': True,
-            'changed_bytes': sum(a != b for _, old, new in sites for a, b in zip(old, new)),
+            'changed_bytes': sum(a != b for old, (_, _, new) in zip(current, sites) for a, b in zip(old, new)),
             'boot_sha256_before': before, 'boot_sha256_after': hashlib.sha256(data).hexdigest()}

@@ -65,6 +65,24 @@ RECIPES = (
     },
 )
 
+# Game language (#21). Without a -sku argument the executable starts as SKU 0 and filters the
+# translated system language (table 0xf13370) down to US English, Korean and Chinese
+# (0xa81687), so every other language became English. This edit points the SKU 0 entry of the
+# SKU jump table (0xa81b00) at the store SKU 3 already uses (0xa81698): the system language
+# the launcher selects reaches the game unfiltered. Always applied, never listed.
+LANGUAGE_TABLE_RVA = 0xa81b00
+LANGUAGE = {
+    'id': 'system-language-unfiltered',
+    'title': 'Game language follows the selected system language',
+    'description': 'Removes the SKU 0 language filter so the selected game language applies.',
+    'title_ids': editions.TITLE_IDS,
+    'guest_executable': 'eboot.bin',
+    'image': IMAGE_KIND,
+    'edits': ({'offset': LANGUAGE_TABLE_RVA,
+               'expected': bytes.fromhex('87fbffff'),
+               'replacement': bytes.fromhex('98fbffff')},),
+}
+
 
 def recipe(identifier):
     """The catalogued recipe with this id; an unknown id is an error, not a default."""
@@ -259,6 +277,8 @@ def select(identifiers, metadata):
         if error:
             raise ValueError(f'{identifier}: {error}')
         chosen.append(item)
+    if identity_error(LANGUAGE, metadata) is None:
+        chosen.append(LANGUAGE)
     return tuple(chosen)
 
 

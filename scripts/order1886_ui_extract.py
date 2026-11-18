@@ -33,6 +33,50 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 
 NAMESPACE = '_data/1408209885/ps4'
+
+
+def _walk(root, parts):
+    path = root
+    for component in parts:
+        exact = path / component
+        if exact.exists():
+            path = exact
+            continue
+        try:
+            variants = [entry for entry in path.iterdir() if entry.name.lower() == component.lower()]
+        except OSError:
+            return None
+        if len(variants) != 1:
+            return None
+        path = variants[0]
+    return path if path.is_file() else None
+
+
+def resolve(game, name):
+    """Host path of a resource below the namespace, tolerating dumps whose directory
+    case differs: the game opens lowercase ps4/ paths while update extraction can
+    leave an uppercase PS4/ sibling. runtime_file.c fold_case() does the same for the
+    guest paths at runtime: every component missing in the exact case must exist
+    uniquely when ignoring case. A branch that holds no such resource at all is
+    retried in the sibling spelling, as the guest folds to it. None when nothing or
+    more than one fits."""
+    ns_parts = NAMESPACE.split('/')
+    parts = ns_parts + name.split('/')
+    found = _walk(Path(game), parts)
+    if found:
+        return found
+    try:
+        siblings = [entry for entry in Path(game).joinpath(*ns_parts[:-1]).iterdir()
+                    if entry.is_dir() and entry.name != ns_parts[-1]
+                    and entry.name.lower() == ns_parts[-1].lower()]
+    except OSError:
+        return None
+    for sibling in siblings:
+        found = _walk(sibling, name.split('/'))
+        if found:
+            return found
+    return None
+
 # Resources the full scan found holding SWF movies (1.02). --scan-all rediscovers them.
 KNOWN_UI = ['primary/c2d79afbc68fc86c/v1/e32dc7d7dc8151e2'] + [
     'primary/3861c21fc34b7612/v11345526222/' + name for name in (

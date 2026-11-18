@@ -2,7 +2,7 @@
 
 Three settings shipped inert because the backend reads them from the settings mapping while
 the CLI had no flag for them and `backend_command` never passed one: `fps_cap`,
-`htile_unqualified` and `in_game_menu`. The launcher showed a control, the backend used its
+`htile_unqualified` and the in-game menu (the launcher's `game_menu`). The launcher showed a control, the backend used its
 default, and nothing failed. This table is the contract that stops that happening again.
 """
 from pathlib import Path
@@ -28,9 +28,9 @@ PLUMBING = {
     'mouse_look': ('--mouse-look', 0, 1, 'value'),
     'mouse_sensitivity': ('--mouse-sensitivity', 250, 100, 'value'),
     'mouse_invert_y': ('--mouse-invert-y', 1, 0, 'value'),
-    'button_prompts': ('--button-prompts', 'xbox', 'playstation', 'value'),
+    'button_prompts': ('--button-prompts', 'keyboard', 'playstation', 'value'),
     'htile_unqualified': ('--htile', True, False, 'switch'),
-    'in_game_menu': ('--in-game-menu', True, False, 'switch'),
+    'game_menu': ('--in-game-menu', True, False, 'switch'),  # the launcher key; on by default
     'synchronous_recording': ('--synchronous-recording', True, False, 'switch'),
     'texture_update_locking': ('--texture-update-locking', True, False, 'switch'),
 }
@@ -41,7 +41,7 @@ def values(**overrides):
             'frame_rate': 30, 'aspect_ratio': 'original', 'mouse_look': True,
             'mouse_sensitivity': 100, 'mouse_invert_y': False, 'readbacks': 'relaxed',
             'performance_capture': False, 'fps_cap': 120, 'htile_unqualified': False,
-            'in_game_menu': False, 'synchronous_recording': False,
+            'game_menu': False, 'synchronous_recording': False,
             'texture_update_locking': False}
     base.update(overrides)
     return base

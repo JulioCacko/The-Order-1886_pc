@@ -15,7 +15,10 @@ VERIFIED_TITLE_ID = 'CUSA00076'
 TITLE_IDS = (VERIFIED_TITLE_ID, 'CUSA00035', 'CUSA00070', 'CUSA00100', 'CUSA00670', 'CUSA00785')
 # OrbisSystemParamLanguage 17 (Brazilian Portuguese) has assets only in CUSA00785. These
 # editions lack it and would fall back to English, so they get 7 (Portugal Portuguese).
-LANGUAGE_FALLBACKS = {'CUSA00035': {17: 7}, 'CUSA00070': {17: 7}, 'CUSA00076': {17: 7}}
+# That observation came from the executable's SKU 0 language filter, which turned every
+# language but US English, Korean and Chinese into English. The prepared image now removes
+# that filter (order1886_patches.LANGUAGE), so no substitution is made here.
+LANGUAGE_FALLBACKS = {}
 
 
 def supported(title_id):

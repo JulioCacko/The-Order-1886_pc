@@ -23,13 +23,13 @@ class EditionTests(unittest.TestCase):
         self.assertFalse(editions.supported('CUSA00207'))
         self.assertFalse(editions.experimental('CUSA00207'))
 
-    def test_brazilian_portuguese_falls_back_only_where_it_is_missing(self):
-        self.assertEqual(editions.system_language('CUSA00785', 17), 17)
-        for title in ('CUSA00035', 'CUSA00070', 'CUSA00076'):
+    def test_brazilian_portuguese_is_requested_as_chosen_in_every_edition(self):
+        # The prepared image drops the executable's SKU language filter, so no edition
+        # substitutes Portugal's Portuguese (7) for Brazilian Portuguese (17) any more.
+        for title in editions.TITLE_IDS + ('CUSA00207',):
             with self.subTest(title=title):
-                self.assertEqual(editions.system_language(title, 17), 7)
+                self.assertEqual(editions.system_language(title, 17), 17)
                 self.assertEqual(editions.system_language(title, 1), 1)
-        self.assertEqual(editions.system_language('CUSA00207', 17), 17)
 
 
 if __name__ == '__main__':

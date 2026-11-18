@@ -1,7 +1,7 @@
-"""Build Xbox or keyboard-and-mouse button prompt mods from the player's own dump.
+"""Build keyboard-and-mouse button prompt mods from the player's own dump.
 
     python tools/order1886_glyph_mod.py pack GAME_DIR --output PACK
-    python tools/order1886_glyph_mod.py build GAME_DIR --set xbox|keyboard --mods MODS
+    python tools/order1886_glyph_mod.py build GAME_DIR --set keyboard --mods MODS
                                         [--plan PACK/plan.json] [--art PACK/art]
                                         [--keyboard-bindings JSON]
 
@@ -10,7 +10,7 @@ PNG under sources/, contact-sheet.png, plan.json (editable glyph and role per bi
 GPT-PROMPTS.md (what to generate, with prompts and return file names). `build` replaces each
 planned bitmap with, in order: PACK/art/<set>/bitmaps/<key>.png (an exact redraw of that
 source), PACK/art/<set>/<glyph>.png or <glyph>_label.png, or art drawn here; then it writes
-MODS/"Glyphs - Xbox" (or "... Keyboard and mouse") for Advanced > Mods. No game asset is
+MODS/"Glyphs - Keyboard and mouse" for Advanced > Mods. No game asset is
 stored in the repository; PACK and MODS must be outside it and outside GAME_DIR.
 
 Pillow 10.1 or newer draws the labels. Replacements keep every character id and bitmap size. Movies inside packages must fit their
@@ -29,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import order1886_ui_extract as ui  # noqa: E402
 
-SETS = {'xbox': 'Glyphs - Xbox', 'keyboard': 'Glyphs - Keyboard and mouse'}
+SETS = {'keyboard': 'Glyphs - Keyboard and mouse'}
 # Resources with glyph bitmaps (1.02): standalone menu, shared UI package, two Lycan levels.
 RESOURCES = ['primary/c2d79afbc68fc86c/v1/e32dc7d7dc8151e2'] + [
     'primary/3861c21fc34b7612/v11345526222/' + name
@@ -45,11 +45,6 @@ PLAYSTATION = {'cross': 'Cross (X)', 'circle': 'Circle (O)', 'square': 'Square',
                'dpad_left': 'D-pad left', 'dpad_right': 'D-pad right', 'dpad_up_down': 'D-pad up/down',
                'dpad_left_right': 'D-pad left/right', 'touchpad': 'Touchpad', 'options': 'OPTIONS',
                'cross_circle_swap': 'Cross/Circle'}
-XBOX = {'cross': 'A', 'circle': 'B', 'square': 'X', 'triangle': 'Y', 'l1': 'LB', 'r1': 'RB',
-        'l2': 'LT', 'r2': 'RT', 'l3': 'LS', 'r3': 'RS', 'left_stick': 'L', 'right_stick': 'R',
-        'left_stick_forward': 'L', 'left_stick_back': 'L', 'dpad_up': '', 'dpad_down': '',
-        'dpad_left': '', 'dpad_right': '', 'dpad_up_down': '', 'dpad_left_right': '',
-        'options': 'MENU', 'touchpad': 'VIEW', 'cross_circle_swap': 'A'}
 # Runtime keyboard defaults (src/runtime_pad.c key_map); mouse supplies R2 (left) and L2 (right).
 KEYBOARD = {'cross': 'Space', 'circle': 'Left Shift', 'square': 'E', 'triangle': 'Q', 'l1': '1',
             'r1': '3', 'l3': 'Z', 'r3': 'C', 'options': 'Return', 'touchpad_left': 'Tab',
@@ -129,7 +124,8 @@ def glyph_bitmaps(game, oodle, planned=None):
     planned = planned or {}
     root = Path(game) / ui.NAMESPACE
     for name in RESOURCES:
-        blob = (root / name).read_bytes()
+        resolved = ui.resolve(game, name) if hasattr(ui, 'resolve') else None
+        blob = (resolved if resolved is not None else root / name).read_bytes()
         data, _ = ui.payload(blob, oodle)
         found = []
         for offset in ui.find_swfs(data):
@@ -157,8 +153,6 @@ def glyph_bitmaps(game, oodle, planned=None):
 
 def labels_for(set_name, bindings=None):
     """The text each glyph token shows in a set."""
-    if set_name == 'xbox':
-        return dict(XBOX)
     keys = dict(KEYBOARD, **(bindings or {}))
     def key(button):
         name = keys.get(button, '')
@@ -217,7 +211,7 @@ def pack(game, output):
 
 
 def prompts(entries):
-    xbox, keyboard = labels_for('xbox'), labels_for('keyboard')
+    keyboard = labels_for('keyboard')
     used = [e for e in entries if e['role'] != 'keep']
     lines = [
         '# Glyph art requests', '',
@@ -227,26 +221,26 @@ def prompts(entries):
         '## Route A: one image per button (quick)', '',
         'For each row, attach one or two of the listed sources as the style reference and use the',
         'face or label prompt from the guide with the target text.', '',
-        '| Button | Xbox | Keyboard (defaults) | Return files | Style references |', '|---|---|---|---|---|']
+        '| Button | Keyboard (defaults) | Return files | Style references |', '|---|---|---|---|']
     for token in TOKENS:
         mine = [e for e in used if e['glyph'] == token]
         if not mine:
             continue
         roles = sorted({e['role'] for e in mine})
-        files = ', '.join(f'`{s}/{token}{"" if r == "face" else "_label"}.png`'
-                          for s in ('xbox', 'keyboard') for r in roles)
+        files = ', '.join(f'`keyboard/{token}{"" if r == "face" else "_label"}.png`'
+                          for r in roles)
         refs = ', '.join(f'`{e["source"]}`' for e in mine[:2])
-        lines.append(f'| {PLAYSTATION[token]} | {xbox[token] or "D-pad"} | {keyboard[token]} | {files} | {refs} |')
+        lines.append(f'| {PLAYSTATION[token]} | {keyboard[token]} | {files} | {refs} |')
     lines += [
         '', '## Route B: redraw each source exactly (best match)', '',
         'Start from `reference/<key>.png` (the source enlarged 1:1 on dark grey) and change only the',
         'PlayStation marking (prompt B in the guide). Keep the framing and aspect ratio and give the',
         'result a transparent background. Save it as `art/<set>/bitmaps/<key>.png`: build scales it',
         'back to the source size exactly.', '',
-        '| Key | Reference | Size | Role | Shows | Xbox | Keyboard |', '|---|---|---|---|---|---|---|']
+        '| Key | Reference | Size | Role | Shows | Keyboard |', '|---|---|---|---|---|---|']
     for e in used:
         lines.append(f'| `{e["key"]}` | `reference/{e["key"]}.png` | {e["width"]}x{e["height"]} | {e["role"]} | '
-                     f'{PLAYSTATION[e["glyph"]]} | {xbox[e["glyph"]] or "D-pad"} | {keyboard[e["glyph"]]} |')
+                     f'{PLAYSTATION[e["glyph"]]} | {keyboard[e["glyph"]]} |')
     return '\n'.join(lines) + '\n'
 
 
@@ -296,16 +290,6 @@ def draw_face(token, set_name, label, size=256):
         d.line((s * .28, s * .42, s * .72, s * .42), fill=EDGE, width=w)
         x0, x1 = (s * .3, s * .5) if token == 'r2' else (s * .5, s * .7)
         d.rectangle((x0 + w, m * 2, x1 - w, s * .42 - w), fill=INK)
-        return image
-    if set_name == 'xbox' and token.startswith('dpad'):
-        arm = s * .34
-        d.rectangle((arm, m, s - arm, s - m), fill=BODY, outline=EDGE, width=w)
-        d.rectangle((m, arm, s - m, s - arm), fill=BODY, outline=EDGE, width=w)
-        lit = {'up': [(arm, m, s - arm, arm)], 'down': [(arm, s - arm, s - arm, s - m)],
-               'left': [(m, arm, arm, s - arm)], 'right': [(s - arm, arm, s - m, s - arm)]}
-        lit['up_down'], lit['left_right'] = lit['up'] + lit['down'], lit['left'] + lit['right']
-        for box in lit[token[5:]]:
-            d.rectangle(box, fill=INK)
         return image
     if set_name == 'keyboard':
         box = (m, s * .24, s - m, s * .76) if len(label) > 2 else (m * 2, m * 2, s - m * 2, s - m * 2)
@@ -475,8 +459,6 @@ def build(game, set_name, mods, plan=None, art=None, bindings=None, log=print, p
                         entry['role'] != 'keep' and entry['glyph'] not in TOKENS):
                     raise SystemExit(f'plan.json: {key} has glyph {entry["glyph"]!r} and role '
                                      f'{entry["role"]!r}; use a glyph from the list and face, label or keep')
-                if set_name == 'xbox' and entry['glyph'].startswith('dpad'):
-                    continue  # the PS4 and Xbox D-pads are the same: keep the game's own art
                 if entry['role'] in ('face', 'label') and info['box']:
                     entry.update(static=static, id=cid, width=image.width, height=image.height)
                     new = painter(entry, image) if painter else replacement(entry, image, set_name, labels, art)

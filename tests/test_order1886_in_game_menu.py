@@ -1,4 +1,4 @@
-"""The in-game menu is opt-in per launch and off by default."""
+"""The in-game menu (F1): the backend flag stays opt-in, the launcher setting is on by default."""
 from pathlib import Path
 import unittest
 
@@ -15,7 +15,7 @@ def environment(settings):
 
 
 class InGameMenuTests(unittest.TestCase):
-    def test_the_menu_is_off_unless_asked_for(self):
+    def test_the_backend_leaves_the_menu_off_unless_asked_for(self):
         self.assertEqual(environment({})['ORDER1886_SETTINGS_MENU'], '0')
         self.assertEqual(environment({'in_game_menu': False})['ORDER1886_SETTINGS_MENU'], '0')
 
@@ -27,22 +27,32 @@ class InGameMenuTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 environment({'in_game_menu': invalid})
 
-    def test_the_catalog_exposes_the_option_off_by_default(self):
-        field = next(item for item in options.FIELDS if item['key'] == 'in_game_menu')
-        self.assertEqual(field['default'], False)
+    def test_the_catalog_exposes_the_option_on_by_default(self):
+        field = next(item for item in options.FIELDS if item['key'] == 'game_menu')
+        self.assertEqual(field['default'], True)
         self.assertEqual(field['kind'], 'boolean')
         self.assertEqual(field['page'], 'performance')
         self.assertTrue(field['available'])
-        self.assertIn('unqualified', field['description'].lower())
+        self.assertIn('F1', field['label'])
+        self.assertNotIn('in_game_menu', [item['key'] for item in options.FIELDS])
+
+    def test_the_launcher_passes_the_flag_unless_the_player_turned_it_off(self):
+        base = {'game_dir': 'g', 'display_mode': 'windowed', 'vsync': True, 'show_fps': False}
+        self.assertIn('--in-game-menu', launcher.backend_command(dict(base), 'play'))
+        self.assertIn('--in-game-menu', launcher.backend_command(dict(base, game_menu=True), 'play'))
+        self.assertNotIn('--in-game-menu', launcher.backend_command(dict(base, game_menu=False), 'play'))
+        # The retired opt-in key must not keep an old "off" alive.
+        self.assertIn('--in-game-menu', launcher.backend_command(dict(base, in_game_menu=False), 'play'))
 
     def test_the_setting_round_trips_through_the_worker(self):
         with worker_temp_state() as state:
             app = worker.Worker(state, ROOT)
-            values = app.dispatch('settings.set', {'values': {'in_game_menu': True}})['settings']
-            self.assertIs(values['in_game_menu'], True)
-            values = app.dispatch('settings.set', {'values': {'in_game_menu': False}})['settings']
-            self.assertIs(values['in_game_menu'], False)
-            self.assertTrue(launcher.load_launch_settings(state, {})['in_game_menu'] is False)
+            values = app.dispatch('settings.set', {'values': {'game_menu': True}})['settings']
+            self.assertIs(values['game_menu'], True)
+            values = app.dispatch('settings.set', {'values': {'game_menu': False}})['settings']
+            self.assertIs(values['game_menu'], False)
+            self.assertIs(launcher.load_launch_settings(state, {})['game_menu'], True)
+            self.assertIs(launcher.load_launch_settings(state, {'game_menu': False})['game_menu'], False)
 
 
 class worker_temp_state:
