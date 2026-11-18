@@ -13,6 +13,7 @@
 #include "imgui/renderer/imgui_core.h"
 #include "sdl_window.h"
 #include "video_core/amdgpu/ps4_msaa.h"
+#include "video_core/amdgpu/ps4_msaa_default.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
 #include "video_core/renderer_vulkan/vk_amd_paths.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
@@ -846,11 +847,14 @@ void Instance::CollectDeviceParameters() {
     driver_id = driver.driverID;
     vendor_name = driver.driverName.data();
 
-    // see video_core/amdgpu/ps4_msaa.h; the default per driver is ps4_msaa_default.h.
-    constexpr bool no_msaa = false; // Preserve the guest sample counts.
+    // see video_core/amdgpu/ps4_msaa.h; the default per driver is ps4_msaa_default.h. Every
+    // driver but AMD's proprietary one keeps the guest sample counts (the native baseline).
+    const bool no_msaa =
+        order1886_no_msaa(static_cast<VkDriverId>(driver_id), std::getenv("ORDER1886_NO_MSAA")) != 0;
     AmdGpu::no_msaa.store(no_msaa, std::memory_order_relaxed);
     std::printf("GPU: guest multisampling %s\n",
-                no_msaa ? "off (single-sampled images; ORDER1886_NO_MSAA=0 keeps it)" : "on");
+                no_msaa ? "off (single-sampled images for this driver; ORDER1886_NO_MSAA=0 keeps it)"
+                        : "on");
 
     const std::string model_name{GetModelName()};
     const std::string driver_version = GetDriverVersionName();

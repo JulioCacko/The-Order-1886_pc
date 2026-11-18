@@ -8,6 +8,7 @@
 #include "video_core/renderer_vulkan/order1886_render_baseline.h"
 #include "video_core/renderer_vulkan/vk_blend_rewrite.h"
 #include "video_core/amdgpu/ps4_msaa.h"
+#include "video_core/amdgpu/ps4_msaa_default.h"
 
 using namespace Vulkan;
 static_assert(!CameraMotion::Enabled() && !CameraMotion::Ready());
@@ -85,8 +86,27 @@ int main() {
         assert(loaded.requested_upscaler == Ps4Settings::UpscalerFsr3);
         std::remove(ini);
     }
-    AmdGpu::no_msaa.store(true);
+    // The native baseline keeps the guest's sample counts on every driver that reads a
+    // multisampled depth buffer correctly; only AMD's proprietary driver (RDNA2 black lines,
+    // ps4_msaa.h) single-samples by default, and ORDER1886_NO_MSAA=0/1 overrides either way.
+    assert(!order1886_no_msaa_default(VK_DRIVER_ID_NVIDIA_PROPRIETARY));
+    assert(!order1886_no_msaa_default(VK_DRIVER_ID_MESA_RADV));
+    assert(!order1886_no_msaa_default(VK_DRIVER_ID_AMD_OPEN_SOURCE));
+    assert(!order1886_no_msaa_default(VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA));
+    assert(!order1886_no_msaa_default(VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS));
+    assert(!order1886_no_msaa_default(VK_DRIVER_ID_MOLTENVK));
+    assert(order1886_no_msaa_default(VK_DRIVER_ID_AMD_PROPRIETARY));
+    assert(order1886_no_msaa(VK_DRIVER_ID_AMD_PROPRIETARY, nullptr));
+    assert(!order1886_no_msaa(VK_DRIVER_ID_AMD_PROPRIETARY, "0"));
+    assert(order1886_no_msaa(VK_DRIVER_ID_MESA_RADV, "1"));
+    assert(!order1886_no_msaa(VK_DRIVER_ID_MESA_RADV, ""));
+    assert(order1886_no_msaa(VK_DRIVER_ID_AMD_PROPRIETARY, "yes"));   // not 0/1: the default
+    assert(!order1886_no_msaa(VK_DRIVER_ID_MESA_RADV, "10"));
+    AmdGpu::no_msaa.store(false);
     assert(!AmdGpu::NoMsaa());
+    AmdGpu::no_msaa.store(true);
+    assert(AmdGpu::NoMsaa());
+    AmdGpu::no_msaa.store(false);
     using Factor = AmdGpu::BlendControl::BlendFactor;
     using Function = AmdGpu::BlendControl::BlendFunc;
     BlendEquation scaled{Factor::SrcColor, Function::Min, Factor::DstColor};
