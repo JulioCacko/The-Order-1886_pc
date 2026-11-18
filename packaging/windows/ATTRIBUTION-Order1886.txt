@@ -38,3 +38,14 @@ That source declares app version 01.02 and warns of QTE softlocks in Chapters
 6 and 9. This project's opt-in recipe separately verifies the exact current
 executable hashes and instruction before changing a derived prepared image.
 It does not modify original game files or establish stable 60 FPS gameplay.
+
+The game language selector, the F1 in-game menu, shader-cache seed handling, the
+game-preparation recipes (SKU language filter, UI band and glyph cache, display,
+frame rate), the HTILE draw-time expand, the staging sun-shadow sync, the RDNA2
+multisampled-depth fix, the FSR 4 provider wiring, the constant ring size, the
+launcher background music and the prebuilt launcher interface are taken from
+DivinusX/a-port-of-the-order-1886-thats-actually-alive v0.2.33 (commit 31b179c),
+GPL-2.0-or-later, which continues this project:
+https://github.com/DivinusX/a-port-of-the-order-1886-thats-actually-alive
+Several of its engine patches were hand-merged; docs/order1886-borrowed-from-actually-alive.md
+lists what was taken, adapted and left out.
