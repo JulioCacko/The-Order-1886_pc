@@ -19,7 +19,12 @@ namespace Vulkan {
 
 class ConstantRing {
 public:
-    static constexpr u64 Capacity = 32ull << 20;
+    // 256 MiB (was 32 MiB). A full tail makes Allocate() return nullopt and the caller then keeps
+    // the previous draw's binding, which painted stale prompt glyphs; a larger ring makes that
+    // far rarer. Size taken from DivinusX/a-port-of-the-order-1886-thats-actually-alive v0.2.30
+    // (docs/verification/2026-11-17-constant-ring-stale-uploads.md). His retired-frontier
+    // allocation change is not reproduced: its engine commit (6db2288886) is not published.
+    static constexpr u64 Capacity = 256ull << 20;
 
     ConstantRing(const Instance& instance, Scheduler& scheduler_)
         : scheduler{scheduler_},

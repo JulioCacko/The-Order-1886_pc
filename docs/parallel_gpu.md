@@ -393,7 +393,7 @@ zero bytes to a frame buffer and a 4-byte label, whose readers are unknown), non
   `FilterDraw` handles itself (fast clear elimination, resolve, depth copy) run in order on
   stage B. Drains: ~7 per frame (DumpConstRam, indirect draws/dispatches).
 - **Constant ring** (`vk_constant_ring.h`): stage A copies small read-only guest buffers (the
-  stream path of `ObtainBuffer`, and the flattened user data) into a 32 MiB ring of its own;
+  stream path of `ObtainBuffer`, and the flattened user data) into a 256 MiB ring of its own;
   stage B only binds them. A region is reused once the submission stage B recorded its last
   draw in has completed (stage B stamps packets with the submission tick). Buffers overlapping
   guest memory that queued work will write (storage buffers, DMA, WriteData, fences:
